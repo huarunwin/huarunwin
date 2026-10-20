@@ -47,6 +47,24 @@
 
 流水线配置支持以上三类安装包，各版本以 Release 实际附件为准。Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
 
+## 常见问题排查
+
+**macOS 提示“应用已损坏，无法打开”或“无法验证开发者”？**
+
+macOS 安装包目前使用 ad-hoc 签名，尚未接入 Apple Developer ID 签名和公证，首次打开时可能被 Gatekeeper 拦截。确认安装包来自本项目 GitHub Releases，并核对 `.sha256` 附件中的校验值后，可以按以下方式处理：
+
+1. 将应用拖入“应用程序”文件夹，打开“终端”，执行：
+
+   ```sh
+   xattr -rd com.apple.quarantine "/Applications/华润赢.app"
+   ```
+
+   > 旧版应用名仍为 `HuarunWin.app`（如 v0.2.0）时，请将路径改为 `/Applications/HuarunWin.app`；自行改名或安装到其他位置时，按实际路径调整。仅在提示权限不足时，在命令前加 `sudo`。
+
+2. 或者在“系统设置 → 隐私与安全性”中点击“仍要打开”（如系统提供此按钮），按提示确认。
+
+上述命令仅移除该应用的下载隔离标记，不等于签名或公证，也不能修复安装包损坏、无效签名或架构不兼容。仍无法打开时，请重新下载与设备架构对应的安装包。
+
 ## 反馈与文档
 
 功能建议、问题和审计结论请提交到 [GitHub Issues](https://github.com/huarunwin/huarunwin/issues)，安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告。提交前请移除日志与截图中的个人信息。

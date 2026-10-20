@@ -12,10 +12,12 @@ case "${MACOS_ARCH:-}" in
   *) echo 'MACOS_ARCH must be arm64 or amd64' >&2; exit 1 ;;
 esac
 
-app=build/macos/Build/Products/Release/HuarunWin.app
+app_name=华润赢
+app="build/macos/Build/Products/Release/$app_name.app"
 output="$PWD/build/release/packages"
 mkdir -p "$output"
-executable="$app/Contents/MacOS/HuarunWin"
+executable_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+executable="$app/Contents/MacOS/$executable_name"
 helper="$app/Contents/Helpers/HuarunInstaller"
 for binary in "$executable" "$helper"; do
   architectures="$(xcrun lipo -archs "$binary")"
@@ -28,8 +30,8 @@ done
 
 stage=$(mktemp -d "$output/dmg.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
-/usr/bin/ditto "$app" "$stage/HuarunWin.app"
+/usr/bin/ditto "$app" "$stage/$app_name.app"
 ln -s /Applications "$stage/Applications"
-/usr/bin/hdiutil create -volname HuarunWin -srcfolder "$stage" -ov -format UDZO "$output/$ASSET_STEM.dmg"
+/usr/bin/hdiutil create -volname "$app_name" -srcfolder "$stage" -ov -format UDZO "$output/$ASSET_STEM.dmg"
 /usr/bin/hdiutil verify "$output/$ASSET_STEM.dmg"
 test -s "$output/$ASSET_STEM.dmg"

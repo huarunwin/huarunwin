@@ -45,6 +45,8 @@ CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定�
 
 安装包按 `HuarunWin-版本-平台-架构.扩展名` 命名，Windows 安装版另加 `-setup`，例如 `HuarunWin-0.1.0-android-arm64-v8a.apk`、`HuarunWin-0.1.0-macos-arm64.dmg`、`HuarunWin-0.1.0-windows-amd64-setup.exe` 和 `HuarunWin-0.1.0-windows-arm64.zip`。文件名中的版本不带 tag 的 `v`，预发布使用完整版本（如 `0.1.0-pre.42`）。Release 正文保留更新日志，按 Android／Windows／macOS 分组展示带架构标签的下载徽章；Android 使用 Android 图标，macOS 使用 Apple 图标，Windows 区分 Setup／Portable，顶部使用 GitHub 图标的该 Release 下载量徽章。徽章通过 Shields.io 渲染，点击仍直达本次已上传并核对的实际附件，不使用跨版本的 latest 下载地址；图片无法显示时保留含平台、包格式和架构的替代文字。末尾保留源码提交、构建记录和校验文件说明。签名清单和校验文件共用相同版本前缀，分别以 `-android-signing.json` 和 `.sha256` 结尾，清单中的文件名与附件一致。
 
+macOS 应用包为 `华润赢.app`，`CFBundleName`、`CFBundleDisplayName` 和 DMG 挂载卷名均为“华润赢”；打包脚本从应用的 `Info.plist` 读取实际可执行文件名。Release 附件继续沿用上述 ASCII 文件名，Bundle ID 保持 `win.huarun.huarunwin`，Hub 无需修改安装包地址格式。
+
 上述架构拆分从下一次构建生效，已发布的 Universal DMG／ZIP 保持原有内容；不将旧包改名冒充单架构包。正式版本已发布的安装包不会由同版本重跑替换，发布新的正式包须使用新版本。
 
 ## 版本与更新日志
@@ -113,7 +115,7 @@ Release 仅上传安装包、签名清单及其校验文件，不另行上传日
 
 2026-10-20 仓库公开前的匿名核对中，源码仓库的 Release 页面返回 404，Hub 的 `release` 与 `debug` 发布指针均为 `null`，当时尚无可匿名下载的发布包。仓库改为公开不会自动更新 Hub；更新对应渠道指针前，仍需确认目标附件可匿名访问，并启用和核对根目录 [SECURITY.md](../SECURITY.md) 的私密报告渠道。本地文档和流水线改动不会自动完成这些远端设置。
 
-macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名或 Apple 公证。首次打开可能触发系统拦截，请按「系统设置 → 隐私与安全性」中的提示处理；公开源码、签名校验和文件摘要均不能替代 Apple 公证。
+macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名或 Apple 公证。[README 的常见问题排查](../README.md#常见问题排查)与包含 macOS DMG 的 Release 正文提供首次打开被拦截时的处理提示：核对来源与摘要后，仅对实际安装的应用执行 `xattr -rd com.apple.quarantine`，或按「系统设置 → 隐私与安全性」中的提示处理。命令路径须匹配该版本的真实应用名，已发布的 v0.2.0 使用 `HuarunWin.app`，中文名新构建使用 `华润赢.app`；权限不足时才使用 `sudo`。移除隔离标记不能修复真实损坏、无效签名或架构不兼容，公开源码、签名校验和文件摘要均不能替代 Apple 公证。
 
 本项目采用根目录 [LICENSE](../LICENSE) 中的“华润赢源码查看与审计许可 1.0”，定位为源码公开（Source Available），不以开源项目名义发布。该许可允许查看、学习、安全审计、原样本地编译验证和个人使用；未经著作权人事先书面授权，不得修改、制作衍生版本或再分发源码、官方安装包及自行编译的产物。必要的本机构建配置、审计结论发表与合理代码引用、法律及托管平台保留权限的具体边界见许可正文。反馈问题和审计发现不要求取得修改授权，修改代码或提交补丁前须先取得书面授权。
 

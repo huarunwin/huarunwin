@@ -210,11 +210,33 @@ def release_notes(info, run_url):
             rows.append(f"| {platform} | " + "<br>".join(buttons) + " |")
     changes = "\n".join(f"- {change}" for change in info["changes"])
     changelog_notes = f"## 更新日志\n\n{changes}\n\n" if changes else ""
+    macos_notes = ""
+    if any(name.endswith(("-macos-arm64.dmg", "-macos-amd64.dmg")) for name in info["assets"]):
+        macos_notes = """
+## 常见问题排查
+
+**macOS 提示“应用已损坏，无法打开”或“无法验证开发者”？**
+
+macOS 安装包目前使用 ad-hoc 签名，尚未接入 Apple Developer ID 签名和公证，首次打开时可能被 Gatekeeper 拦截。确认安装包来自本项目 GitHub Releases，并核对 `.sha256` 附件中的校验值后，可以按以下方式处理：
+
+1. 将应用拖入“应用程序”文件夹，打开“终端”，执行：
+
+   ```sh
+   xattr -rd com.apple.quarantine "/Applications/华润赢.app"
+   ```
+
+   > 旧版应用名仍为 `HuarunWin.app`（如 v0.2.0）时，请将路径改为 `/Applications/HuarunWin.app`；自行改名或安装到其他位置时，按实际路径调整。仅在提示权限不足时，在命令前加 `sudo`。
+
+2. 或者在“系统设置 → 隐私与安全性”中点击“仍要打开”（如系统提供此按钮），按提示确认。
+
+上述命令仅移除该应用的下载隔离标记，不等于签名或公证，也不能修复安装包损坏、无效签名或架构不兼容。仍无法打开时，请重新下载与设备架构对应的安装包。
+"""
     return (f"[![GitHub 下载量]({counter})]({repository_url}/releases/tag/{tag})\n\n"
             f"{changelog_notes}## 下载\n\n按设备系统和架构选择安装包：\n\n"
             "| 平台 | 下载 |\n| --- | --- |\n" + "\n".join(rows)
             + "\n\nWindows：x64 适用于 Windows 10 1809 及以上，ARM64 适用于 Windows 11。"
             "Setup 为安装版，Portable 需完整解压后运行 `huarunwin.exe`。\n"
+            + macos_notes
             + f'\n源码：`{info["sha"]}` · [构建记录]({run_url})\n\n'
             "证书指纹见 android-signing.json 附件，文件校验值见 .sha256 附件。")
 

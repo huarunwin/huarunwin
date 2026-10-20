@@ -1,3 +1,4 @@
-PRODUCT_NAME = HuarunWin
+PRODUCT_NAME = 华润赢
+PRODUCT_MODULE_NAME = HuarunWin
 PRODUCT_BUNDLE_IDENTIFIER = win.huarun.huarunwin
 PRODUCT_COPYRIGHT = Copyright © 2026 华润赢

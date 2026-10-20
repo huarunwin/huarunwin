@@ -4,6 +4,20 @@
 
 历史记录中的 Flutter／Dart 命令统一以项目 FVM 入口表示，个人安装路径、设备名称和代理地址已省略；这仅是命令与环境信息的通用化，不代表重新执行了历史检查。
 
+## 2026-10-20 macOS 首次打开提示
+
+README 与自动 Release 正文增加“应用已损坏／无法验证开发者”的处理说明，包含当前签名与公证状态、针对具体应用的隔离标记命令、实际路径与权限提示，以及系统“仍要打开”入口。自动正文仅在包含 macOS DMG 时展示此段，中文名新构建使用 `华润赢.app`，同时说明旧包名的路径。
+
+已在线补充 [v0.2.0 Release](https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0) 的说明，命令按此前核验的真实包名使用 `HuarunWin.app`；写入后回读确认正文一致，附件、标签与发布属性保持原值。Python 语法解析、正文生成预览及 `git diff --check` 通过；本轮未运行测试、重新打包或执行隔离标记移除命令。Hub 无需修改，正文前后快照仅保存在忽略的 `build/release-note-check/`。
+
+## 2026-10-20 macOS 中文应用名
+
+macOS 产品名改为“华润赢”，同步 Xcode 产品引用、Scheme、测试宿主路径与 DMG 打包路径。新应用包为 `华润赢.app`，DMG 挂载卷名同为“华润赢”；Bundle ID 与 Release 附件命名规则保持原有约定，已联动检查 Hub，无需修改其配置。
+
+使用项目固定的 Flutter 3.47.6，按 CI 的 arm64 架构参数执行 `fvm flutter build macos --release --no-pub` 成功，并通过生产脚本 `tool/ci/package_macos.sh` 生成本地核对用 DMG。主程序与安装助手均为 arm64，应用签名检查和 `hdiutil verify` 通过。只读挂载后确认镜像包含 `华润赢.app` 与 `/Applications` 快捷入口；`CFBundleName`、`CFBundleDisplayName`、`CFBundleExecutable`、Foundation 读取的显示名称／本地化名称及卷名均为“华润赢”，检查后已卸载镜像。
+
+Plist／Xcode 项目、Scheme XML、打包脚本语法及 `git diff --check` 通过。本轮未运行测试，未验收 Intel 构建、应用启动或安装／自身更新流程，未发布或替换已有 Release。核对报告与构建日志仅保存在忽略的 `build/macos-name-check/`。
+
 ## 2026-10-20 Windows 本机运行与回归
 
 按用户要求，以 `main` 的 `6557f03` 为基线，使用项目固定的 Flutter 3.47.6 编译、运行并测试 Windows Release。完整运行目录更新至当前用户的 `%LOCALAPPDATA%\Programs\HuarunWin`，24 个安装文件的 SHA-256 与最终构建逐项一致，包含本轮修复后的更新脚本。本轮提交仅包含客户端修复、回归工具与验证记录，没有修改依赖版本、网站或 Hub。
