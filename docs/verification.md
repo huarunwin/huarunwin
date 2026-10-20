@@ -576,3 +576,13 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 第二轮 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434938256) 中，两个 Windows SDK 版本校验、应用编译及数字版本运行库目录选择均通过；ARM64 在打包架构检查中发现运行库目录中的不匹配 DLL，x64 在安装器身份检查中失败。运行库收集改为按实际 PE 架构筛选，并通过 dumpbin 检查受管理运行库依赖完整性；安装器编译输出完整日志，身份核对输出实际版本字段以便诊断，继续严格拒绝错误身份和版本。
 
 第三轮 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39437166742) 的 x64 安装器已编译成功；实际版本资源显示 Inno Setup 6.7.1 在厂商、产品、版本及安装器标记后填充 ASCII 空格，原精确比较误报身份错误。CI 和客户端 Windows 自身更新校验同步仅去掉这些尾部 ASCII 空格，再执行原有精确身份、完整版本及安装器标记比较；不移除前导字符、不降低签名或摘要要求。两个修改的 PowerShell 脚本通过解析器语法检查，实际安装和更新交接尚未在本机执行。
+
+最终以提交 `b2662242aba13aac639a6f65140f36d80d4442d3` 重建 `v0.1.0`，[Actions #29](https://github.com/huarunwin/huarunwin/actions/runs/39438644584) 的检查、Android、Windows x64／ARM64、macOS Intel／Apple Silicon 和 Release 发布任务全部成功。CI 中 32 项 Python 测试、Flutter 静态分析与测试、Mac 安装器检查通过；两个 Windows runner 均核对到 `.fvmrc` 指定的 Flutter 3.47.6，完成运行库依赖、PE 架构及安装器身份检查。
+
+发布后匿名核对 [v0.1.0 正式版](https://github.com/huarunwin/huarunwin/releases/tag/v0.1.0)：
+
+- Release 为公开正式版，正文中的源码提交与 Actions 链接对应上述运行，远端 tag 指向同一源码提交。
+- 附件恰好 11 个且均非空：3 种架构的 Android APK、2 种架构的 Windows 安装版 EXE 与便携 ZIP、2 种架构的 macOS DMG、Android 签名清单及 SHA-256 文件；全部实际下载地址的匿名 HEAD 请求返回 HTTP 200。
+- SHA-256 文件的 10 条记录与 GitHub 附件记录的摘要逐项一致；实际下载的摘要文件与签名清单也通过摘要核对。签名清单含 3 份正式渠道 APK，应用 ID 为 `win.huarun.huarunwin`，版本均为 `0.1.0`，各文件摘要与清单一致。本轮没有重新下载全部安装包做本地验签。
+
+本轮未执行 Windows 实际安装、启动或客户端自身更新交接，打包成功不代替这些运行验证。Hub 的预备日志保持不变，两个 `publishedVersion` 仍为 `null`；未启用客户端在线更新提示。后续仅补充本节验证记录，已发布 tag 保留在上述源码提交。
