@@ -161,25 +161,42 @@ class _ChangelogPage extends StatefulWidget {
 }
 
 class _ChangelogPageState extends State<_ChangelogPage> {
-  late final _changelog = AppUpdates.instance.localChangelog();
+  late Future<AppUpdateFeed> _changelog = AppUpdates.instance.loadFeed();
+
+  Future<void> _refresh() async {
+    final request = AppUpdates.instance.loadFeed();
+    setState(() => _changelog = request);
+    try {
+      await request;
+    } catch (_) {
+      // The page displays the failure and offers another retry.
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     body: PageSafeArea(
-      child: FutureBuilder<AppChangelog>(
+      child: FutureBuilder<AppUpdateFeed>(
         future: _changelog,
         builder: (context, snapshot) => ContentPage(
           title: '更新日志',
           showBackButton: true,
+          onRefresh: _refresh,
           children: [
-            if (snapshot.hasData)
+            if (snapshot.hasData && snapshot.data!.releases.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('当前渠道暂无更新日志。'),
+              )
+            else if (snapshot.hasData)
               for (final release in snapshot.data!.releases)
                 PageSection(
                   title:
-                      hasNewerVersion(
-                        snapshot.data!.publishedVersion,
-                        release.version,
-                      )
+                      snapshot.data!.publishedVersion == null ||
+                          hasNewerVersion(
+                            snapshot.data!.publishedVersion!,
+                            release.version,
+                          )
                       ? '${release.version} · 尚未发布'
                       : release.version,
                   dividerIndent: 16,
@@ -192,9 +209,14 @@ class _ChangelogPageState extends State<_ChangelogPage> {
                   ],
                 )
             else if (snapshot.hasError)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
-                child: Text('暂时无法读取更新日志。'),
+                child: Column(
+                  children: [
+                    const Text('暂时无法读取更新日志，请检查网络后重试。'),
+                    TextButton(onPressed: _refresh, child: const Text('重试')),
+                  ],
+                ),
               )
             else
               const Center(child: CircularProgressIndicator()),

@@ -9,10 +9,10 @@
 工作流为 [release.yml](../.github/workflows/release.yml)，配置打包 Android、macOS 和 Windows，使用 GitHub 标准托管 runner：
 
 - 推送到 `dev`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 dev 的最新提交，已过时的任务不覆盖 Release。
-- 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，在安装工具链前核对格式、本地 `changelog.json` 及公开 Hub `api/updates.json` 的 `release.releases` 中对应的唯一、非空日志。Hub 缺少版本、日志无效或读取失败均停止构建。`pre` 是 dev 自动维护的唯一例外，不触发新构建；dev／PR 不要求 Hub 预备日志，测试包统一由 dev 发布。
+- 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，在安装工具链前核对格式及公开 Hub `api/updates.json` 的 `release.releases` 中对应的唯一、非空日志。Hub 缺少版本、日志无效或读取失败均停止构建。`pre` 是 dev 自动维护的唯一例外，不触发新构建；dev／PR 不要求 Hub 预备日志，测试包统一由 dev 发布。
 - 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
-- dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
-- 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
+- dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源和 `LICENSE` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
+- 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。校验文件覆盖上述全部附件，不另行上传日志 JSON。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
 - Flutter 版本固定读取 `.fvmrc`。预发布名称为 `基础版本-pre.运行序号`，Android `versionName`、Windows 文本版本资源及 Dart 中的版本保留完整预发布标识，Mac 原生版本和 Windows 数字版本字段保持数字格式。内部构建号使用 Actions 的运行序号；Flutter 3.47.6 的 Android 分架构 APK 在该值上分别增加 1000／2000／4000，流水线验证实际版本码，升级 Flutter 时须同时复核此规则。
 
 检查与 Android 构建固定使用 `macos-15`，Mac 构建矩阵分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）。GitHub 镜像提供 Xcode、Python 3、CocoaPods、Homebrew 和 Android SDK；Android 任务另固定 Temurin JDK 17。工作流先校验更新日志，再通过 `brew install leoafarias/fvm/fvm` 安装 FVM，读取 `.fvmrc` 安装指定 Flutter SDK。Android 编译 Debug 应用及 instrumentation APK，确保 Kotlin、Manifest 和原生测试源码进入编译；此步骤不启动设备或运行 instrumentation 测试。Mac 每个架构独立构建，打包前核对主程序与安装助手均仅包含目标架构，并验证应用签名；DMG 中提供应用和 Applications 快捷入口，不再生成 Universal 包或 ZIP。发布任务使用 `ubuntu-24.04`，等待检查、Android、两个 Mac 和两个 Windows 构建全部成功后，合并同次运行的构建附件、生成 SHA-256 并上传 Release。
@@ -95,15 +95,15 @@ python3 tool/ci/release.py check-tag v0.1.0 &&
   git push origin refs/tags/v0.1.0
 ```
 
-`check-tag` 是只读检查，校验 tag 格式、本地日志及匿名读取的公开 Hub 正式渠道，不使用未推送的本地 Hub 文件替代远端。`downloadUrl` 可省略，不要求发布页或安装包在构建前已经存在；版本记录必须唯一且日志非空。网络失败、非法 JSON 或缺少记录时返回失败，不创建 tag。Actions 中的 `validate` 对正式 tag 再执行同样的检查；它能阻止构建，但不能撤销已经通过其他方式创建的 tag。
+`check-tag` 是只读检查，校验 tag 格式及匿名读取的公开 Hub 正式渠道，不使用未推送的本地 Hub 文件替代远端。`downloadUrl` 可省略，不要求发布页或安装包在构建前已经存在；版本记录必须唯一且日志非空。网络失败、非法 JSON 或缺少记录时返回失败，不创建 tag。Actions 中的 `validate` 对正式 tag 再执行同样的检查；它能阻止构建，但不能撤销已经通过其他方式创建的 tag。
 
 构建上传安装包并确认下载地址可匿名访问后，最后再修改 Hub 对应渠道的 `publishedVersion`。如果下载地址或 Release 尚未公开，首次发布继续保持对应渠道为 `null`，已有版本则保留原发布指针，不能把仅维护者可见的附件当作公开下载地址。Hub 不自动同步源码仓库的 Release，也不要求客户端持有 Token。
 
-根目录 [changelog.json](../changelog.json) 保留随安装包提供的本地日志和 tag 编译校验，结构仍为 `publishedVersion`、`releases`，每条包含 `version` 和 `changes`。该本地指针不参与在线更新判断。版本 tag 必须对应其中唯一且非空的版本日志，否则在安装 FVM 和 Flutter 前失败；所有构建检查文件格式。编译版本和 Release 说明从 tag 匹配的记录取得，macOS 原生版本保留数字部分，完整版本通过 `--dart-define=HUARUNWIN_VERSION=…` 写入应用。内部构建号不参与更新判断。
+Hub `api/updates.json` 是客户端日志、发布校验及 Release 说明的唯一数据源，客户端仓库和安装包不再保存独立日志 JSON。正式 Release 说明取 `release.releases` 中与 tag 精确匹配的版本记录，不受发布指针是否已推进影响；dev 说明只取 `debug.releases` 中当前完整预发布版本的记录，尚未准备该记录时省略日志段，不使用正式渠道或基础版本日志。元数据生成及发布时匿名读取 Hub，网络或渠道数据无效时停止发布。正式编译版本取 tag，dev 版本取 `pubspec.yaml` 的基础版本及运行序号；macOS 原生版本保留数字部分，完整版本通过 `--dart-define=HUARUNWIN_VERSION=…` 写入应用。内部构建号不参与更新判断。
 
-版本 tag 的 Release 继续附带本地 `changelog.json` 快照及其 SHA-256，固定 `pre` 构建不上传这份快照。客户端不读取该附件，也不依赖 GitHub Latest。正式版本相同提交的重复发布保留既有附件，改变内容需发布新版本。
+Release 仅上传安装包、签名清单及其校验文件，不另行上传日志快照。正式版本相同提交且附件完整时，重复发布保留既有附件与说明；已公开版本来源不符或附件不完整时停止并要求检查，改变已发布安装包需使用新版本。客户端不依赖 GitHub Latest。
 
-应用启动静默检查一次；设置提供手动检查、实际构建版本和本地日志。测试渠道的更新提醒明确显示“测试版本”。检查失败不显示为“已是最新版本”，自动检查保持安静，手动检查允许重试；当前版本更高时不提示降级。
+应用启动静默检查一次；设置提供手动检查、实际构建版本和当前渠道的 Hub 日志。打开日志页或刷新时在线读取，预备版本标注“尚未发布”，空列表显示当前渠道暂无日志；读取失败显示错误并允许重试，不使用随包日志回退。测试渠道的更新提醒明确显示“测试版本”。检查失败不显示为“已是最新版本”，自动检查保持安静，手动检查允许重试；当前版本更高时不提示降级。
 
 更新浮层按 FlClash 默认视觉独立实现，在所有窗口宽度下居中显示。标题 17/22 dp、版本 22/28 dp、日志 15/20 dp，最大宽度 348 dp、连续圆角 34 dp；日志可选择、可滚动。底部提供中性“取消”“本版本不再提示”和主题色“前往下载”，三个按钮不足以并排显示时依次上下排列为下载、忽略、取消。弹性入场、退出淡出及按压反馈遵循减少动画设置。取消仅关闭本次浮层，不写入忽略记录。
 

@@ -33,7 +33,6 @@ flutter:
     - docs/privacy.md
     - assets/updater/windows.ps1
     - assets/updater/linux.sh
-    - changelog.json
     - assets/brand/huarun-icon.png
     - assets/licenses/apksig.txt
     - assets/licenses/arsclib.txt

@@ -23,18 +23,17 @@ PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg",
             "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json")
 
 
-def validate_changelog(data, *, allow_unpublished=False):
+def validate_channel(data):
     if not isinstance(data, dict):
-        raise ValueError("changelog.json must be an object")
+        raise ValueError("Update channel must be an object")
     published = data.get("publishedVersion")
     if ("publishedVersion" not in data
-            or (published is None and not allow_unpublished)
             or (published is not None
                 and (not isinstance(published, str) or not re.fullmatch(VERSION, published)))):
         raise ValueError("publishedVersion must be a semantic version without build metadata")
     releases = data.get("releases")
     if not isinstance(releases, list):
-        raise ValueError("changelog.json must contain a releases array")
+        raise ValueError("Update channel must contain a releases array")
     versions = set()
     for entry in releases:
         if not isinstance(entry, dict):
@@ -61,35 +60,38 @@ def tag_version(tag):
     return parsed[1]
 
 
-def validate_hub_changelog(data, version):
-    channel = data.get("release") if isinstance(data, dict) else None
+def validate_hub_changelog(data, version, *, channel="release", required=True):
+    entry = data.get(channel) if isinstance(data, dict) else None
     try:
-        validate_changelog(channel, allow_unpublished=True)
+        validate_channel(entry)
     except ValueError as error:
-        raise ValueError(f"Invalid Hub api/updates.json release channel: {error}") from error
-    if not any(entry["version"] == version for entry in channel["releases"]):
-        raise ValueError(f"Missing Hub changelog for {version}; publish its release.releases entry "
+        raise ValueError(f"Invalid Hub api/updates.json {channel} channel: {error}") from error
+    for release in entry["releases"]:
+        if release["version"] == version:
+            return release["changes"]
+    if required:
+        raise ValueError(f"Missing Hub changelog for {version}; publish its {channel}.releases entry "
                          "to huarunwin-hub/main/api/updates.json before creating the tag")
+    return []
 
 
-def check_tag(tag, changelog):
-    version = tag_version(tag)
-    validate_changelog(changelog)
-    if not any(entry["version"] == version for entry in changelog["releases"]):
-        raise ValueError(f"Missing changelog for tag {tag}; add version {version} to changelog.json")
+def read_hub_updates():
     # Check the public feed, not an unpushed sibling checkout or a private API response.
     request = Request(HUB_UPDATES_URL, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
     try:
         with urlopen(request, timeout=30) as response:
-            updates = json.load(response)
+            return json.load(response)
     except (URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"Cannot validate Hub api/updates.json at {HUB_UPDATES_URL}: {error}") from error
-    validate_hub_changelog(updates, version)
+
+
+def check_tag(tag):
+    version = tag_version(tag)
+    validate_hub_changelog(read_hub_updates(), version)
     return version
 
 
-def metadata(env, pubspec, changelog):
-    validate_changelog(changelog)
+def metadata(env, pubspec, updates):
     match = re.search(r"^version:\s*[\"']?([^\s\"']+)", pubspec, re.MULTILINE)
     base = re.fullmatch(SEMVER, match[1]) if match else None
     if not base:
@@ -98,13 +100,10 @@ def metadata(env, pubspec, changelog):
     if ref == "refs/heads/dev":
         tag, pre, version = "pre", True, base[1]
         app_version = f'{version}-pre.{env["GITHUB_RUN_NUMBER"]}'
-        notes_version = match[1].split("+", 1)[0]
     elif ref.startswith("refs/tags/") and ref != "refs/tags/pre":
         tag = ref.removeprefix("refs/tags/")
-        notes_version = app_version = version = tag_version(tag)
+        app_version = version = tag_version(tag)
         pre = False
-        if not any(entry["version"] == notes_version for entry in changelog["releases"]):
-            raise ValueError(f"Missing changelog for tag {tag}; add version {notes_version} to changelog.json")
     else:
         raise ValueError("Only dev and non-reserved tags can be released")
     sha = env["GITHUB_SHA"]
@@ -114,15 +113,13 @@ def metadata(env, pubspec, changelog):
     # Pre-release versions include the run number; reruns keep the same names.
     # The source commit and build record remain in the release notes.
     stem = f"HuarunWin-{app_version}"
-    changes = next((entry["changes"] for entry in changelog["releases"]
-                    if entry["version"] == notes_version), [])
+    channel = "debug" if pre else "release"
+    changes = validate_hub_changelog(updates, app_version, channel=channel, required=not pre)
     return dict(tag=tag, prerelease=pre, sha=sha, build_name=version,
                 build_number=number, asset_stem=stem, app_version=app_version,
                 version=app_version if tag == "pre" else tag,
-                changes=changes, changelog=changelog,
-                update_channel="debug" if pre else "release",
+                changes=changes, update_channel=channel,
                 assets=[f"{stem}-{suffix}" for suffix in PACKAGES]
-                + (["changelog.json"] if tag != "pre" else [])
                 + [f"{stem}.sha256"])
 
 
@@ -244,10 +241,12 @@ def publish(api, info, directory, run_url):
     try:
         existing_names = {asset["name"] for asset in old_assets}
         body = release.get("body") or ""
-        if info["tag"] != "pre" and not release.get("draft") and "changelog.json" in existing_names:
+        if info["tag"] != "pre" and not release.get("draft"):
             if info["sha"] not in body:
                 raise ValueError("This version is already published from a different commit; use a new version")
-            print("This version is already published; retaining its packages and changelog.")
+            if not set(info["assets"]).issubset(existing_names):
+                raise ValueError("Published release has incomplete assets; inspect it before retrying")
+            print("This version is already published; retaining its packages and release notes.")
             return True
         if (set(info["assets"]).issubset(existing_names) and not release.get("draft")
                 and run_url in body and info["sha"] in body):
@@ -292,22 +291,20 @@ def publish(api, info, directory, run_url):
 
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "check-tag":
-        version = check_tag(sys.argv[2], json.loads(Path("changelog.json").read_text()))
-        print(f"Local and public Hub changelogs are ready for v{version}.")
+        version = check_tag(sys.argv[2])
+        print(f"Public Hub changelog is ready for v{version}.")
         return
     command = sys.argv[1] if len(sys.argv) == 2 else ""
     if command == "validate":
-        changelog = json.loads(Path("changelog.json").read_text())
         ref = os.environ.get("GITHUB_REF", "")
         if ref.startswith("refs/tags/") and ref != "refs/tags/pre":
-            check_tag(ref.removeprefix("refs/tags/"), changelog)
-            print("Local and public Hub changelogs are valid.")
+            check_tag(ref.removeprefix("refs/tags/"))
+            print("Public Hub changelog is valid.")
         else:
-            validate_changelog(changelog)
-            print("Changelog is valid.")
+            print("No formal tag; prepared Hub changelog is not required.")
     elif command == "metadata":
         info = metadata(os.environ, Path("pubspec.yaml").read_text(),
-                        json.loads(Path("changelog.json").read_text()))
+                        read_hub_updates())
         OUTPUT.mkdir(parents=True, exist_ok=True)
         (OUTPUT / "metadata.json").write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n")
         if os.environ.get("GITHUB_OUTPUT"):
@@ -320,14 +317,11 @@ def main():
         info = json.loads((OUTPUT / "metadata.json").read_text())
         # Recompute identity instead of trusting metadata left by a previous job.
         if info != metadata(os.environ, Path("pubspec.yaml").read_text(),
-                            json.loads(Path("changelog.json").read_text())):
+                            read_hub_updates()):
             raise ValueError("Release metadata does not match this run")
         repo = os.environ["GITHUB_REPOSITORY"]
         url = f'https://github.com/{repo}/actions/runs/{os.environ["GITHUB_RUN_ID"]}'
         packages = OUTPUT / "packages"
-        if "changelog.json" in info["assets"]:
-            (packages / "changelog.json").write_text(
-                json.dumps(info["changelog"], ensure_ascii=False, indent=2) + "\n")
         with (packages / info["assets"][-1]).open("w") as checksums:
             for name in info["assets"][:-1]:
                 with (packages / name).open("rb") as asset:

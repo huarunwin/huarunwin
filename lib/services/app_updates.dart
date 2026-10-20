@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -65,7 +64,6 @@ class AppUpdates {
   final Dio _client;
   final Future<String> Function() _readVersion;
   Future<String>? _version;
-  Future<AppChangelog>? _local;
   Future<AppUpdateResult>? _pending;
   Future<SharedPreferences>? _preferences;
 
@@ -94,7 +92,7 @@ class AppUpdates {
   }
 
   Future<void> ignoreVersion(String version) async {
-    if (!AppChangelog.isVersion(version)) {
+    if (!AppUpdateFeed.isVersion(version)) {
       throw const FormatException('Invalid ignored version');
     }
     final preferences = await _loadPreferences();
@@ -126,7 +124,7 @@ class AppUpdates {
   Future<String> _loadVersion() async {
     try {
       final version = await _readVersion();
-      if (!AppChangelog.isVersion(version)) {
+      if (!AppUpdateFeed.isVersion(version)) {
         throw const FormatException('Invalid installed version');
       }
       return version;
@@ -135,10 +133,6 @@ class AppUpdates {
       rethrow;
     }
   }
-
-  Future<AppChangelog> localChangelog() => _local ??= rootBundle
-      .loadString('changelog.json')
-      .then(AppChangelog.decode);
 
   Future<AppUpdateResult> check() async {
     if (_pending case final pending?) return pending;
@@ -153,14 +147,15 @@ class AppUpdates {
 
   Future<AppUpdateResult> _check() async {
     final version = await currentVersion();
+    return AppUpdateResult(currentVersion: version, feed: await loadFeed());
+  }
+
+  Future<AppUpdateFeed> loadFeed() async {
     final response = await _client.get<String>(metadataUrl);
     final body = response.data;
     if (body == null || body.length > 1024 * 1024) {
       throw const FormatException('Invalid update metadata size');
     }
-    return AppUpdateResult(
-      currentVersion: version,
-      feed: AppUpdateFeed.decode(body, channel: channel),
-    );
+    return AppUpdateFeed.decode(body, channel: channel);
   }
 }

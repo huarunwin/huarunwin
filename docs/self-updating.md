@@ -1,6 +1,6 @@
 # 客户端自身更新
 
-在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，根目录 `changelog.json` 继续用于随包日志与 tag 编译校验。更新提醒和忽略规则见 [发布与许可](releasing.md)。
+在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，日志展示、tag 前置校验及 Release 说明也只读取该 Hub 文件。更新提醒和忽略规则见 [发布与许可](releasing.md)。
 
 ## 安装包配置
 
@@ -28,7 +28,7 @@
 - 有 `packages` 时只从该数组选包，不回退到其他平台、渠道或旧版本。每项非 iOS 安装包须提供架构：`arm64`、`armv7`、`x64`、`x86`、`universal`。`universal` 必须确实包含相应架构。
 - 可选 `sha256` 是安装包的真实 64 位十六进制 SHA-256。建议为所有包提供；未配置 `packages` 而从 GitHub 发布页读取附件时，也会使用 HTML 中公开且能唯一绑定该附件的摘要。AppImage 自身替换必须具有这两种来源之一的公开摘要；显式 `packages` 中的 AppImage 须配置 `sha256`。
 - iOS 使用 `platform: "iOS"`、`kind: "store"`，无需架构；每版本每渠道只允许一个 App Store 或 `https://testflight.apple.com/join/...` 地址。不能配置 IPA 或任意网页冒充系统更新渠道。
-- 本地 `changelog.json` 不需要添加安装包信息。公开 Hub 的版本、链接和摘要必须对应实际构建产物，先上传并确认匿名可用，最后才修改发布指针。
+- 版本日志、链接和摘要统一在公开 Hub 维护。先准备版本日志，再构建上传安装包并确认匿名可用，最后才修改发布指针；安装包信息必须对应实际构建产物。
 
 ## 平台安装方式
 

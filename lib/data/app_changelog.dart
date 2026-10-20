@@ -18,10 +18,10 @@ class AppRelease {
   final List<DownloadLink> packages;
 }
 
-class AppChangelog {
-  const AppChangelog({required this.publishedVersion, required this.releases});
+class AppUpdateFeed {
+  const AppUpdateFeed({required this.publishedVersion, required this.releases});
 
-  final String publishedVersion;
+  final String? publishedVersion;
   final List<AppRelease> releases;
 
   // Release identities omit build metadata; CI build numbers do not select updates.
@@ -32,35 +32,6 @@ class AppChangelog {
   );
 
   static bool isVersion(String value) => _version.stringMatch(value) == value;
-
-  factory AppChangelog.decode(String source) {
-    final data = jsonDecode(source);
-    if (data is! Map<String, dynamic> ||
-        data['publishedVersion'] is! String ||
-        !isVersion(data['publishedVersion'] as String) ||
-        data['releases'] is! List) {
-      throw const FormatException('Invalid changelog metadata');
-    }
-    final releases = _readReleases(data['releases']);
-    final publishedVersion = data['publishedVersion'] as String;
-    if (!releases.any((entry) => entry.version == publishedVersion)) {
-      throw const FormatException('publishedVersion has no changelog');
-    }
-    return AppChangelog(
-      publishedVersion: publishedVersion,
-      releases: List.unmodifiable(releases),
-    );
-  }
-
-  AppRelease get published =>
-      releases.singleWhere((entry) => entry.version == publishedVersion);
-}
-
-class AppUpdateFeed {
-  const AppUpdateFeed({required this.publishedVersion, required this.releases});
-
-  final String? publishedVersion;
-  final List<AppRelease> releases;
 
   factory AppUpdateFeed.decode(
     String source, {
@@ -74,11 +45,10 @@ class AppUpdateFeed {
     }
     final publishedVersion = entry['publishedVersion'];
     if (publishedVersion != null &&
-        (publishedVersion is! String ||
-            !AppChangelog.isVersion(publishedVersion))) {
+        (publishedVersion is! String || !isVersion(publishedVersion))) {
       throw const FormatException('Invalid publishedVersion');
     }
-    final releases = _readReleases(entry['releases'], includeDownloads: true);
+    final releases = _readReleases(entry['releases']);
     if (publishedVersion != null &&
         !releases.any((release) => release.version == publishedVersion)) {
       throw const FormatException('publishedVersion has no changelog');
@@ -94,10 +64,7 @@ class AppUpdateFeed {
       : releases.singleWhere((entry) => entry.version == publishedVersion);
 }
 
-List<AppRelease> _readReleases(
-  dynamic entries, {
-  bool includeDownloads = false,
-}) {
+List<AppRelease> _readReleases(dynamic entries) {
   if (entries is! List) {
     throw const FormatException('Missing releases array');
   }
@@ -106,7 +73,7 @@ List<AppRelease> _readReleases(
   for (final entry in entries) {
     if (entry is! Map<String, dynamic> ||
         entry['version'] is! String ||
-        !AppChangelog.isVersion(entry['version'] as String) ||
+        !AppUpdateFeed.isVersion(entry['version'] as String) ||
         !versions.add(entry['version'] as String) ||
         entry['changes'] is! List) {
       throw const FormatException('Invalid or duplicate changelog version');
@@ -116,31 +83,24 @@ List<AppRelease> _readReleases(
         changes.any((item) => item is! String || item.trim().isEmpty)) {
       throw const FormatException('Release changes must not be empty');
     }
-    Uri? downloadUrl;
-    if (includeDownloads) {
-      final value =
-          entry['downloadUrl'] ??
-          'https://github.com/huarunwin/huarunwin/releases/tag/'
-              'v${entry['version']}';
-      downloadUrl = value is String ? Uri.tryParse(value) : null;
-      if (downloadUrl == null ||
-          downloadUrl.scheme != 'https' ||
-          !downloadUrl.hasAuthority ||
-          downloadUrl.host.isEmpty ||
-          downloadUrl.userInfo.isNotEmpty) {
-        throw const FormatException(
-          'downloadUrl must be an absolute HTTPS URL',
-        );
-      }
+    final value =
+        entry['downloadUrl'] ??
+        'https://github.com/huarunwin/huarunwin/releases/tag/'
+            'v${entry['version']}';
+    final downloadUrl = value is String ? Uri.tryParse(value) : null;
+    if (downloadUrl == null ||
+        downloadUrl.scheme != 'https' ||
+        !downloadUrl.hasAuthority ||
+        downloadUrl.host.isEmpty ||
+        downloadUrl.userInfo.isNotEmpty) {
+      throw const FormatException('downloadUrl must be an absolute HTTPS URL');
     }
     releases.add(
       AppRelease(
         version: entry['version'] as String,
         changes: List.unmodifiable(changes.cast<String>()),
         downloadUrl: downloadUrl,
-        packages: downloadUrl == null
-            ? const []
-            : _readPackages(entry, downloadUrl),
+        packages: _readPackages(entry, downloadUrl),
       ),
     );
   }

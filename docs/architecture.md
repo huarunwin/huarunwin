@@ -27,7 +27,7 @@
 | `lib/data/site_models.dart`、`lib/data/site_parser.dart` | 其他公开栏目的数据模型、语义内容、分页与链接解析 |
 | `lib/data/repository.dart` | HTML 请求、后台解析、缓存和回退 |
 | `lib/services/app_controller.dart` | 目录状态、主题及显示偏好 |
-| `changelog.json`、`lib/data/app_changelog.dart`、`lib/services/app_updates.dart`、`lib/ui/app_updates.dart`、`lib/ui/app_update_dialog.dart` | 本地版本日志校验、Hub 正式／测试渠道更新检查、安装包元数据校验、按渠道和版本持久化忽略记录、居中更新浮层 |
+| `lib/data/app_changelog.dart`、`lib/services/app_updates.dart`、`lib/ui/app_updates.dart`、`lib/ui/app_update_dialog.dart` | Hub 版本日志读取与校验、正式／测试渠道更新检查、安装包元数据校验、按渠道和版本持久化忽略记录、居中更新浮层 |
 | `lib/services/self_update.dart`、`lib/ui/app_update_installation.dart` | 从已发布版本解析本平台安装包、应用内更新下载页、系统安装衔接和退出确认，独立于第三方安装流程 |
 | `assets/updater/`、`macos/Installer/main.swift` | 桌面独立更新进程、等待客户端退出、备份与替换、结果文件；macOS 构建将完整版本和渠道封装到签名资源 `huarunwin-build.plist` |
 | `lib/services/downloads.dart` | 下载队列、任务持久化、APK 实际身份与原生桥接 |

@@ -5,7 +5,7 @@ on:
   push:
     branches: [dev]
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
-    # Version tags always build; release.py rejects leading zeroes and missing changelogs.
+    # Version tags always build; release.py rejects leading zeroes and missing Hub changelogs.
     # Branch pushes skip documentation-only changes; the reserved pre tag never triggers.
     paths:
       - '**'
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Validate local and tagged release Hub changelogs
+      - name: Validate formal tag Hub changelog
         run: python3 tool/ci/release.py validate
       - name: Resolve release version
         if: github.event_name != 'pull_request'
@@ -116,7 +116,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Validate local and tagged release Hub changelogs
+      - name: Validate formal tag Hub changelog
         run: python3 tool/ci/release.py validate
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
@@ -186,7 +186,7 @@ jobs:
           persist-credentials: false
       - name: Enable long paths
         run: git config --global core.longpaths true
-      - name: Validate local and tagged release Hub changelogs
+      - name: Validate formal tag Hub changelog
         run: python tool/ci/release.py validate
       - name: Install native FVM
         run: |

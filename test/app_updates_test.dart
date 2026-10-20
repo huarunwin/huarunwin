@@ -112,7 +112,13 @@ void main() {
       ),
     ];
     for (final source in invalid) {
-      expect(() => AppChangelog.decode(source), throwsFormatException);
+      expect(
+        () => AppUpdateFeed.decode(
+          jsonEncode({'release': jsonDecode(source)}),
+          channel: AppUpdateChannel.release,
+        ),
+        throwsFormatException,
+      );
     }
   });
 
@@ -120,7 +126,7 @@ void main() {
     'version identities require three numeric parts and valid prereleases',
     () {
       for (final version in ['0.1.0', '1.10.0', '2.0.0-beta.10']) {
-        expect(AppChangelog.isVersion(version), isTrue);
+        expect(AppUpdateFeed.isVersion(version), isTrue);
       }
       for (final version in [
         'v0.1.0',
@@ -130,7 +136,7 @@ void main() {
         '1.0.0+42',
         '1.0.0\n',
       ]) {
-        expect(AppChangelog.isVersion(version), isFalse);
+        expect(AppUpdateFeed.isVersion(version), isFalse);
       }
     },
   );
@@ -214,7 +220,6 @@ void main() {
         );
       }
     }
-    expect(AppChangelog.decode(changelog()).published.downloadUrl, isNull);
   });
 
   test('default download links retain the full prerelease version', () {
@@ -272,6 +277,51 @@ void main() {
       expect(result.update?.version, '0.1.0');
     },
   );
+
+  test('changelog reads the selected Hub channel and retries without local version data', () async {
+    final client = Dio();
+    addTearDown(client.close);
+    var attempts = 0;
+    client.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          expect(options.uri.toString(), AppUpdates.metadataUrl);
+          if (++attempts == 1) {
+            handler.reject(DioException(requestOptions: options));
+            return;
+          }
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              data: jsonEncode({
+                'release': channelData(),
+                'debug': {
+                  'publishedVersion': null,
+                  'releases': [
+                    {
+                      'version': '0.2.0-pre.42',
+                      'changes': ['Prepared preview notes'],
+                    },
+                  ],
+                },
+              }),
+            ),
+          );
+        },
+      ),
+    );
+    final updates = AppUpdates(
+      client: client,
+      readVersion: () async => throw StateError('No local version available'),
+      channel: AppUpdateChannel.debug,
+    );
+    await expectLater(updates.loadFeed(), throwsA(isA<DioException>()));
+    final log = await updates.loadFeed();
+    expect(attempts, 2);
+    expect(log.publishedVersion, isNull);
+    expect(log.releases.single.version, '0.2.0-pre.42');
+    expect(log.releases.single.changes, ['Prepared preview notes']);
+  });
 
   test('ignored versions persist and manual checks still show them', () async {
     SharedPreferences.setMockInitialValues({});
