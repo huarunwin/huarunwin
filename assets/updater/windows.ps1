@@ -43,15 +43,18 @@ function CheckVersion([string]$value, [bool]$exact = $false) {
 }
 function CheckExe([string]$path, [switch]$Installer) {
   $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)
-  if ($info.CompanyName -ne 'win.huarun' -or $info.ProductName -ne 'huarunwin') {
+  # Inno Setup pads its version resource strings with ASCII spaces.
+  if (([string]$info.CompanyName).TrimEnd([char]' ') -ne 'win.huarun' -or
+      ([string]$info.ProductName).TrimEnd([char]' ') -ne 'huarunwin') {
     throw '安装包不是华润赢客户端。'
   }
   if ($Installer) {
-    if ($info.OriginalFilename -ne 'huarunwin-setup.exe' -or $info.FileDescription -ne 'HuarunWin Setup') {
+    if (([string]$info.OriginalFilename).TrimEnd([char]' ') -ne 'huarunwin-setup.exe' -or
+        ([string]$info.FileDescription).TrimEnd([char]' ') -ne 'HuarunWin Setup') {
       throw '安装包不是华润赢安装器。'
     }
   } elseif ($info.InternalName -ne 'huarunwin') { throw '安装包不是华润赢客户端。' }
-  CheckVersion $info.ProductVersion $true
+  CheckVersion (([string]$info.ProductVersion).TrimEnd([char]' ')) $true
   CheckSigner $path
 }
 try {

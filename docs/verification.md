@@ -574,3 +574,5 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 首次切换后的 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434108622) 中，两种 Windows 的 Flutter Action 安装成功，但首次执行 `--version --machine` 时 SDK 初始化输出导致 JSON 解析失败。版本核对增加一次普通 `--version`，先完成冷启动初始化，再单独读取机器格式版本；继续要求实际版本精确匹配 `.fvmrc`。
 
 第二轮 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434938256) 中，两个 Windows SDK 版本校验、应用编译及数字版本运行库目录选择均通过；ARM64 在打包架构检查中发现运行库目录中的不匹配 DLL，x64 在安装器身份检查中失败。运行库收集改为按实际 PE 架构筛选，并通过 dumpbin 检查受管理运行库依赖完整性；安装器编译输出完整日志，身份核对输出实际版本字段以便诊断，继续严格拒绝错误身份和版本。
+
+第三轮 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39437166742) 的 x64 安装器已编译成功；实际版本资源显示 Inno Setup 6.7.1 在厂商、产品、版本及安装器标记后填充 ASCII 空格，原精确比较误报身份错误。CI 和客户端 Windows 自身更新校验同步仅去掉这些尾部 ASCII 空格，再执行原有精确身份、完整版本及安装器标记比较；不移除前导字符、不降低签名或摘要要求。两个修改的 PowerShell 脚本通过解析器语法检查，实际安装和更新交接尚未在本机执行。

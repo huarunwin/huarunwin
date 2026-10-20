@@ -82,12 +82,15 @@ foreach ($required in @('msvcp140.dll', 'vcruntime140.dll')) {
 function AssertIdentity([string]$path, [switch]$Installer) {
   $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)
   Write-Host ($info | Select-Object CompanyName, ProductName, ProductVersion, OriginalFilename, FileDescription | ConvertTo-Json -Compress)
-  if ($info.CompanyName -ne 'win.huarun' -or $info.ProductName -ne 'huarunwin' -or
-      ($info.ProductVersion -split '\+')[0] -ne $metadata.app_version) {
+  # Inno Setup pads its version resource strings with ASCII spaces.
+  if (([string]$info.CompanyName).TrimEnd([char]' ') -ne 'win.huarun' -or
+      ([string]$info.ProductName).TrimEnd([char]' ') -ne 'huarunwin' -or
+      (([string]$info.ProductVersion).TrimEnd([char]' ') -split '\+')[0] -ne $metadata.app_version) {
     throw "Incorrect Windows application identity or version: $path"
   }
   if ($Installer) {
-    if ($info.OriginalFilename -ne 'huarunwin-setup.exe' -or $info.FileDescription -ne 'HuarunWin Setup') {
+    if (([string]$info.OriginalFilename).TrimEnd([char]' ') -ne 'huarunwin-setup.exe' -or
+        ([string]$info.FileDescription).TrimEnd([char]' ') -ne 'HuarunWin Setup') {
       throw 'Incorrect Windows installer identity'
     }
   } elseif ($info.InternalName -ne 'huarunwin') { throw 'Incorrect Windows executable identity' }
