@@ -2,6 +2,8 @@
 
 文中的命令和源码路径以仓库根目录为基准。
 
+项目仓库统一归属 [huarunwin](https://github.com/huarunwin) GitHub 组织，维护者个人账号为 `freephilx`：[客户端源码与安装包](https://github.com/huarunwin/huarunwin)、[公共更新资源](https://github.com/huarunwin/huarunwin-hub)。
+
 ## GitHub Actions 自动打包
 
 工作流为 [release.yml](../.github/workflows/release.yml)，打包 Android 和 macOS，使用 GitHub 标准托管 runner：
@@ -10,10 +12,10 @@
 - 推送其他 tag：仅接受 `v<version>`，例如 `v1.2.3`、`v1.2.3-rc.1`；后者仍标记为预发布。tag 必须对应 `changelog.json` 中唯一且非空的版本日志，否则在安装 FVM 和 Flutter 前失败。`pre` 是自动维护的保留 tag，不触发新构建。
 - 支持手动运行 main 或 tag；功能分支不发布。检查、测试、Android 签名校验和 Mac 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
 - main 推送与 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
-- 产物为 Android `armv7`、`arm64`、`x64` 三份 APK，同时支持 Apple Silicon 和 Intel 的 macOS Universal DMG／ZIP、Android 签名清单及 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证。
+- 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证。
 - Flutter 版本固定读取 `.fvmrc`。预发布名称为 `基础版本-pre.运行序号`，Android `versionName` 和 Dart 中的版本保留完整预发布标识，Mac 原生版本字段保持数字格式。内部构建号使用 Actions 的运行序号；Flutter 3.47.6 的 Android 分架构 APK 在该值上分别增加 1000／2000／4000，流水线验证实际版本码，升级 Flutter 时须同时复核此规则。
 
-两个构建任务固定使用 `macos-15`。GitHub 镜像提供 Xcode、Python 3、CocoaPods、Homebrew 和 Android SDK；Android 任务另固定 Temurin JDK 17。工作流先校验更新日志，再通过 `brew install leoafarias/fvm/fvm` 安装 FVM，读取 `.fvmrc` 安装指定 Flutter SDK。Android 编译 Debug 应用及 instrumentation APK，确保 Kotlin、Manifest 和原生测试源码进入编译；此步骤不启动设备或运行 instrumentation 测试。Mac 打包前检查主程序与安装助手均包含 arm64、x86_64，并验证应用签名。发布任务使用 `ubuntu-24.04`，下载同次运行的两组构建附件，生成 SHA-256 并上传 Release。
+检查与 Android 构建固定使用 `macos-15`，Mac 构建矩阵分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）。GitHub 镜像提供 Xcode、Python 3、CocoaPods、Homebrew 和 Android SDK；Android 任务另固定 Temurin JDK 17。工作流先校验更新日志，再通过 `brew install leoafarias/fvm/fvm` 安装 FVM，读取 `.fvmrc` 安装指定 Flutter SDK。Android 编译 Debug 应用及 instrumentation APK，确保 Kotlin、Manifest 和原生测试源码进入编译；此步骤不启动设备或运行 instrumentation 测试。Mac 每个架构独立构建，打包前核对主程序与安装助手均仅包含目标架构，并验证应用签名；DMG 中提供应用和 Applications 快捷入口，不再生成 Universal 包或 ZIP。发布任务使用 `ubuntu-24.04`，等待检查、Android 及两个 Mac 构建全部成功后，合并同次运行的构建附件、生成 SHA-256 并上传 Release。
 
 Android 本地 Debug 构建可通过忽略的 `android/debug-signing.local.properties` 指定固定调试身份，模板见 [`debug-signing.local.properties.example`](../android/debug-signing.local.properties.example)；未配置时使用 Android 默认调试密钥。文件存在但配置无效时明确失败。本地 release 构建使用 `android/key.properties`，模板见 [`key.properties.example`](../android/key.properties.example)，缺失时不回退调试签名。两份配置与密钥、密码均不得提交。
 
@@ -37,12 +39,16 @@ CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定�
 
 自托管 runner 的安装脚本与专用标签配置已移除。此前注册的本项目 runner 不再被此工作流选择；需要清理旧服务时，在各机器对应的 runner 目录执行 `./svc.sh stop`、`./svc.sh uninstall`，并在本仓库的 Settings → Actions → Runners 中移除对应条目。仅清理本项目专用 runner，网站及其他项目的 runner 按各自配置管理。
 
+安装包按 `HuarunWin-版本-平台-架构.扩展名` 命名，例如 `HuarunWin-0.1.0-android-arm64-v8a.apk`、`HuarunWin-0.1.0-android-armeabi-v7a.apk`、`HuarunWin-0.1.0-android-x86_64.apk`、`HuarunWin-0.1.0-macos-arm64.dmg` 和 `HuarunWin-0.1.0-macos-amd64.dmg`。文件名中的版本不带 tag 的 `v`，预发布使用完整版本（如 `0.1.0-pre.42`）。Release 正文提供更新日志与按平台、架构排列的真实附件下载链接，末尾保留源码提交、构建记录和校验文件说明，不再重复展示版本、内部构建号或签名配置细节。签名清单和校验文件共用相同版本前缀，分别以 `-android-signing.json` 和 `.sha256` 结尾，清单中的文件名与附件一致。
+
+上述架构拆分从下一次构建生效，已发布的 Universal DMG／ZIP 保持原有内容；不将旧包改名冒充单架构包。正式版本已发布的安装包不会由同版本重跑替换，发布新的正式包须使用新版本。
+
 ## 版本与更新日志
 
-客户端更新信息独立存放于公开的 [huarunwin-hub](https://github.com/freephilx/huarunwin-hub)，读取地址固定为：
+客户端更新信息独立存放于公开的 [huarunwin-hub](https://github.com/huarunwin/huarunwin-hub)，读取地址固定为：
 
 ```text
-https://raw.githubusercontent.com/freephilx/huarunwin-hub/main/api/updates.json
+https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 ```
 
 `api/updates.json` 按 `release`（正式）、`debug`（测试）分别保存更新信息。以下仅为格式示例：
@@ -54,7 +60,7 @@ https://raw.githubusercontent.com/freephilx/huarunwin-hub/main/api/updates.json
     "releases": [
       {
         "version": "0.1.0",
-        "downloadUrl": "https://github.com/freephilx/huarunwin-hub/releases/tag/v0.1.0",
+        "downloadUrl": "https://github.com/huarunwin/huarunwin/releases/tag/v0.1.0",
         "changes": ["首次发布"]
       }
     ]
@@ -90,7 +96,7 @@ https://raw.githubusercontent.com/freephilx/huarunwin-hub/main/api/updates.json
 
 2026-10-20 仓库公开前的匿名核对中，源码仓库的 Release 页面返回 404，Hub 的 `release` 与 `debug` 发布指针均为 `null`，当时尚无可匿名下载的发布包。仓库改为公开不会自动更新 Hub；更新对应渠道指针前，仍需确认目标附件可匿名访问，并启用和核对根目录 [SECURITY.md](../SECURITY.md) 的私密报告渠道。本地文档和流水线改动不会自动完成这些远端设置。
 
-macOS 当前为本地 ad-hoc 签名构建，尚未 Developer ID 签名或公证，不能视为已完成公开分发。正式发布还需确定应用身份、签名、公证和系统覆盖。
+macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名或 Apple 公证。首次打开可能触发系统拦截，请按「系统设置 → 隐私与安全性」中的提示处理；公开源码、签名校验和文件摘要均不能替代 Apple 公证。
 
 本项目采用根目录 [LICENSE](../LICENSE) 中的“华润赢源码查看与审计许可 1.0”，定位为源码公开（Source Available），不以开源项目名义发布。该许可允许查看、学习、安全审计、原样本地编译验证和个人使用；未经著作权人事先书面授权，不得修改、制作衍生版本或再分发源码、官方安装包及自行编译的产物。必要的本机构建配置、审计结论发表与合理代码引用、法律及托管平台保留权限的具体边界见许可正文。反馈问题和审计发现不要求取得修改授权，修改代码或提交补丁前须先取得书面授权。
 

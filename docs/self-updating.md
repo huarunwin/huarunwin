@@ -1,6 +1,6 @@
 # 客户端自身更新
 
-在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/freephilx/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，根目录 `changelog.json` 继续用于随包日志与 tag 编译校验。更新提醒和忽略规则见 [发布与许可](releasing.md)。
+在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，根目录 `changelog.json` 继续用于随包日志与 tag 编译校验。更新提醒和忽略规则见 [发布与许可](releasing.md)。
 
 ## 安装包配置
 
@@ -12,7 +12,7 @@
 {
   "version": "0.2.0",
   "changes": ["更新说明"],
-  "downloadUrl": "https://github.com/freephilx/huarunwin-hub/releases/tag/v0.2.0",
+  "downloadUrl": "https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0",
   "packages": [
     {
       "platform": "Android",

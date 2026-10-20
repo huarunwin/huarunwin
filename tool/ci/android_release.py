@@ -130,11 +130,11 @@ def package() -> None:
                             f'--dart-define=HUARUNWIN_UPDATE_CHANNEL={info["update_channel"]}'],
                            cwd=ROOT, check=True)
             verified = []
-            for abi, label in ABIS.items():
+            for abi in ABIS:
                 source = ROOT / f"build/app/outputs/flutter-apk/app-{abi}-release.apk"
                 record = verify_apk(source, info["app_version"], int(info["build_number"]), expected, abi,
                                     channel=info["update_channel"])
-                target = output / f'{info["asset_stem"]}-android-{label}.apk'
+                target = output / f'{info["asset_stem"]}-android-{abi}.apk'
                 shutil.copyfile(source, target)
                 record["file"] = target.name
                 verified.append(record)

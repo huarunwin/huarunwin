@@ -63,16 +63,42 @@ jobs:
           python3 -m unittest discover -s tool/ci -p 'test_*.py'
           python3 tool/ci/build.py verify
           python3 tool/check_installer.py
-      - name: Build and package universal macOS
-        if: github.event_name != 'pull_request'
-        run: python3 tool/ci/build.py package
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name != 'pull_request'
+
+  macos:
+    needs: build
+    if: github.event_name != 'pull_request'
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            os: macos-15
+          - arch: amd64
+            os: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          name: package-macos
-          path: |
-            build/release/packages/*-macos-universal.dmg
-            build/release/packages/*-macos-universal.zip
+          persist-credentials: false
+      - name: Resolve release version
+        run: python3 tool/ci/release.py metadata
+      - name: Install FVM
+        run: brew install leoafarias/fvm/fvm
+      - name: Select the pinned Flutter SDK
+        run: python3 tool/ci/build.py setup
+      - name: Install dependencies
+        run: python3 tool/ci/build.py deps
+      - name: Build and package macOS DMG
+        run: python3 tool/ci/build.py package ${{ matrix.arch }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-macos-${{ matrix.arch }}
+          path: build/release/packages/*-macos-${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -131,7 +157,7 @@ jobs:
           compression-level: 0
 
   release:
-    needs: [build, android]
+    needs: [build, macos, android]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

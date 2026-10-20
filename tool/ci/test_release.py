@@ -35,7 +35,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(info["update_channel"], "debug")
         self.assertEqual(len(info["assets"]), 7)
         self.assertEqual([Path(name).suffix for name in info["assets"]],
-                         [".dmg", ".zip", ".apk", ".apk", ".apk", ".json", ".sha256"])
+                         [".dmg", ".dmg", ".apk", ".apk", ".apk", ".json", ".sha256"])
 
     def test_semantic_tag_overrides_pubspec_version(self):
         info = identity("refs/tags/v2.3.4")

@@ -30,7 +30,7 @@ class _ClientPrivacyPageState extends State<ClientPrivacyPage> {
 
   Future<void> _openLink(String link) async {
     final base = Uri.parse(
-      'https://github.com/freephilx/huarunwin/blob/main/docs/privacy.md',
+      'https://github.com/huarunwin/huarunwin/blob/main/docs/privacy.md',
     );
     try {
       final url = base.resolve(link);

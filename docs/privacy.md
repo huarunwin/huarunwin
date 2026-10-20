@@ -52,4 +52,4 @@ Android 用户主动下载后使用 `FOREGROUND_SERVICE`／`FOREGROUND_SERVICE_D
 
 ## 联系方式
 
-隐私问题可以通过项目 [Issues](https://github.com/freephilx/huarunwin/issues) 反馈。涉及安全漏洞时，请先阅读 [SECURITY.md](../SECURITY.md)，不要在公开 Issue 中发布可利用细节或个人数据。
+隐私问题可以通过项目 [Issues](https://github.com/huarunwin/huarunwin/issues) 反馈。涉及安全漏洞时，请先阅读 [SECURITY.md](../SECURITY.md)，不要在公开 Issue 中发布可利用细节或个人数据。

@@ -4,9 +4,9 @@
 
 ## 报告方式
 
-涉及可利用漏洞、密钥、个人数据或尚未修复的安全问题，请优先使用 GitHub 的[私密安全公告入口](https://github.com/freephilx/huarunwin/security/advisories/new)。如果该入口暂不可用，请仅通过[公开 Issues](https://github.com/freephilx/huarunwin/issues) 请求维护者启用私密报告，不附漏洞细节，待私密渠道可用后再提交报告。不要在公开 Issue、提交消息或聊天中发布完整利用代码、真实密钥、下载记录或个人信息。
+涉及可利用漏洞、密钥、个人数据或尚未修复的安全问题，请优先使用 GitHub 的[私密安全公告入口](https://github.com/huarunwin/huarunwin/security/advisories/new)。如果该入口暂不可用，请仅通过[公开 Issues](https://github.com/huarunwin/huarunwin/issues) 请求维护者启用私密报告，不附漏洞细节，待私密渠道可用后再提交报告。不要在公开 Issue、提交消息或聊天中发布完整利用代码、真实密钥、下载记录或个人信息。
 
-普通功能问题、依赖升级建议和已经公开的审计结论，可以通过[公开 Issues](https://github.com/freephilx/huarunwin/issues) 反馈。
+普通功能问题、依赖升级建议和已经公开的审计结论，可以通过[公开 Issues](https://github.com/huarunwin/huarunwin/issues) 反馈。
 
 ## 报告内容
 

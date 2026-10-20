@@ -16,8 +16,8 @@ NUMBER = r"(?:0|[1-9][0-9]*)"
 IDENTIFIER = rf"(?:{NUMBER}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
 VERSION = rf"({NUMBER}\.{NUMBER}\.{NUMBER})(-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
 SEMVER = VERSION + r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-PACKAGES = ("macos-universal.dmg", "macos-universal.zip", "android-armv7.apk",
-            "android-arm64.apk", "android-x64.apk", "android-signing.json")
+PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg", "android-armeabi-v7a.apk",
+            "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json")
 
 
 def validate_changelog(data):
@@ -74,10 +74,9 @@ def metadata(env, pubspec, changelog):
     number = env["GITHUB_RUN_NUMBER"]
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or not number.isdecimal() or int(number) < 1:
         raise ValueError("Invalid GitHub build identity")
-    label = re.sub(r"[^A-Za-z0-9._-]", "-", tag)[:80]
-    # Keep the identity across reruns so a completed build can be reused.
-    # Different runs have distinct assets and cannot destroy a previous build.
-    stem = f"HuarunWin-{label}-{number}-{sha[:7]}"
+    # Pre-release versions include the run number; reruns keep the same names.
+    # The source commit and build record remain in the release notes.
+    stem = f"HuarunWin-{app_version}"
     changes = next((entry["changes"] for entry in changelog["releases"]
                     if entry["version"] == notes_version), [])
     return dict(tag=tag, prerelease=pre, sha=sha, build_name=version,
@@ -195,12 +194,22 @@ def publish(api, info, directory, run_url):
             api.request("POST", "/git/refs", {"ref": "refs/tags/pre", "sha": info["sha"]})
     changes = "\n".join(f"- {change}" for change in info["changes"])
     changelog_notes = f"## 更新日志\n\n{changes}\n\n" if changes else ""
-    notes = (f'版本：{info["version"]} · 构建：{info["build_number"]}\n\n'
-             f'{changelog_notes}源码：`{info["sha"]}`\n\n[构建记录]({run_url})\n\n'
-             "macOS 13+：通用 DMG / ZIP，同时支持 Apple Silicon 和 Intel。\n\n"
-             "Mac 使用 ad-hoc 签名，尚未配置 Developer ID 签名及 Apple 公证。\n\n"
-             "Android：ARMv7 / ARM64 / x86_64 APK，发布前核对签名、应用标识、版本与原生架构。"
-             "证书指纹与安装包摘要见 android-signing.json 附件；文件完整性摘要见 .sha256 附件。")
+    download_root = run_url.split("/actions/runs/", 1)[0] + "/releases/download/" + quote(info["tag"], safe="")
+    downloads = []
+    for platform, architecture, suffix in (
+        ("Android", "ARM64", "android-arm64-v8a.apk"),
+        ("Android", "ARMv7", "android-armeabi-v7a.apk"),
+        ("Android", "x86_64", "android-x86_64.apk"),
+        ("macOS 13+", "Apple Silicon", "macos-arm64.dmg"),
+        ("macOS 13+", "Intel", "macos-amd64.dmg"),
+    ):
+        name = f'{info["asset_stem"]}-{suffix}'
+        label = "DMG" if suffix.endswith(".dmg") else "APK"
+        downloads.append(f"| {platform} | {architecture} | [{label}]({download_root}/{name}) |")
+    notes = (f"{changelog_notes}## 下载\n\n| 平台 | 架构 | 安装包 |\n| --- | --- | --- |\n"
+             + "\n".join(downloads)
+             + f'\n\n源码：`{info["sha"]}` · [构建记录]({run_url})\n\n'
+             "证书指纹见 android-signing.json 附件，文件校验值见 .sha256 附件。")
     api.request("PATCH", endpoint, {
         "name": "预发布 · " + info["version"] if info["tag"] == "pre" else info["tag"],
         "body": notes, "draft": False, "prerelease": info["prerelease"],

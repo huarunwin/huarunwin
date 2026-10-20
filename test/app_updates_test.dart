@@ -225,7 +225,7 @@ void main() {
       );
       final result = await updates.check();
       expect(requested.toString(), AppUpdates.metadataUrl);
-      expect(requested?.path, '/freephilx/huarunwin-hub/main/api/updates.json');
+      expect(requested?.path, '/huarunwin/huarunwin-hub/main/api/updates.json');
       expect(result.releaseUrl.toString(), 'https://example.com/testing');
       expect(result.update?.version, '0.1.0');
     },

@@ -499,3 +499,13 @@ GitHub 五项签名 Secrets 由维护者后续配置，本轮没有生成发布�
 本轮实际远端验收为 main／debug 更新渠道，两平台均为 release 优化构建。正式 tag 的独立 Release 签名此前仅通过本地真实 APK 验证，尚未在 Actions 实跑该渠道；未为验收创建虚假正式版本。Android 实际自覆盖更新、前台服务系统时限及通知拒绝后的行为未在本轮实测，Mac Developer ID／公证、管理员更新和其他平台运行验收范围仍按前述记录。
 
 产物、原始日志、两张运行截图和结构化验收报告保存于忽略的 `build/review-fixes/`，未将私有配置或个人环境信息提交。Hub 发布指针与源码仓库可见性保持不变；私有仓库预发布不作为可匿名下载的公开分发。
+
+## 2026-10-20 GitHub 组织迁移
+
+按维护者要求，将个人账号恢复为 `freephilx`，创建免费的 `huarunwin` GitHub 组织，并将客户端与 Hub 两个公开仓库转入该组织。实际核对个人账号身份保持不变、组织归属为 Organization，`freephilx` 具有有效 Owner 权限；迁移后仓库地址分别为 `huarunwin/huarunwin` 和 `huarunwin/huarunwin-hub`。
+
+迁移前后对比仓库记录：两个仓库的 ID、分支、tag、Actions 开关及默认工作流权限保持一致；客户端 10 项签名 Secrets 的名称及创建、更新时间保持一致，GitHub 不支持回读 Secret 明文。正式版 `v0.1.0` 的 Release 与 8 个附件 ID、文件名、大小和 GitHub 记录的 SHA-256 均保持不变，没有重新编译或替换安装包。
+
+匿名访问迁移后的 Release 页面，以及旧、新两组 Hub `api/updates.json` 地址均返回 HTTP 200；旧 Release 地址正确跳转到组织仓库。另对 Android arm64 APK 与 Mac Universal DMG 的组织下载地址执行匿名 HEAD 请求，均返回 HTTP 200。Hub 的正式与测试渠道指针仍为 `null`。客户端固定更新地址、隐私与安全反馈入口、当前文档和 Hub 本地资料统一使用组织地址；历史验证记录保留当时地址。本轮未运行本地测试或重新编译安装包。
+
+后续核对更新路径时，将 Hub 预备记录 `0.1.0` 的 `downloadUrl` 从尚不存在的 Hub Release 改为客户端仓库已有的 `v0.1.0` Release，相关文档示例同步使用客户端仓库；在线更新元数据仍从 Hub 读取。两个渠道的发布指针继续为 `null`。提交前的 Python AST、工作流 YAML、Bash 及 Hub JSON 语法检查和两个仓库的 `git diff --check` 通过，未运行本地测试。

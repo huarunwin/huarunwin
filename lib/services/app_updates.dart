@@ -49,7 +49,7 @@ class AppUpdates {
 
   static final instance = AppUpdates();
   static const metadataUrl =
-      'https://raw.githubusercontent.com/freephilx/huarunwin-hub/main/api/updates.json';
+      'https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json';
 
   static AppUpdateChannel get buildChannel {
     const configured = String.fromEnvironment('HUARUNWIN_UPDATE_CHANNEL');

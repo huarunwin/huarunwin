@@ -10,7 +10,7 @@
 [![Platforms](https://img.shields.io/badge/安装包-Android%20%7C%20macOS-0071E3?style=flat-square)](#下载)
 [![License](https://img.shields.io/badge/许可-Source%20Available-606770?style=flat-square)](LICENSE)
 
-[网站](https://huarun.win/) · [下载](#下载) · [项目文档](docs/README.md) · [问题反馈](https://github.com/freephilx/huarunwin/issues)
+[网站](https://huarun.win/) · [下载](#下载) · [项目文档](docs/README.md) · [问题反馈](https://github.com/huarunwin/huarunwin/issues)
 
 </div>
 
@@ -37,18 +37,18 @@
 
 ## 下载
 
-正式版见 [GitHub Releases](https://github.com/freephilx/huarunwin/releases/latest)，测试版见 [预发布页面](https://github.com/freephilx/huarunwin/releases/tag/pre)。
+正式版见 [GitHub Releases](https://github.com/huarunwin/huarunwin/releases/latest)，测试版见 [预发布页面](https://github.com/huarunwin/huarunwin/releases/tag/pre)。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
 | Android | `arm64`、`armv7`、`x64` APK | 大多数手机选择 `arm64`；其余按设备 ABI 选择。 |
-| macOS 13 及以上 | Universal DMG／ZIP | 同时包含 Apple Silicon 和 Intel 架构；当前使用 ad-hoc 签名，尚未 Apple 公证。 |
+| macOS 13 及以上 | `arm64`、`amd64` DMG | Apple Silicon 选择 `arm64`，Intel 选择 `amd64`。 |
 
 当前流水线提供以上两类安装包。Windows、Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
 
 ## 反馈与文档
 
-功能建议、问题和审计结论请提交到 [GitHub Issues](https://github.com/freephilx/huarunwin/issues)，安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告。提交前请移除日志与截图中的个人信息。
+功能建议、问题和审计结论请提交到 [GitHub Issues](https://github.com/huarunwin/huarunwin/issues)，安全漏洞请按 [SECURITY.md](SECURITY.md) 私密报告。提交前请移除日志与截图中的个人信息。
 
 功能、架构、安装、发布及验证资料见[文档索引](docs/README.md)，客户端数据处理方式见[隐私说明](docs/privacy.md)。修改代码或提交补丁前须取得著作权人的书面授权，并阅读 [AGENTS.md](AGENTS.md)。
 

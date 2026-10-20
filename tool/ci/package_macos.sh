@@ -6,6 +6,11 @@ cd "$(dirname "$0")/../.."
   echo 'Missing or invalid ASSET_STEM' >&2
   exit 1
 }
+case "${MACOS_ARCH:-}" in
+  arm64) expected_arch=arm64 ;;
+  amd64) expected_arch=x86_64 ;;
+  *) echo 'MACOS_ARCH must be arm64 or amd64' >&2; exit 1 ;;
+esac
 
 app=build/macos/Build/Products/Release/HuarunWin.app
 output="$PWD/build/release/packages"
@@ -13,9 +18,9 @@ mkdir -p "$output"
 executable="$app/Contents/MacOS/HuarunWin"
 helper="$app/Contents/Helpers/HuarunInstaller"
 for binary in "$executable" "$helper"; do
-  architectures=" $(xcrun lipo -archs "$binary") "
-  [[ $architectures == *' arm64 '* && $architectures == *' x86_64 '* ]] || {
-    echo "Missing universal architectures: $binary" >&2
+  architectures="$(xcrun lipo -archs "$binary")"
+  [[ $architectures == "$expected_arch" ]] || {
+    echo "Expected $expected_arch, found $architectures: $binary" >&2
     exit 1
   }
 done
@@ -25,11 +30,6 @@ stage=$(mktemp -d "$output/dmg.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 /usr/bin/ditto "$app" "$stage/HuarunWin.app"
 ln -s /Applications "$stage/Applications"
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$stage/HuarunWin.app" "$output/$ASSET_STEM.zip"
 /usr/bin/hdiutil create -volname HuarunWin -srcfolder "$stage" -ov -format UDZO "$output/$ASSET_STEM.dmg"
 /usr/bin/hdiutil verify "$output/$ASSET_STEM.dmg"
-(
-  cd "$output"
-  test -s "$ASSET_STEM.dmg"
-  test -s "$ASSET_STEM.zip"
-)
+test -s "$output/$ASSET_STEM.dmg"
