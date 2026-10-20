@@ -37,7 +37,9 @@ CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定�
 
 每份 APK 都须通过 `apksigner verify`、当前渠道的固定证书指纹、应用 ID `win.huarun.huarunwin`、完整版本名称、预期版本码及实际原生库 ABI 检查。正式 `release` 渠道额外拒绝 Android Debug 证书；`debug` 渠道只接受其已配置的精确证书，不接受任意 runner 自动生成的调试身份。公开的 `*-android-signing.json` 记录渠道、文件名、应用身份、版本、证书和文件 SHA-256，供下载者核对；其中没有私钥或密码。这些检查不代替源码与二进制一致性证明或真实覆盖升级验收。
 
-2026-10-20 按维护者要求保留现有 Debug 证书身份，另建独立 Release 密钥，并写入仓库的上述 10 项 Actions Secrets，已核对名称齐全。两份 keystore 和仅供本机使用的 `android-signing.json` 密码配置保存在维护者指定的私有目录，权限分别为目录 700、文件 600，并排除 Git 跟踪；实际目录、密码和私钥不写入项目文档。此前 main 渠道已完成 Actions 预发布及实际附件核验；正式 tag 的 Release 身份此前通过本地构建检查，尚未执行该渠道的远端发布验收，具体范围见 [验证记录](verification.md)。
+2026-10-20 按维护者要求保留现有 Debug 证书身份，另建独立 Release 密钥，并写入仓库的上述 10 项 Actions Secrets，已核对名称齐全。两份 keystore 和仅供本机使用的 `android-signing.json` 密码配置保存在维护者指定的私有目录，权限分别为目录 700、文件 600，并排除 Git 跟踪；实际目录、密码和私钥不写入项目文档。此前 main 渠道已完成 Actions 预发布及实际附件核验；正式 tag 的 Release 身份此前通过本地构建检查，当时尚未执行该渠道的远端发布验收，具体范围见 [验证记录](verification.md)。
+
+2026-10-21 正式版本 [v0.3.0](https://github.com/huarunwin/huarunwin/releases/tag/v0.3.0) 已完成全部托管构建及发布任务，11 个公开附件均可匿名完整下载，文件大小与全部摘要核验通过。两种 Mac 包中的应用名均为“华润赢”；Android 正式签名身份与 v0.2.0 一致。此次验证不包含新包启动或真实覆盖升级，完整范围见 [验证记录](verification.md)。
 
 构建任务仅有仓库内容读取权限，发布任务单独授予 `contents: write`，使用 GitHub 自动提供的短期 `GITHUB_TOKEN`，无需个人 Token、runner 注册凭据或网站部署凭据。工作流也在目标为 `dev` 的 Pull Request 上运行日志格式校验、分析、测试、安装器检查、Android 原生编译及两种架构的 Windows Debug 编译；PR 不读取签名 Secrets、不解析发布身份、不上传安装包或创建 Release。PR 按各自编号独立排队，新提交取消该 PR 的旧检查；dev 和 tag 的发布继续串行完成。私有仓库的托管 runner 消耗账户包含的 Actions 额度；公开仓库使用标准托管 runner 的运行时间免费，存储与其他费用按 GitHub 当前计费规则执行。
 

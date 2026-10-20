@@ -4,6 +4,20 @@
 
 历史记录中的 Flutter／Dart 命令统一以项目 FVM 入口表示，个人安装路径、设备名称和代理地址已省略；这仅是命令与环境信息的通用化，不代表重新执行了历史检查。
 
+## 2026-10-21 v0.3.0 正式发布
+
+正式标签 `v0.3.0` 指向 `1008d7dbd92a59139bcf30e3c6ba6bc4ee34d6d9`，包含 Android 服务链接内置网页、应用库文件明细闪烁修复、详情分享，以及 macOS／Windows 中文应用名和 Mac 首次打开提示。Hub 先提交对应版本日志，客户端匿名执行 `python3 tool/ci/release.py check-tag v0.3.0` 通过后才创建并推送标签。
+
+[本次 Actions](https://github.com/huarunwin/huarunwin/actions/runs/39464940720) 的七个任务全部成功；CI 执行既有检查，32 项 Python 测试与 516 项 Flutter 测试通过，静态分析无问题，安装器检查通过。Android 应用及 instrumentation 源码编译通过，但没有运行设备 instrumentation；三种 ABI 的正式 APK 通过流水线的签名、应用身份、版本码与架构检查。两个 Mac 架构及两个 Windows 架构均完成构建和打包。
+
+[Release](https://github.com/huarunwin/huarunwin/releases/tag/v0.3.0) 已公开，匿名完整下载 11 个附件：三份 APK、两份 DMG、四份 Windows 安装／便携包、Android 签名清单和 SHA-256 文件。附件集合、大小、全部十项摘要、Release 源码及构建记录、Hub 日志与发布正文一致。Android 签名清单中的证书延续 v0.2.0，三份 APK 的版本码均高于对应旧包。
+
+两份 DMG 均通过镜像检查，只读挂载后确认应用包名为 `华润赢.app`，名称、显示名和可执行文件名均为“华润赢”，应用 ID、0.3.0 版本、目标架构与代码签名验证通过；检查后均已卸载镜像。两个 Windows 便携 ZIP 的 CRC、主程序 PE 架构、中文显示名及分享插件文件检查通过。
+
+Hub 在上述下载核验后，将正式渠道发布指针从 `0.2.0` 推进到 `0.3.0`，测试渠道继续为 `null`；对应配置提交已可匿名读取。GitHub 的 Latest 发布页已指向 v0.3.0。
+
+本轮未启动新发布包或执行真实覆盖更新、系统分享发送及第三方安装；上述检查不代替各平台设备验收。原始日志、下载附件与核对报告仅保存在忽略的 `build/v0.3.0-release/`，没有提交个人环境信息或凭据。
+
 ## 2026-10-21 Windows 中文应用名
 
 Windows 原生窗口标题和程序描述改为“华润赢”；安装器应用名、开始菜单、可选桌面快捷方式及卸载列表同步使用中文。覆盖安装时清理旧版的 `HuarunWin.lnk` 入口，Inno 模板使用带 BOM 的 UTF-8 保存。保留可执行文件名、应用 ID、安装目录及数据目录／更新身份字段，避免名称调整影响既有设置、下载记录或旧客户端的更新包校验。Release 附件命名及 Hub 配置无需修改。
