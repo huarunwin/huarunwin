@@ -9,7 +9,7 @@
 工作流为 [release.yml](../.github/workflows/release.yml)，配置打包 Android、macOS 和 Windows，使用 GitHub 标准托管 runner：
 
 - 推送到 `dev`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 dev 的最新提交，已过时的任务不覆盖 Release。
-- 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，发布脚本严格核对格式及 `changelog.json` 中对应的唯一、非空日志。`pre` 是 dev 自动维护的唯一例外，不触发新构建；测试包统一由 dev 发布。
+- 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，在安装工具链前核对格式、本地 `changelog.json` 及公开 Hub `api/updates.json` 的 `release.releases` 中对应的唯一、非空日志。Hub 缺少版本、日志无效或读取失败均停止构建。`pre` 是 dev 自动维护的唯一例外，不触发新构建；dev／PR 不要求 Hub 预备日志，测试包统一由 dev 发布。
 - 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
 - dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
 - 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
@@ -75,7 +75,7 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 }
 ```
 
-每个渠道仅比较自己的 `publishedVersion` 与本机版本；`null` 表示该渠道尚未发布版本。非空指针必须对应唯一且有非空日志的记录。正式渠道版本使用 `X.Y.Z`，测试渠道使用 dev 包的完整版本，如 `0.1.0-pre.42`，不带 `v` 或 `+构建号`，不另存日期、tag 或发布序号。Git tag 为 `v0.1.0` 时，这里的版本仍写 `0.1.0`。提前准备的高版本记录不会触发更新；删除尚未发布版本的安装包后，应移除其失效下载记录并保持渠道指针为 `null`。
+每个渠道仅比较自己的 `publishedVersion` 与本机版本；`null` 表示该渠道尚未发布版本。非空指针必须对应唯一且有非空日志的记录。正式渠道版本使用 `X.Y.Z`，测试渠道使用 dev 包的完整版本，如 `0.1.0-pre.42`，不带 `v` 或 `+构建号`，不另存日期、tag 或发布序号。Git tag 为 `v0.1.0` 时，这里的版本仍写 `0.1.0`。提前准备的高版本记录不会触发更新；删除尚未发布版本的安装包后，应清理失效的显式下载地址，可保留该版本的预备日志，继续保留原发布指针。
 
 每条远端版本记录的 `downloadUrl` 可省略或为 `null`，此时默认使用 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`，例如 `0.1.0` 对应 `/releases/tag/v0.1.0`。显式配置的绝对 HTTPS 地址优先；空字符串、类型错误或无效地址仍报错，不改用默认地址。点击“前往下载”后读取该确切发布页的真实附件，或使用显式安装包直链；默认规则只生成发布页地址，不构造安装包地址，也不读取 Latest 选择版本。可选 `packages` 继续按平台、架构配置真实直链和 SHA-256，各项安装包的 `downloadUrl` 仍必填。正式和测试渠道独立处理，缺少渠道、发布页或本机安装包时提示失败，不互相回退。格式、身份要求及平台行为见 [客户端自身更新](self-updating.md)。
 
@@ -85,7 +85,19 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 
 本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 dev 构建选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
 
-发布时先准备记录、上传安装包并确认下载地址可匿名访问，最后再修改 Hub 对应渠道的 `publishedVersion`。如果下载地址或 Release 尚未公开，保持对应渠道为 `null`，不能把仅维护者可见的附件当作公开下载地址。Hub 不自动同步源码仓库的 Release，也不要求客户端持有 Token。
+正式 tag 创建前，先将对应版本的预备日志提交推送到 Hub `main` 的 `release.releases`，例如 tag `v0.1.0` 对应 `version: "0.1.0"` 和非空字符串数组 `changes`。保留原发布指针；尚未发布时保持 `publishedVersion: null`。仅在相邻仓库修改 JSON 不算完成此步骤。
+
+在客户端仓库根目录执行前置校验，成功后才创建并推送 tag。下例使用 `v0.1.0` 展示命令，实际操作时替换为尚未使用的目标版本：
+
+```bash
+python3 tool/ci/release.py check-tag v0.1.0 &&
+  git tag -a v0.1.0 -m "Release v0.1.0" &&
+  git push origin refs/tags/v0.1.0
+```
+
+`check-tag` 是只读检查，校验 tag 格式、本地日志及匿名读取的公开 Hub 正式渠道，不使用未推送的本地 Hub 文件替代远端。`downloadUrl` 可省略，不要求发布页或安装包在构建前已经存在；版本记录必须唯一且日志非空。网络失败、非法 JSON 或缺少记录时返回失败，不创建 tag。Actions 中的 `validate` 对正式 tag 再执行同样的检查；它能阻止构建，但不能撤销已经通过其他方式创建的 tag。
+
+构建上传安装包并确认下载地址可匿名访问后，最后再修改 Hub 对应渠道的 `publishedVersion`。如果下载地址或 Release 尚未公开，首次发布继续保持对应渠道为 `null`，已有版本则保留原发布指针，不能把仅维护者可见的附件当作公开下载地址。Hub 不自动同步源码仓库的 Release，也不要求客户端持有 Token。
 
 根目录 [changelog.json](../changelog.json) 保留随安装包提供的本地日志和 tag 编译校验，结构仍为 `publishedVersion`、`releases`，每条包含 `version` 和 `changes`。该本地指针不参与在线更新判断。版本 tag 必须对应其中唯一且非空的版本日志，否则在安装 FVM 和 Flutter 前失败；所有构建检查文件格式。编译版本和 Release 说明从 tag 匹配的记录取得，macOS 原生版本保留数字部分，完整版本通过 `--dart-define=HUARUNWIN_VERSION=…` 写入应用。内部构建号不参与更新判断。
 

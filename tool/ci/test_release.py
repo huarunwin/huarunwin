@@ -1,4 +1,5 @@
 import copy
+import io
 import json
 import os
 import subprocess
@@ -6,9 +7,11 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from urllib.error import URLError
 
-from release import current_commit, metadata, publish, release_notes, validate_changelog
+from release import (HUB_UPDATES_URL, check_tag, current_commit, main, metadata, publish,
+                     release_notes, validate_changelog, validate_hub_changelog)
 
 
 SHA = "a" * 40
@@ -109,6 +112,72 @@ class ChangelogTests(unittest.TestCase):
                 data["releases"][0]["changes"] = [] if failure == "empty" else [" "]
             with self.subTest(failure=failure), self.assertRaises(ValueError):
                 validate_changelog(data)
+
+
+class HubChangelogTests(unittest.TestCase):
+    def setUp(self):
+        self.feed = {"release": copy.deepcopy(CHANGELOG)}
+        self.feed["release"]["publishedVersion"] = None
+
+    def test_prepared_notes_allow_null_or_previous_published_version_without_download_url(self):
+        for published in (None, "0.1.0"):
+            self.feed["release"]["publishedVersion"] = published
+            before = copy.deepcopy(self.feed)
+            validate_hub_changelog(self.feed, "2.3.4")
+            self.assertEqual(self.feed, before)
+        with self.assertRaises(ValueError):
+            validate_changelog({**CHANGELOG, "publishedVersion": None})
+
+    def test_reject_missing_version_wrong_channel_duplicate_notes_and_invalid_changes(self):
+        invalid = [None, {}, {"debug": self.feed["release"]},
+                   {"release": {"publishedVersion": None, "releases": []}}]
+        for changes in (None, [], [" "], [7], "Notes"):
+            feed = copy.deepcopy(self.feed)
+            feed["release"]["releases"][0]["changes"] = changes
+            invalid.append(feed)
+        duplicate = copy.deepcopy(self.feed)
+        duplicate["release"]["releases"].append(duplicate["release"]["releases"][0])
+        invalid.append(duplicate)
+        missing_pointer = copy.deepcopy(self.feed)
+        del missing_pointer["release"]["publishedVersion"]
+        invalid.append(missing_pointer)
+        for feed in invalid:
+            with self.subTest(feed=feed), self.assertRaises(ValueError):
+                validate_hub_changelog(feed, "0.1.0")
+        with self.assertRaisesRegex(ValueError, "Missing Hub changelog"):
+            validate_hub_changelog(self.feed, "9.9.9")
+
+    def test_preflight_reads_the_public_feed_without_authentication(self):
+        with patch("release.urlopen", return_value=io.BytesIO(json.dumps(self.feed).encode())) as fetch:
+            self.assertEqual(check_tag("v0.1.0", CHANGELOG), "0.1.0")
+        request = fetch.call_args.args[0]
+        self.assertEqual(request.full_url, HUB_UPDATES_URL)
+        self.assertIsNone(request.get_header("Authorization"))
+        self.assertEqual(fetch.call_args.kwargs["timeout"], 30)
+
+    def test_network_or_json_failure_does_not_fall_back_to_local_notes(self):
+        for error in (URLError("offline"), TimeoutError("timed out")):
+            with (patch("release.urlopen", side_effect=error),
+                  self.assertRaisesRegex(ValueError, "Cannot validate Hub")):
+                check_tag("v0.1.0", CHANGELOG)
+        with (patch("release.urlopen", return_value=io.BytesIO(b"not json")),
+              self.assertRaisesRegex(ValueError, "Cannot validate Hub")):
+            check_tag("v0.1.0", CHANGELOG)
+
+    def test_ci_formal_tags_require_hub_notes_but_dev_and_pull_requests_do_not(self):
+        for ref in ("refs/tags/v0.1.0", "refs/heads/dev", "refs/pull/7/merge"):
+            with (patch("sys.argv", ["release.py", "validate"]),
+                  patch.dict(os.environ, {"GITHUB_REF": ref}),
+                  patch("release.Path.read_text", return_value=json.dumps(CHANGELOG)),
+                  patch("release.urlopen", return_value=io.BytesIO(b"{}")) as fetch,
+                  patch("builtins.print")):
+                if ref.startswith("refs/tags/"):
+                    with self.assertRaisesRegex(ValueError, "Invalid Hub"):
+                        main()
+                    fetch.assert_called_once()
+                else:
+                    main()
+                    fetch.assert_not_called()
 
 
 class PublicationTests(unittest.TestCase):

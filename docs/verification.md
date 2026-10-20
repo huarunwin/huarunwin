@@ -543,3 +543,11 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 客户端发布／更新文档与 Hub README 已同步说明字段省略方式及旧客户端兼容条件；Hub 两个渠道的发布指针仍为 `null`。补充缺失／null 地址、完整版本、未发布指针、无效显式地址及无顶层地址的 packages 回归用例，按项目约定未执行测试。
 
 修改的三个 Dart 文件通过格式化及 `fvm dart analyze` 静态分析，无问题；Hub JSON 语法和两个仓库的 `git diff --check` 通过。未执行实际在线更新或平台安装验收，未提交推送两个仓库的本地改动。
+
+## 2026-10-20 正式 tag 前校验 Hub 日志
+
+此前创建 `v0.1.0` 时仅核对客户端随包日志，Hub 正式渠道仍为空。新增只读命令 `python3 tool/ci/release.py check-tag vX.Y.Z`，同时校验本地日志与匿名读取的 Hub `main/api/updates.json`：正式渠道须包含精确版本的唯一记录及非空字符串日志，允许预备记录保留 `publishedVersion: null` 或原发布指针，不要求提前存在安装包。正式 tag 的 Actions 在安装工具链前执行同样的校验；dev／PR 保留本地日志检查。
+
+对当时的线上空列表执行 `check-tag v0.1.0`，命令以失败状态报告缺少 Hub 日志；随后补齐并推送 Hub 的 `0.1.0` 预备日志，保留两个渠道指针为 `null`，再次通过公开地址执行同一命令成功。现有 `v0.1.0` tag 未移动，新增 CI 校验仅适用于包含该改动的提交。
+
+发布脚本与回归用例的 Python AST、工作流 YAML、本地 Hub 日志结构及两个仓库的 `git diff --check` 通过。补充渠道隔离、空日志、重复版本、未发布指针、网络与 JSON 失败及 CI 入口的回归用例，按项目约定未运行测试，也未执行平台构建或安装验证。

@@ -6,12 +6,13 @@ import os
 from pathlib import Path
 import re
 import sys
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
 OUTPUT = Path("build/release")
+HUB_UPDATES_URL = "https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json"
 NUMBER = r"(?:0|[1-9][0-9]*)"
 IDENTIFIER = rf"(?:{NUMBER}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
 VERSION = rf"({NUMBER}\.{NUMBER}\.{NUMBER})(-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
@@ -22,11 +23,14 @@ PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg",
             "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json")
 
 
-def validate_changelog(data):
+def validate_changelog(data, *, allow_unpublished=False):
     if not isinstance(data, dict):
         raise ValueError("changelog.json must be an object")
     published = data.get("publishedVersion")
-    if not isinstance(published, str) or not re.fullmatch(VERSION, published):
+    if ("publishedVersion" not in data
+            or (published is None and not allow_unpublished)
+            or (published is not None
+                and (not isinstance(published, str) or not re.fullmatch(VERSION, published)))):
         raise ValueError("publishedVersion must be a semantic version without build metadata")
     releases = data.get("releases")
     if not isinstance(releases, list):
@@ -45,9 +49,43 @@ def validate_changelog(data):
         if (not isinstance(changes, list) or not changes
                 or any(not isinstance(item, str) or not item.strip() for item in changes)):
             raise ValueError(f"Changelog for {version} must contain non-empty changes")
-    if published not in versions:
+    if published is not None and published not in versions:
         raise ValueError(f"publishedVersion {published} has no changelog")
     return data
+
+
+def tag_version(tag):
+    parsed = re.fullmatch(rf"v({NUMBER}\.{NUMBER}\.{NUMBER})", tag)
+    if not parsed:
+        raise ValueError("Release tags must use vX.Y.Z, for example v0.1.0, without suffixes")
+    return parsed[1]
+
+
+def validate_hub_changelog(data, version):
+    channel = data.get("release") if isinstance(data, dict) else None
+    try:
+        validate_changelog(channel, allow_unpublished=True)
+    except ValueError as error:
+        raise ValueError(f"Invalid Hub api/updates.json release channel: {error}") from error
+    if not any(entry["version"] == version for entry in channel["releases"]):
+        raise ValueError(f"Missing Hub changelog for {version}; publish its release.releases entry "
+                         "to huarunwin-hub/main/api/updates.json before creating the tag")
+
+
+def check_tag(tag, changelog):
+    version = tag_version(tag)
+    validate_changelog(changelog)
+    if not any(entry["version"] == version for entry in changelog["releases"]):
+        raise ValueError(f"Missing changelog for tag {tag}; add version {version} to changelog.json")
+    # Check the public feed, not an unpushed sibling checkout or a private API response.
+    request = Request(HUB_UPDATES_URL, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
+    try:
+        with urlopen(request, timeout=30) as response:
+            updates = json.load(response)
+    except (URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError(f"Cannot validate Hub api/updates.json at {HUB_UPDATES_URL}: {error}") from error
+    validate_hub_changelog(updates, version)
+    return version
 
 
 def metadata(env, pubspec, changelog):
@@ -63,11 +101,8 @@ def metadata(env, pubspec, changelog):
         notes_version = match[1].split("+", 1)[0]
     elif ref.startswith("refs/tags/") and ref != "refs/tags/pre":
         tag = ref.removeprefix("refs/tags/")
-        parsed = re.fullmatch(rf"v({NUMBER}\.{NUMBER}\.{NUMBER})", tag)
-        if not parsed:
-            raise ValueError("Release tags must use vX.Y.Z, for example v0.1.0, without suffixes")
-        notes_version = app_version = tag[1:]
-        version, pre = parsed[1], False
+        notes_version = app_version = version = tag_version(tag)
+        pre = False
         if not any(entry["version"] == notes_version for entry in changelog["releases"]):
             raise ValueError(f"Missing changelog for tag {tag}; add version {notes_version} to changelog.json")
     else:
@@ -256,10 +291,20 @@ def publish(api, info, directory, run_url):
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "check-tag":
+        version = check_tag(sys.argv[2], json.loads(Path("changelog.json").read_text()))
+        print(f"Local and public Hub changelogs are ready for v{version}.")
+        return
     command = sys.argv[1] if len(sys.argv) == 2 else ""
     if command == "validate":
-        validate_changelog(json.loads(Path("changelog.json").read_text()))
-        print("Changelog is valid.")
+        changelog = json.loads(Path("changelog.json").read_text())
+        ref = os.environ.get("GITHUB_REF", "")
+        if ref.startswith("refs/tags/") and ref != "refs/tags/pre":
+            check_tag(ref.removeprefix("refs/tags/"), changelog)
+            print("Local and public Hub changelogs are valid.")
+        else:
+            validate_changelog(changelog)
+            print("Changelog is valid.")
     elif command == "metadata":
         info = metadata(os.environ, Path("pubspec.yaml").read_text(),
                         json.loads(Path("changelog.json").read_text()))
@@ -296,7 +341,7 @@ def main():
                 summary.write(f'[Release](https://github.com/{repo}/releases/tag/{quote(info["tag"], safe="")})\n'
                               if result else "源码已有更新，本次未覆盖 Release。\n")
     else:
-        raise ValueError("Usage: python3 tool/ci/release.py validate|metadata|publish")
+        raise ValueError("Usage: python3 tool/ci/release.py validate|metadata|publish|check-tag vX.Y.Z")
 
 
 if __name__ == "__main__":
