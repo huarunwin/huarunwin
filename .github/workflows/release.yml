@@ -1,9 +1,9 @@
 name: Build and release
-run-name: Android / macOS · ${{ github.ref_name }} · ${{ github.run_number }}
+run-name: Android / macOS / Windows · ${{ github.ref_name }} · ${{ github.run_number }}
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
     tags: ['**', '!pre']
     # Tag pushes always build; branch pushes skip documentation-only changes.
     paths:
@@ -14,7 +14,7 @@ on:
       # This document is bundled in the application.
       - 'docs/privacy.md'
   pull_request:
-    branches: [main]
+    branches: [dev]
     paths:
       - '**'
       - '!**/*.md'
@@ -32,12 +32,12 @@ env:
 
 # PR checks cancel older checks for that PR; publication remains serialized.
 concurrency:
-  group: huarunwin-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('release-{0}', github.ref_type == 'tag' && github.ref_name || 'pre') }}
+  group: huarunwin-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('release-{0}', github.ref_type == 'tag' && github.ref_name || (github.ref == 'refs/heads/dev' && 'pre' || github.ref)) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.ref == 'refs/heads/dev' || (github.ref_type == 'tag' && github.ref_name != 'pre')
     runs-on: macos-15
     timeout-minutes: 90
     defaults:
@@ -105,7 +105,7 @@ jobs:
           overwrite: true
 
   android:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.ref == 'refs/heads/dev' || (github.ref_type == 'tag' && github.ref_name != 'pre')
     runs-on: macos-15
     timeout-minutes: 90
     defaults:
@@ -156,8 +156,74 @@ jobs:
           retention-days: 7
           compression-level: 0
 
+  windows:
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.ref == 'refs/heads/dev' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    name: Windows ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: windows-2022
+            fvm_arch: x64
+            fvm_sha256: 97696d118ad35bf25dc91fd28c70bb3d77b6d1fee6658fbd744e838b5f81da4a
+          - arch: arm64
+            os: windows-11-arm
+            fvm_arch: arm64
+            fvm_sha256: ea10b12a756d0b66476f303f47a1169c662c84b9a98a6debd7529ee564ec6869
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      FVM_VERSION: '4.3.2'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Enable long paths
+        run: git config --global core.longpaths true
+      - name: Validate changelog
+        run: python tool/ci/release.py validate
+      - name: Install native FVM
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'fvm.zip'
+          $directory = Join-Path $env:RUNNER_TEMP 'fvm'
+          Invoke-WebRequest "https://github.com/btwld/fvm/releases/download/$env:FVM_VERSION/fvm-$env:FVM_VERSION-windows-${{ matrix.fvm_arch }}.zip" -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '${{ matrix.fvm_sha256 }}') { throw 'FVM checksum mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $directory
+          $executables = @(Get-ChildItem -LiteralPath $directory -Filter fvm.exe -File -Recurse)
+          if ($executables.Count -ne 1) { throw 'FVM archive must contain one executable' }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $executables[0].DirectoryName
+      - name: Select the pinned Flutter SDK
+        run: python tool/ci/build.py setup
+      - name: Install dependencies
+        run: python tool/ci/build.py deps
+      - name: Compile Windows application
+        if: github.event_name == 'pull_request'
+        run: fvm flutter build windows --debug --no-pub
+      - name: Resolve release version
+        if: github.event_name != 'pull_request'
+        run: python tool/ci/release.py metadata
+      - name: Build and package Windows
+        if: github.event_name != 'pull_request'
+        run: ./tool/ci/package_windows.ps1 -Architecture ${{ matrix.arch }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: package-windows-${{ matrix.arch }}
+          path: |
+            build/release/packages/*-windows-${{ matrix.arch }}-setup.exe
+            build/release/packages/*-windows-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
   release:
-    needs: [build, macos, android]
+    needs: [build, macos, android, windows]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

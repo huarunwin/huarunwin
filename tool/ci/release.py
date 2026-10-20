@@ -16,7 +16,9 @@ NUMBER = r"(?:0|[1-9][0-9]*)"
 IDENTIFIER = rf"(?:{NUMBER}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
 VERSION = rf"({NUMBER}\.{NUMBER}\.{NUMBER})(-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
 SEMVER = VERSION + r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg", "android-armeabi-v7a.apk",
+PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg",
+            "windows-amd64-setup.exe", "windows-amd64.zip",
+            "windows-arm64-setup.exe", "windows-arm64.zip", "android-armeabi-v7a.apk",
             "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json")
 
 
@@ -55,7 +57,7 @@ def metadata(env, pubspec, changelog):
     if not base:
         raise ValueError("pubspec.yaml must contain a semantic version")
     ref = env["GITHUB_REF"]
-    if ref == "refs/heads/main":
+    if ref == "refs/heads/dev":
         tag, pre, version = "pre", True, base[1]
         app_version = f'{version}-pre.{env["GITHUB_RUN_NUMBER"]}'
         notes_version = match[1].split("+", 1)[0]
@@ -69,7 +71,7 @@ def metadata(env, pubspec, changelog):
         if not any(entry["version"] == notes_version for entry in changelog["releases"]):
             raise ValueError(f"Missing changelog for tag {tag}; add version {notes_version} to changelog.json")
     else:
-        raise ValueError("Only main and non-reserved tags can be released")
+        raise ValueError("Only dev and non-reserved tags can be released")
     sha = env["GITHUB_SHA"]
     number = env["GITHUB_RUN_NUMBER"]
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or not number.isdecimal() or int(number) < 1:
@@ -124,7 +126,7 @@ class GitHub:
 
 
 def current_commit(api, tag):
-    ref = "heads/main" if tag == "pre" else "tags/" + quote(tag, safe="")
+    ref = "heads/dev" if tag == "pre" else "tags/" + quote(tag, safe="")
     obj = api.request("GET", "/git/ref/" + ref)["object"]
     for _ in range(8):
         if obj["type"] == "commit":
@@ -133,6 +135,56 @@ def current_commit(api, tag):
             break
         obj = api.request("GET", "/git/tags/" + obj["sha"])["object"]
     raise ValueError("Tag does not point to a commit")
+
+
+def release_notes(info, run_url):
+    repository_url = run_url.split("/actions/runs/", 1)[0]
+    repository = repository_url.removeprefix("https://github.com/")
+    tag = quote(info["tag"], safe="")
+    download_root = f"{repository_url}/releases/download/{tag}"
+    counter = "https://img.shields.io/github/downloads/" + repository + f"/{tag}/total?" + urlencode({
+        "label": f'downloads@{info["app_version"]}', "logo": "github", "style": "flat-square",
+    })
+    groups = (
+        ("Android", "android", (
+            ("APK", "ARM64", "android-arm64-v8a.apk", "2E7D32"),
+            ("APK", "ARMv7", "android-armeabi-v7a.apk", "43A047"),
+            ("APK", "x64", "android-x86_64.apk", "66BB6A"),
+        )),
+        ("Windows", "", (
+            ("Setup", "x64", "windows-amd64-setup.exe", "0078D4"),
+            ("Portable", "x64", "windows-amd64.zip", "408CBF"),
+            ("Setup", "ARM64", "windows-arm64-setup.exe", "0078D4"),
+            ("Portable", "ARM64", "windows-arm64.zip", "408CBF"),
+        )),
+        ("macOS 13+", "apple", (
+            ("DMG", "Apple Silicon", "macos-arm64.dmg", "333333"),
+            ("DMG", "Intel x64", "macos-amd64.dmg", "0071E3"),
+        )),
+    )
+    rows = []
+    for platform, logo, packages in groups:
+        buttons = []
+        for label, architecture, suffix, color in packages:
+            name = f'{info["asset_stem"]}-{suffix}'
+            if name not in info["assets"]:
+                continue
+            parameters = dict(label=label, message=architecture, color=color, style="flat-square")
+            if logo:
+                parameters.update(logo=logo, logoColor="white")
+            badge = "https://img.shields.io/static/v1?" + urlencode(parameters)
+            buttons.append(f"[![{platform} {label} {architecture}]({badge})]({download_root}/{name})")
+        if buttons:
+            rows.append(f"| {platform} | " + "<br>".join(buttons) + " |")
+    changes = "\n".join(f"- {change}" for change in info["changes"])
+    changelog_notes = f"## 更新日志\n\n{changes}\n\n" if changes else ""
+    return (f"[![GitHub 下载量]({counter})]({repository_url}/releases/tag/{tag})\n\n"
+            f"{changelog_notes}## 下载\n\n按设备系统和架构选择安装包：\n\n"
+            "| 平台 | 下载 |\n| --- | --- |\n" + "\n".join(rows)
+            + "\n\nWindows：x64 适用于 Windows 10 1809 及以上，ARM64 适用于 Windows 11。"
+            "Setup 为安装版，Portable 需完整解压后运行 `huarunwin.exe`。\n"
+            + f'\n源码：`{info["sha"]}` · [构建记录]({run_url})\n\n'
+            "证书指纹见 android-signing.json 附件，文件校验值见 .sha256 附件。")
 
 
 def publish(api, info, directory, run_url):
@@ -192,27 +244,9 @@ def publish(api, info, directory, run_url):
             api.request("PATCH", "/git/refs/tags/pre", {"sha": info["sha"], "force": True})
         else:
             api.request("POST", "/git/refs", {"ref": "refs/tags/pre", "sha": info["sha"]})
-    changes = "\n".join(f"- {change}" for change in info["changes"])
-    changelog_notes = f"## 更新日志\n\n{changes}\n\n" if changes else ""
-    download_root = run_url.split("/actions/runs/", 1)[0] + "/releases/download/" + quote(info["tag"], safe="")
-    downloads = []
-    for platform, architecture, suffix in (
-        ("Android", "ARM64", "android-arm64-v8a.apk"),
-        ("Android", "ARMv7", "android-armeabi-v7a.apk"),
-        ("Android", "x86_64", "android-x86_64.apk"),
-        ("macOS 13+", "Apple Silicon", "macos-arm64.dmg"),
-        ("macOS 13+", "Intel", "macos-amd64.dmg"),
-    ):
-        name = f'{info["asset_stem"]}-{suffix}'
-        label = "DMG" if suffix.endswith(".dmg") else "APK"
-        downloads.append(f"| {platform} | {architecture} | [{label}]({download_root}/{name}) |")
-    notes = (f"{changelog_notes}## 下载\n\n| 平台 | 架构 | 安装包 |\n| --- | --- | --- |\n"
-             + "\n".join(downloads)
-             + f'\n\n源码：`{info["sha"]}` · [构建记录]({run_url})\n\n'
-             "证书指纹见 android-signing.json 附件，文件校验值见 .sha256 附件。")
     api.request("PATCH", endpoint, {
         "name": "预发布 · " + info["version"] if info["tag"] == "pre" else info["tag"],
-        "body": notes, "draft": False, "prerelease": info["prerelease"],
+        "body": release_notes(info, run_url), "draft": False, "prerelease": info["prerelease"],
         "make_latest": "false" if info["prerelease"] else "legacy",
     })
     # Remove obsolete packages only after the new build has been published.

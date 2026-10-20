@@ -42,11 +42,11 @@
 
 Android 自身更新只接受与当前客户端相同的一组签名证书，不自动重签、改包或卸载；当前实现不处理签名密钥轮换谱系。更新成功可能导致旧进程被系统终止，未收到明确系统成功回调的记录仍为未确认，不通过包名存在推断本次成功。
 
-Android CI 按更新渠道使用两份固定密钥：main／预发布 tag 使用 Debug 身份，正式 tag 使用独立 Release 身份。Debug 沿用迁移前的证书，后续同渠道构建保持身份；不同证书的 Debug 与 Release 不能直接互相覆盖安装。APK 的 `versionName` 保留与 Hub 记录相同的完整版本，包括 `-pre.…` 等后缀。`*-android-signing.json` 提供每份真实 APK 的版本码、证书指纹和文件摘要；Hub 的安装包链接及摘要仍需按实际公开产物配置，流水线不自动修改 Hub 指针。
+Android CI 按更新渠道使用两份固定密钥：dev／预发布 tag 使用 Debug 身份，正式 tag 使用独立 Release 身份。Debug 沿用迁移前的证书，后续同渠道构建保持身份；不同证书的 Debug 与 Release 不能直接互相覆盖安装。APK 的 `versionName` 保留与 Hub 记录相同的完整版本，包括 `-pre.…` 等后缀。`*-android-signing.json` 提供每份真实 APK 的版本码、证书指纹和文件摘要；Hub 的安装包链接及摘要仍需按实际公开产物配置，流水线不自动修改 Hub 指针。
 
 macOS 的 `CFBundleShortVersionString` 保持纯数字。构建阶段从与 Dart 相同的 `HUARUNWIN_VERSION`／`HUARUNWIN_UPDATE_CHANNEL` 生成 `Contents/Resources/huarunwin-build.plist`，随后纳入应用签名，原生安装助手据此校验完整预发布版本与渠道；缺少此资源的旧包不能作为自身更新目标。无显式定义时采用 Flutter 版本和实际 Debug／其他构建模式。当前 ad-hoc 构建可以继续采用有效 ad-hoc 签名；当前客户端已有开发者签名时更新包须同 Team ID，不降级到 ad-hoc。目标目录不可写时通过系统管理员授权启动独立助手，重启应用前恢复原用户身份。
 
-Windows ZIP 应包含唯一的 `huarunwin.exe`、`flutter_windows.dll` 和 `data/flutter_assets`，可带同目录插件 DLL；只替换主程序、DLL 与 data，在程序同卷目录保存旧文件备份，失败尝试恢复。程序版本资源的 `CompanyName` 为 `win.huarun`，`InternalName`／`ProductName` 为 `huarunwin`，`ProductVersion`（忽略 `+` 构建元数据）须匹配完整目标版本。MSI 要求 `ProductName: huarunwin`、`Manufacturer: win.huarun`；MSIX 要求身份 `win.huarun.huarunwin`，系统包的数字版本须匹配目标基础版本。当前程序已有有效 Authenticode 签名时，新包须有效且证书指纹相同。EXE 应是符合这些身份约定的真正安装器；便携构建发布完整 ZIP，不用单个裸 EXE 替代运行目录。安装器交接成功仅记为结果未确认。当前脚本通过 Windows 自带的 Windows PowerShell 运行，写出 UTF-8 BOM 保留中文脚本编码。
+Windows ZIP 应包含唯一的 `huarunwin.exe`、`flutter_windows.dll` 和 `data/flutter_assets`，可带同目录插件 DLL；只替换主程序、DLL 与 data，在程序同卷目录保存旧文件备份，失败尝试恢复。程序版本资源的 `CompanyName` 为 `win.huarun`，`InternalName`／`ProductName` 为 `huarunwin`，`ProductVersion`（忽略 `+` 构建元数据）须匹配完整目标版本。EXE 使用 Inno Setup 安装器，厂商、产品名及完整文本版本仍须匹配；安装器身份另以 `OriginalFilename: huarunwin-setup.exe` 和 `FileDescription: HuarunWin Setup` 核对，不将 Inno 的内部名称当作主程序名称。便携 ZIP 中的主程序继续严格检查 `InternalName: huarunwin`。MSI 要求 `ProductName: huarunwin`、`Manufacturer: win.huarun`；MSIX 要求身份 `win.huarun.huarunwin`，系统包的数字版本须匹配目标基础版本。当前程序已有有效 Authenticode 签名时，新包须有效且证书指纹相同。便携构建发布完整 ZIP，不用单个裸 EXE 替代运行目录；安装器交接成功仅记为结果未确认。当前脚本通过 Windows 自带的 Windows PowerShell 运行，写出 UTF-8 BOM 保留中文脚本编码。
 
 Linux 系统包需要本机相应的 `dpkg-deb`／`rpm`／`bsdtar` 读取身份，随后通过系统桌面工具安装，保留权限确认，不执行 root shell。AppImage 备份原文件并在原目录原子替换；目录不可写或当前客户端不是 AppImage 启动时明确失败，不猜测其他安装路径。AppImage 的来源身份依赖受信任 Hub／发布页提供的摘要，不声称 ELF 标记本身能证明应用身份。
 

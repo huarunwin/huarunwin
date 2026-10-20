@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock
 
-from release import current_commit, metadata, publish, validate_changelog
+from release import current_commit, metadata, publish, release_notes, validate_changelog
 
 
 SHA = "a" * 40
@@ -22,20 +22,24 @@ CHANGELOG = {
 }
 
 
-def identity(ref="refs/heads/main", *, changelog=None, **extra):
+def identity(ref="refs/heads/dev", *, changelog=None, **extra):
     return metadata({"GITHUB_REF": ref, "GITHUB_SHA": SHA, "GITHUB_RUN_NUMBER": "42", **extra},
                     PUBSPEC, CHANGELOG if changelog is None else changelog)
 
 
 class MetadataTests(unittest.TestCase):
-    def test_main_is_fixed_pre_with_android_and_macos_packages(self):
+    def test_dev_is_fixed_pre_with_android_macos_and_windows_packages(self):
         info = identity()
         self.assertEqual((info["tag"], info["prerelease"], info["version"]), ("pre", True, "0.1.0-pre.42"))
         self.assertEqual(info["build_name"], "0.1.0")
         self.assertEqual(info["update_channel"], "debug")
-        self.assertEqual(len(info["assets"]), 7)
+        self.assertEqual(len(info["assets"]), 11)
         self.assertEqual([Path(name).suffix for name in info["assets"]],
-                         [".dmg", ".dmg", ".apk", ".apk", ".apk", ".json", ".sha256"])
+                         [".dmg", ".dmg", ".exe", ".zip", ".exe", ".zip",
+                          ".apk", ".apk", ".apk", ".json", ".sha256"])
+        for architecture in ("amd64", "arm64"):
+            for suffix in ("-setup.exe", ".zip"):
+                self.assertIn(f'HuarunWin-0.1.0-pre.42-windows-{architecture}{suffix}', info["assets"])
 
     def test_semantic_tag_overrides_pubspec_version(self):
         info = identity("refs/tags/v2.3.4")
@@ -57,13 +61,13 @@ class MetadataTests(unittest.TestCase):
         info = identity("refs/tags/v2.3.4")
         self.assertEqual(info["changelog"]["publishedVersion"], "0.1.0")
 
-    def test_main_pre_build_does_not_publish_update_metadata(self):
+    def test_dev_pre_build_does_not_publish_update_metadata(self):
         info = identity()
         self.assertNotIn("changelog.json", info["assets"])
         self.assertEqual(info["app_version"], "0.1.0-pre.42")
 
     def test_disallow_other_branches_and_reserved_tag(self):
-        for ref in ("refs/heads/feature", "refs/tags/pre"):
+        for ref in ("refs/heads/main", "refs/heads/feature", "refs/tags/pre"):
             with self.assertRaises(ValueError):
                 identity(ref)
 
@@ -124,11 +128,32 @@ class PublicationTests(unittest.TestCase):
             publish(api, self.info, self.directory, "https://example.test/run")
         api.request.assert_not_called()
 
-    def test_old_main_run_does_not_overwrite_pre(self):
+    def test_missing_windows_package_prevents_any_release_write(self):
+        (self.directory / f'{self.info["asset_stem"]}-windows-arm64-setup.exe').unlink()
+        api = Mock()
+        with self.assertRaises(ValueError):
+            publish(api, self.info, self.directory, "https://example.test/run")
+        api.request.assert_not_called()
+
+    def test_download_badges_link_to_each_package_in_the_exact_release(self):
+        for ref, tag in (("refs/heads/dev", "pre"), ("refs/tags/v2.3.4-rc.1", "v2.3.4-rc.1")):
+            with self.subTest(tag=tag):
+                info = identity(ref)
+                notes = release_notes(info, "https://github.com/example/app/actions/runs/42")
+                for name in info["assets"]:
+                    if Path(name).suffix in (".exe", ".zip", ".apk", ".dmg"):
+                        self.assertIn(f"https://github.com/example/app/releases/download/{tag}/{name}", notes)
+                self.assertIn("logo=github", notes)
+                self.assertIn("logo=android", notes)
+                self.assertIn("logo=apple", notes)
+                self.assertIn("| Windows |", notes)
+                self.assertNotIn("/releases/latest/download/", notes)
+
+    def test_old_dev_run_does_not_overwrite_pre(self):
         api = Mock()
         api.request.return_value = {"object": {"type": "commit", "sha": "b" * 40}}
         self.assertFalse(publish(api, self.info, self.directory, "https://example.test/run"))
-        self.assertEqual([call.args[0] for call in api.request.call_args_list], ["GET"])
+        api.request.assert_called_once_with("GET", "/git/ref/heads/dev")
 
     def test_annotated_tags_resolve_to_commit(self):
         api = Mock()

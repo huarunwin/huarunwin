@@ -6,20 +6,24 @@
 
 ## GitHub Actions 自动打包
 
-工作流为 [release.yml](../.github/workflows/release.yml)，打包 Android 和 macOS，使用 GitHub 标准托管 runner：
+工作流为 [release.yml](../.github/workflows/release.yml)，配置打包 Android、macOS 和 Windows，使用 GitHub 标准托管 runner：
 
-- 推送到 `main`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 main 的最新提交，已过时的任务不覆盖 Release。
+- 推送到 `dev`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 dev 的最新提交，已过时的任务不覆盖 Release。
 - 推送其他 tag：仅接受 `v<version>`，例如 `v1.2.3`、`v1.2.3-rc.1`；后者仍标记为预发布。tag 必须对应 `changelog.json` 中唯一且非空的版本日志，否则在安装 FVM 和 Flutter 前失败。`pre` 是自动维护的保留 tag，不触发新构建。
-- 支持手动运行 main 或 tag；功能分支不发布。检查、测试、Android 签名校验和 Mac 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
-- main 推送与 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
-- 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证。
-- Flutter 版本固定读取 `.fvmrc`。预发布名称为 `基础版本-pre.运行序号`，Android `versionName` 和 Dart 中的版本保留完整预发布标识，Mac 原生版本字段保持数字格式。内部构建号使用 Actions 的运行序号；Flutter 3.47.6 的 Android 分架构 APK 在该值上分别增加 1000／2000／4000，流水线验证实际版本码，升级 Flutter 时须同时复核此规则。
+- 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
+- dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
+- 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
+- Flutter 版本固定读取 `.fvmrc`。预发布名称为 `基础版本-pre.运行序号`，Android `versionName`、Windows 文本版本资源及 Dart 中的版本保留完整预发布标识，Mac 原生版本和 Windows 数字版本字段保持数字格式。内部构建号使用 Actions 的运行序号；Flutter 3.47.6 的 Android 分架构 APK 在该值上分别增加 1000／2000／4000，流水线验证实际版本码，升级 Flutter 时须同时复核此规则。
 
-检查与 Android 构建固定使用 `macos-15`，Mac 构建矩阵分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）。GitHub 镜像提供 Xcode、Python 3、CocoaPods、Homebrew 和 Android SDK；Android 任务另固定 Temurin JDK 17。工作流先校验更新日志，再通过 `brew install leoafarias/fvm/fvm` 安装 FVM，读取 `.fvmrc` 安装指定 Flutter SDK。Android 编译 Debug 应用及 instrumentation APK，确保 Kotlin、Manifest 和原生测试源码进入编译；此步骤不启动设备或运行 instrumentation 测试。Mac 每个架构独立构建，打包前核对主程序与安装助手均仅包含目标架构，并验证应用签名；DMG 中提供应用和 Applications 快捷入口，不再生成 Universal 包或 ZIP。发布任务使用 `ubuntu-24.04`，等待检查、Android 及两个 Mac 构建全部成功后，合并同次运行的构建附件、生成 SHA-256 并上传 Release。
+检查与 Android 构建固定使用 `macos-15`，Mac 构建矩阵分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）。GitHub 镜像提供 Xcode、Python 3、CocoaPods、Homebrew 和 Android SDK；Android 任务另固定 Temurin JDK 17。工作流先校验更新日志，再通过 `brew install leoafarias/fvm/fvm` 安装 FVM，读取 `.fvmrc` 安装指定 Flutter SDK。Android 编译 Debug 应用及 instrumentation APK，确保 Kotlin、Manifest 和原生测试源码进入编译；此步骤不启动设备或运行 instrumentation 测试。Mac 每个架构独立构建，打包前核对主程序与安装助手均仅包含目标架构，并验证应用签名；DMG 中提供应用和 Applications 快捷入口，不再生成 Universal 包或 ZIP。发布任务使用 `ubuntu-24.04`，等待检查、Android、两个 Mac 和两个 Windows 构建全部成功后，合并同次运行的构建附件、生成 SHA-256 并上传 Release。
+
+Windows 参照 [FlClash 的构建矩阵](https://github.com/chen08209/FlClash/blob/main/.github/workflows/build.yaml)，分别使用 `windows-2022`（x64）与 `windows-11-arm`（ARM64），独立实现打包脚本，不复用代理服务或强制结束进程的安装逻辑。下载固定 FVM 4.3.2 的对应架构官方附件并校验工作流内固定的 SHA-256，随后仍由 FVM 读取 `.fvmrc` 安装 Flutter；不切换到浮动的 master SDK。Windows Python 开启 UTF-8 模式以保存中文日志。PR 编译两种架构的 Debug 应用，dev／tag 构建 release 模式的完整运行目录。
+
+[package_windows.ps1](../tool/ci/package_windows.ps1) 随包加入对应架构的 Visual C++ 运行库，核对主程序及 DLL 的实际 PE 架构、应用身份和完整文本版本。便携 ZIP 包含主程序、插件 DLL、运行库及 Flutter data；[windows_setup.iss](../tool/ci/windows_setup.iss) 使用 Inno Setup 6 包装相同目录，默认安装到当前用户的应用目录，展示项目许可并提供开始菜单入口及可选桌面快捷方式。安装器使用稳定的应用 ID，覆盖安装沿系统确认和 Restart Manager 关闭应用流程，不调用 `taskkill`；卸载程序不删除客户端用户数据。WebView2 Runtime 缺失时仍由客户端引导打开微软官方渠道，不在打包或安装中静默下载。安装器资源中的厂商、产品名、完整版本和安装器标记须通过验证后才能上传。
 
 Android 本地 Debug 构建可通过忽略的 `android/debug-signing.local.properties` 指定固定调试身份，模板见 [`debug-signing.local.properties.example`](../android/debug-signing.local.properties.example)；未配置时使用 Android 默认调试密钥。文件存在但配置无效时明确失败。本地 release 构建使用 `android/key.properties`，模板见 [`key.properties.example`](../android/key.properties.example)，缺失时不回退调试签名。两份配置与密钥、密码均不得提交。
 
-CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定身份。main 和预发布 tag 的 `debug` 更新渠道使用 `ANDROID_DEBUG_*`，正式 tag 的 `release` 渠道使用 `ANDROID_RELEASE_*`。两种渠道都采用 release 编译优化，签名按更新渠道分别选择；没有回退到另一组的逻辑。
+CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定身份。dev 和预发布 tag 的 `debug` 更新渠道使用 `ANDROID_DEBUG_*`，正式 tag 的 `release` 渠道使用 `ANDROID_RELEASE_*`。两种渠道都采用 release 编译优化，签名按更新渠道分别选择；没有回退到另一组的逻辑。
 
 | Debug Secret | Release Secret | 内容 |
 | --- | --- | --- |
@@ -33,13 +37,13 @@ CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定�
 
 每份 APK 都须通过 `apksigner verify`、当前渠道的固定证书指纹、应用 ID `win.huarun.huarunwin`、完整版本名称、预期版本码及实际原生库 ABI 检查。正式 `release` 渠道额外拒绝 Android Debug 证书；`debug` 渠道只接受其已配置的精确证书，不接受任意 runner 自动生成的调试身份。公开的 `*-android-signing.json` 记录渠道、文件名、应用身份、版本、证书和文件 SHA-256，供下载者核对；其中没有私钥或密码。这些检查不代替源码与二进制一致性证明或真实覆盖升级验收。
 
-2026-10-20 按维护者要求保留现有 Debug 证书身份，另建独立 Release 密钥，并写入仓库的上述 10 项 Actions Secrets，已核对名称齐全。两份 keystore 和仅供本机使用的 `android-signing.json` 密码配置保存在维护者指定的私有目录，权限分别为目录 700、文件 600，并排除 Git 跟踪；实际目录、密码和私钥不写入项目文档。main 渠道已完成 Actions 预发布及实际附件核验；正式 tag 的 Release 身份此前通过本地构建检查，尚未执行该渠道的远端发布验收，具体范围见 [验证记录](verification.md)。
+2026-10-20 按维护者要求保留现有 Debug 证书身份，另建独立 Release 密钥，并写入仓库的上述 10 项 Actions Secrets，已核对名称齐全。两份 keystore 和仅供本机使用的 `android-signing.json` 密码配置保存在维护者指定的私有目录，权限分别为目录 700、文件 600，并排除 Git 跟踪；实际目录、密码和私钥不写入项目文档。此前 main 渠道已完成 Actions 预发布及实际附件核验；正式 tag 的 Release 身份此前通过本地构建检查，尚未执行该渠道的远端发布验收，具体范围见 [验证记录](verification.md)。
 
-构建任务仅有仓库内容读取权限，发布任务单独授予 `contents: write`，使用 GitHub 自动提供的短期 `GITHUB_TOKEN`，无需个人 Token、runner 注册凭据或网站部署凭据。工作流也在 `main` 的 Pull Request 上运行日志格式校验、分析、测试、安装器检查和 Android 原生编译；PR 不读取签名 Secrets、不解析发布身份、不上传安装包或创建 Release。PR 按各自编号独立排队，新提交取消该 PR 的旧检查；main 和 tag 的发布继续串行完成。私有仓库的托管 runner 消耗账户包含的 Actions 额度；公开仓库使用标准托管 runner 的运行时间免费，存储与其他费用按 GitHub 当前计费规则执行。
+构建任务仅有仓库内容读取权限，发布任务单独授予 `contents: write`，使用 GitHub 自动提供的短期 `GITHUB_TOKEN`，无需个人 Token、runner 注册凭据或网站部署凭据。工作流也在目标为 `dev` 的 Pull Request 上运行日志格式校验、分析、测试、安装器检查、Android 原生编译及两种架构的 Windows Debug 编译；PR 不读取签名 Secrets、不解析发布身份、不上传安装包或创建 Release。PR 按各自编号独立排队，新提交取消该 PR 的旧检查；dev 和 tag 的发布继续串行完成。私有仓库的托管 runner 消耗账户包含的 Actions 额度；公开仓库使用标准托管 runner 的运行时间免费，存储与其他费用按 GitHub 当前计费规则执行。
 
 自托管 runner 的安装脚本与专用标签配置已移除。此前注册的本项目 runner 不再被此工作流选择；需要清理旧服务时，在各机器对应的 runner 目录执行 `./svc.sh stop`、`./svc.sh uninstall`，并在本仓库的 Settings → Actions → Runners 中移除对应条目。仅清理本项目专用 runner，网站及其他项目的 runner 按各自配置管理。
 
-安装包按 `HuarunWin-版本-平台-架构.扩展名` 命名，例如 `HuarunWin-0.1.0-android-arm64-v8a.apk`、`HuarunWin-0.1.0-android-armeabi-v7a.apk`、`HuarunWin-0.1.0-android-x86_64.apk`、`HuarunWin-0.1.0-macos-arm64.dmg` 和 `HuarunWin-0.1.0-macos-amd64.dmg`。文件名中的版本不带 tag 的 `v`，预发布使用完整版本（如 `0.1.0-pre.42`）。Release 正文提供更新日志与按平台、架构排列的真实附件下载链接，末尾保留源码提交、构建记录和校验文件说明，不再重复展示版本、内部构建号或签名配置细节。签名清单和校验文件共用相同版本前缀，分别以 `-android-signing.json` 和 `.sha256` 结尾，清单中的文件名与附件一致。
+安装包按 `HuarunWin-版本-平台-架构.扩展名` 命名，Windows 安装版另加 `-setup`，例如 `HuarunWin-0.1.0-android-arm64-v8a.apk`、`HuarunWin-0.1.0-macos-arm64.dmg`、`HuarunWin-0.1.0-windows-amd64-setup.exe` 和 `HuarunWin-0.1.0-windows-arm64.zip`。文件名中的版本不带 tag 的 `v`，预发布使用完整版本（如 `0.1.0-pre.42`）。Release 正文保留更新日志，按 Android／Windows／macOS 分组展示带架构标签的下载徽章；Android 使用 Android 图标，macOS 使用 Apple 图标，Windows 区分 Setup／Portable，顶部使用 GitHub 图标的该 Release 下载量徽章。徽章通过 Shields.io 渲染，点击仍直达本次已上传并核对的实际附件，不使用跨版本的 latest 下载地址；图片无法显示时保留含平台、包格式和架构的替代文字。末尾保留源码提交、构建记录和校验文件说明。签名清单和校验文件共用相同版本前缀，分别以 `-android-signing.json` 和 `.sha256` 结尾，清单中的文件名与附件一致。
 
 上述架构拆分从下一次构建生效，已发布的 Universal DMG／ZIP 保持原有内容；不将旧包改名冒充单架构包。正式版本已发布的安装包不会由同版本重跑替换，发布新的正式包须使用新版本。
 
@@ -78,7 +82,7 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 
 下载由现有下载管理器处理，显示进度并支持取消、重试；完成后衔接系统安装或独立桌面更新进程。Android 保留系统覆盖安装确认，macOS／Windows／Linux AppImage 替换前明确确认退出，iOS 使用 App Store／TestFlight。自身更新不提供改包或重签入口，失败保留安装包；关闭更新页后仍可从下载管理继续安装，后台完成下载不会自行安装。此流程与第三方应用的安装助手分开。
 
-本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 main 构建和预发布 tag 选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
+本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 dev 构建和预发布 tag 选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
 
 发布时先准备记录、上传安装包并确认下载地址可匿名访问，最后再修改 Hub 对应渠道的 `publishedVersion`。如果下载地址或 Release 尚未公开，保持对应渠道为 `null`，不能把仅维护者可见的附件当作公开下载地址。Hub 不自动同步源码仓库的 Release，也不要求客户端持有 Token。
 

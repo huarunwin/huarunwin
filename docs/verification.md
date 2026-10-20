@@ -509,3 +509,21 @@ GitHub 五项签名 Secrets 由维护者后续配置，本轮没有生成发布�
 匿名访问迁移后的 Release 页面，以及旧、新两组 Hub `api/updates.json` 地址均返回 HTTP 200；旧 Release 地址正确跳转到组织仓库。另对 Android arm64 APK 与 Mac Universal DMG 的组织下载地址执行匿名 HEAD 请求，均返回 HTTP 200。Hub 的正式与测试渠道指针仍为 `null`。客户端固定更新地址、隐私与安全反馈入口、当前文档和 Hub 本地资料统一使用组织地址；历史验证记录保留当时地址。本轮未运行本地测试或重新编译安装包。
 
 后续核对更新路径时，将 Hub 预备记录 `0.1.0` 的 `downloadUrl` 从尚不存在的 Hub Release 改为客户端仓库已有的 `v0.1.0` Release，相关文档示例同步使用客户端仓库；在线更新元数据仍从 Hub 读取。两个渠道的发布指针继续为 `null`。提交前的 Python AST、工作流 YAML、Bash 及 Hub JSON 语法检查和两个仓库的 `git diff --check` 通过，未运行本地测试。
+
+## 2026-10-20 Windows 打包与 Release 下载徽章
+
+参照 FlClash 的构建矩阵和维护者提供的下载区样式，增加 `windows-2022`／`windows-11-arm` 两个任务，分别生成 x64／ARM64 安装版 EXE 和完整便携 ZIP。独立实现 Inno Setup 模板、运行库收集、架构与版本资源核对，并调整客户端自身更新对安装器的身份检查；原有主程序身份、完整版本、摘要及签名兼容性检查继续保留。Release 正文按 Android／Windows／macOS 展示架构下载徽章及带 GitHub 图标的下载量徽章，链接对应同次发布附件。
+
+本轮实际完成的静态检查：
+
+- 修改的发布脚本及回归用例通过 Python AST 语法解析，Actions 工作流通过 YAML 语法解析。
+- Windows 打包脚本和更新脚本通过 PowerShell 7.6.7 解析器语法检查；只解析源码，没有执行脚本中的构建、安装或替换操作。
+- `git diff --check` 通过，改动文件未检出个人路径或 GitHub 令牌标记。
+
+补充 Windows 附件完整性和固定版本下载徽章链接的回归用例，按项目约定未运行测试。未在 Windows runner 执行编译、Inno Setup 打包或安装、启动、自身更新验收，也未在 Windows PowerShell 5.1 实际执行更新脚本；上述语法检查不能代替这些验证。本轮未触发远端 Actions、提交推送或修改现有 Release、Hub 发布指针，Windows 安装包从后续成功构建起提供。
+
+## 2026-10-20 预发布切换到 dev 分支
+
+按维护者要求，将分支推送和 PR 目标筛选切换为 `dev`，固定 `pre` Release 的版本生成及发布前最新提交核对均改为读取 `dev`。`main` 推送和面向 `main` 的 PR 不再自动触发工作流；手动选择 `main` 或其他不支持的分支时跳过所有任务，其并发组与 dev 预发布隔离。保留版本 tag 发布及手动运行 dev／版本 tag，未修改 Hub 更新信息来源或发布指针。
+
+工作流 YAML、发布脚本及调整后的回归用例 Python AST 语法解析和 `git diff --check` 通过。回归用例同步包含 main 发布拒绝及 dev 过期提交保护，按项目约定未执行测试，也未运行远端 Actions、创建分支、提交或推送；前述 main 的历史产物验收记录继续保留原有背景。

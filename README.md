@@ -7,7 +7,7 @@
 跨平台的翻墙应用商店，让发现、下载和安装更简单。
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.47.6-02569B?style=flat-square&logo=flutter)](https://flutter.dev/)
-[![Platforms](https://img.shields.io/badge/安装包-Android%20%7C%20macOS-0071E3?style=flat-square)](#下载)
+[![Platforms](https://img.shields.io/badge/安装包-Android%20%7C%20macOS%20%7C%20Windows-0071E3?style=flat-square)](#下载)
 [![License](https://img.shields.io/badge/许可-Source%20Available-606770?style=flat-square)](LICENSE)
 
 [网站](https://huarun.win/) · [下载](#下载) · [项目文档](docs/README.md) · [问题反馈](https://github.com/huarunwin/huarunwin/issues)
@@ -43,8 +43,9 @@
 | --- | --- | --- |
 | Android | `arm64`、`armv7`、`x64` APK | 大多数手机选择 `arm64`；其余按设备 ABI 选择。 |
 | macOS 13 及以上 | `arm64`、`amd64` DMG | Apple Silicon 选择 `arm64`，Intel 选择 `amd64`。 |
+| Windows | `amd64`、`arm64` 安装版 EXE／便携 ZIP | x64 需 Windows 10 1809 及以上，ARM64 需 Windows 11；ZIP 完整解压后运行。 |
 
-当前流水线提供以上两类安装包。Windows、Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
+流水线配置支持以上三类安装包，各版本以 Release 实际附件为准。Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
 
 ## 反馈与文档
 

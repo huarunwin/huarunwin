@@ -41,11 +41,16 @@ function CheckVersion([string]$value, [bool]$exact = $false) {
   $installed = [Version]::new($current.FileMajorPart, $current.FileMinorPart, $current.FileBuildPart)
   if ([Version]$base -lt $installed) { throw '该更新包比当前安装的客户端更旧。' }
 }
-function CheckExe([string]$path) {
+function CheckExe([string]$path, [switch]$Installer) {
   $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)
-  if ($info.InternalName -ne 'huarunwin' -or $info.CompanyName -ne 'win.huarun' -or $info.ProductName -ne 'huarunwin') {
+  if ($info.CompanyName -ne 'win.huarun' -or $info.ProductName -ne 'huarunwin') {
     throw '安装包不是华润赢客户端。'
   }
+  if ($Installer) {
+    if ($info.OriginalFilename -ne 'huarunwin-setup.exe' -or $info.FileDescription -ne 'HuarunWin Setup') {
+      throw '安装包不是华润赢安装器。'
+    }
+  } elseif ($info.InternalName -ne 'huarunwin') { throw '安装包不是华润赢客户端。' }
   CheckVersion $info.ProductVersion $true
   CheckSigner $path
 }
@@ -90,7 +95,7 @@ try {
     New-Item -ItemType Directory -Path $backup | Out-Null
     [IO.File]::WriteAllText((Join-Path $Job 'backup-path'), $backup)
   } elseif ($extension -eq '.exe') {
-    CheckExe $Package
+    CheckExe $Package -Installer
   } elseif ($extension -eq '.msi') {
     CheckSigner $Package
     $installer = New-Object -ComObject WindowsInstaller.Installer
