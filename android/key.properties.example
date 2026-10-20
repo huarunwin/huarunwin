@@ -1,0 +1,7 @@
+# Copy this file to android/key.properties on the build machine.
+# Keep android/key.properties and the keystore out of version control.
+# Use your own absolute path outside the repository; this is a placeholder.
+storeFile=/path/to/huarunwin-release.jks
+storePassword=replace-with-keystore-password
+keyAlias=huarunwin
+keyPassword=replace-with-key-password

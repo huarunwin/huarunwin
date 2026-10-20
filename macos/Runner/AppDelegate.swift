@@ -1,0 +1,247 @@
+import Cocoa
+import Darwin
+import CryptoKit
+import FlutterMacOS
+
+@main
+class AppDelegate: FlutterAppDelegate {
+  override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+  override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+}
+
+final class InstallerChannel {
+  private let channel: FlutterMethodChannel
+  private let queue = DispatchQueue(label: "win.huarun.installer", qos: .userInitiated)
+  private var working = false
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "win.huarun/installer", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result: result) }
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    if call.method == "installSelfUpdate" {
+      guard let path = args["path"] as? String, let digest = args["expectedSha256"] as? String,
+            let version = args["version"] as? String, let channel = args["channel"] as? String,
+            ["release", "debug"].contains(channel), !working else {
+        result(FlutterError(code: "update_busy", message: "更新参数无效或另一个安装正在进行。", details: nil)); return
+      }
+      working = true
+      queue.async {
+        var response: Any = true
+        do { response = ["job": try self.scheduleSelfUpdate(path: path, digest: digest, version: version, channel: channel)] }
+        catch let error as NSError {
+          response = FlutterError(code: "self_update", message: error.localizedDescription, details: nil)
+        }
+        DispatchQueue.main.async { self.working = false; result(response) }
+      }
+      return
+    }
+    if call.method == "installedApplications" {
+      queue.async {
+        let response: Any
+        do {
+          response = try InstalledApplicationReader.scan()
+        } catch {
+          response = FlutterError(code: "installed_apps", message: "无法读取本机应用信息。", details: nil)
+        }
+        DispatchQueue.main.async { result(response) }
+      }
+      return
+    }
+    if call.method == "architecture" {
+      var arm64: Int32 = 0
+      var size = MemoryLayout<Int32>.size
+      let status = sysctlbyname("hw.optional.arm64", &arm64, &size, nil, 0)
+      result(status == 0 && arm64 == 1 ? "arm64" : "x64"); return
+    }
+    if call.method == "reveal", let path = args["path"] as? String {
+      NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+      result(nil); return
+    }
+    if call.method == "openApp", let path = args["path"] as? String {
+      let url = URL(fileURLWithPath: path).standardizedFileURL
+      let roots = [
+        URL(fileURLWithPath: "/Applications", isDirectory: true),
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+      ].map { $0.standardizedFileURL.path }
+      let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+      guard roots.contains(url.deletingLastPathComponent().path), url.pathExtension == "app",
+            values?.isDirectory == true, values?.isSymbolicLink != true else {
+        result(FlutterError(code: "path", message: "应用路径无效。", details: nil)); return
+      }
+      NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+        DispatchQueue.main.async { result(error.map { FlutterError(code: "launch", message: $0.localizedDescription, details: nil) }) }
+      }
+      return
+    }
+    if call.method == "openPackage", let path = args["path"] as? String {
+      let url = URL(fileURLWithPath: path).standardizedFileURL
+      let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+      guard ["dmg", "zip", "pkg"].contains(url.pathExtension.lowercased()),
+            values?.isRegularFile == true, values?.isSymbolicLink != true,
+            FileManager.default.isReadableFile(atPath: url.path) else {
+        result(FlutterError(code: "open_package", message: "安装包不存在或格式不受支持。", details: nil)); return
+      }
+      result(NSWorkspace.shared.open(url)); return
+    }
+    guard call.method == "install", let package = args["package"] as? String,
+          let quarantine = args["removeQuarantine"] as? Bool else { result(FlutterMethodNotImplemented); return }
+    guard !working else { result(FlutterError(code: "busy", message: "另一个安装任务正在进行。", details: nil)); return }
+    working = true
+    let authorize = args["authorize"] as? Bool ?? false
+    let quitApplication = args["quitApplication"] as? [String: String]
+    let signerApproval = args["signerApproval"] as? [String: String]
+    queue.async {
+      var staging: URL?
+      let response: Any?
+      do {
+        func progress(_ event: [String: String]) {
+          var payload = event
+          payload["package"] = package
+          DispatchQueue.main.async { self.channel.invokeMethod("installProgress", arguments: payload) }
+        }
+        progress(["stage": "preparing"])
+        let prepared = try self.invoke(["prepare", package, "--progress"], progress: progress)
+        guard let source = prepared["path"] else { throw self.failure("package", "无法准备应用。") }
+        staging = URL(fileURLWithPath: source).deletingLastPathComponent()
+        progress(prepared.filter { ["signature", "teamIdentifier", "assessment", "notarization"].contains($0.key) }.merging(["stage": "signature"]) { _, new in new })
+        var arguments = ["commit", source, quarantine ? "true" : "false"]
+        if let signerApproval {
+          let data = try JSONSerialization.data(withJSONObject: signerApproval)
+          arguments.append(String(decoding: data, as: UTF8.self))
+        }
+        arguments.append("--progress")
+        func commit() throws -> [String: String] {
+          if authorize {
+            progress(["stage": "authorizing"])
+            return try self.authorized(arguments, progress: progress)
+          }
+          return try self.invoke(arguments, progress: progress)
+        }
+        let installed: [String: String]
+        do {
+          installed = try commit()
+        } catch let error as NSError {
+          guard error.userInfo["installerCode"] as? String == "running",
+                let target = error.userInfo["installerDetails"] as? [String: String],
+                let path = target["path"], let bundleID = target["bundleIdentifier"],
+                quitApplication == target else { throw error }
+          progress(["stage": "quitting"])
+          try RunningApplicationQuitter.quit(path: path, bundleIdentifier: bundleID)
+          // Recheck the destination and identity after quitting, including in the helper.
+          installed = try commit()
+        }
+        response = installed["path"]
+      } catch let error as NSError {
+        response = FlutterError(code: error.userInfo["installerCode"] as? String ?? "installation", message: error.localizedDescription, details: error.userInfo["installerDetails"])
+      }
+      if let staging, staging.lastPathComponent.hasPrefix("huarun-install-") { try? FileManager.default.removeItem(at: staging) }
+      DispatchQueue.main.async { self.working = false; result(response) }
+    }
+  }
+
+  private var helper: String { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/HuarunInstaller").path }
+  private func scheduleSelfUpdate(path: String, digest: String, version: String, channel: String) throws -> String {
+    let package = URL(fileURLWithPath: path).standardizedFileURL
+    let values = try package.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+    guard values.isRegularFile == true, values.isSymbolicLink != true else {
+      throw failure("update_path", "更新包不存在或路径无效。")
+    }
+    let snapshotDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("huarun-update-package-" + UUID().uuidString)
+    try FileManager.default.createDirectory(at: snapshotDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    defer { try? FileManager.default.removeItem(at: snapshotDirectory) }
+    let snapshot = snapshotDirectory.appendingPathComponent("update." + package.pathExtension)
+    try FileManager.default.copyItem(at: package, to: snapshot)
+    let input = try FileHandle(forReadingFrom: snapshot)
+    defer { try? input.close() }
+    var hash = SHA256()
+    while let data = try input.read(upToCount: 1024 * 1024), !data.isEmpty { hash.update(data: data) }
+    guard hash.finalize().map({ String(format: "%02x", $0) }).joined() == digest else {
+      throw failure("checksum", "更新包 SHA-256 已变化，请重新下载。")
+    }
+    let prepared = try invoke(["prepare", snapshot.path], progress: { _ in })
+    guard let source = prepared["path"] else { throw failure("update_package", "无法准备客户端更新。") }
+    let stage = URL(fileURLWithPath: source).deletingLastPathComponent()
+    var scheduled = false
+    defer { if !scheduled { try? FileManager.default.removeItem(at: stage) } }
+    let updater = stage.appendingPathComponent("HuarunUpdater")
+    try FileManager.default.copyItem(atPath: helper, toPath: updater.path)
+    let destination = Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL
+    let arguments = ["self-update", source, destination.path, String(getpid()), version, stage.path, String(getuid()), channel]
+    let log = stage.appendingPathComponent("updater.log")
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    if FileManager.default.isWritableFile(atPath: destination.deletingLastPathComponent().path) {
+      let process = Process()
+      process.executableURL = updater
+      process.arguments = arguments
+      process.currentDirectoryURL = stage
+      let output = try FileHandle(forWritingTo: log)
+      process.standardOutput = output; process.standardError = output
+      process.standardInput = FileHandle.nullDevice
+      try process.run()
+      try? output.close()
+    } else {
+      func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+      let command = "/usr/bin/nohup " + ([updater.path] + arguments).map(quote).joined(separator: " ") +
+          " > " + quote(log.path) + " 2>&1 < /dev/null &"
+      let literal = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+      let authorization = try InstallerProcess.run("/usr/bin/osascript", ["-e", "do shell script \"\(literal)\" with administrator privileges"])
+      guard authorization.status == 0 else { throw failure("authorization", "管理员授权未完成，安装包已保留。") }
+    }
+    let deadline = ProcessInfo.processInfo.systemUptime + 180
+    while ProcessInfo.processInfo.systemUptime < deadline {
+      let error = stage.appendingPathComponent("error.txt")
+      if FileManager.default.fileExists(atPath: error.path) {
+        throw failure("self_update", (try? String(contentsOf: error, encoding: .utf8)) ?? "更新准备失败。")
+      }
+      if FileManager.default.fileExists(atPath: stage.appendingPathComponent("ready").path) {
+        scheduled = true; return stage.path
+      }
+      Thread.sleep(forTimeInterval: 0.1)
+    }
+    try? "cancel".write(to: stage.appendingPathComponent("cancel"), atomically: true, encoding: .utf8)
+    throw failure("update_timeout", "更新准备超时，当前客户端保持运行，安装包已保留。")
+  }
+  private func failure(_ code: String, _ message: String, details: [String: String] = [:]) -> NSError {
+    NSError(domain: "win.huarun.installer", code: 1, userInfo: [NSLocalizedDescriptionKey: message, "installerCode": code, "installerDetails": details])
+  }
+  private func failure(_ json: [String: String]) -> NSError {
+    failure(json["code"] ?? "installation", json["message"] ?? "安装未完成。", details: json.filter {
+      ["path", "bundleIdentifier", "oldIdentity", "newIdentity"].contains($0.key)
+    })
+  }
+  private func jsonLines(_ text: String) -> [[String: String]] {
+    text.components(separatedBy: .newlines).compactMap { line in
+      guard let first = line.firstIndex(of: "{"), let last = line.lastIndex(of: "}"), first <= last,
+            let data = String(line[first...last]).data(using: .utf8) else { return nil }
+      return (try? JSONSerialization.jsonObject(with: data)) as? [String: String]
+    }
+  }
+  private func response(_ result: InstallerProcessResult, authorized: Bool = false) throws -> [String: String] {
+    let messages = jsonLines(result.stdout) + jsonLines(result.stderr)
+    if let error = messages.last(where: { $0["code"] != nil }) { throw failure(error) }
+    if result.status == 0, let value = messages.last(where: { $0["path"] != nil && $0["event"] == nil }) { return value }
+    if authorized && result.stderr.contains("(-128)") { throw failure("cancelled", "你已取消管理员授权。") }
+    let message = authorized ? "管理员授权未完成，请重试或手动安装。" : "安装助手未返回有效结果，请重试或手动安装。"
+    throw failure(authorized ? "authorization" : "installation", message + (result.stderr.isEmpty ? "" : "\n" + String(result.stderr.suffix(1500))))
+  }
+  private func invoke(_ args: [String], progress: @escaping ([String: String]) -> Void) throws -> [String: String] {
+    let result = try InstallerProcess.run(helper, args, onLine: { line in
+      if let event = self.jsonLines(line).first, event["event"] == "progress" { progress(event) }
+    })
+    return try response(result)
+  }
+  private func authorized(_ args: [String], progress: @escaping ([String: String]) -> Void) throws -> [String: String] {
+    func shellQuote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+    let command = ([helper] + args).map(shellQuote).joined(separator: " ")
+    let literal = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    // osascript runs on the worker queue; its system authorization UI does not
+    // hold Flutter's main thread. Do not time out a possibly committing root helper.
+    let result = try InstallerProcess.run("/usr/bin/osascript", ["-e", "do shell script \"\(literal)\" with administrator privileges"], onLine: { line in
+      if let event = self.jsonLines(line).first, event["event"] == "progress" { progress(event) }
+    })
+    return try response(result, authorized: true)
+  }
+}

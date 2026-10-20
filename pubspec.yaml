@@ -1,0 +1,40 @@
+name: huarunwin
+description: 华润赢多端应用目录与 macOS 安装助手。
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  dio: ^5.11.1
+  crypto: ^3.0.7
+  html: ^0.15.6
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  package_info_plus: ^10.2.2
+  shared_preferences: ^2.5.6
+  url_launcher: ^6.3.3
+  cached_network_image: ^3.4.1
+  file_picker: ^12.3.0
+  webview_flutter: ^4.14.1
+  webview_flutter_windows: ^1.3.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  webview_flutter_platform_interface: ^2.15.1
+flutter:
+  uses-material-design: true
+  assets:
+    - LICENSE
+    - docs/privacy.md
+    - assets/updater/windows.ps1
+    - assets/updater/linux.sh
+    - changelog.json
+    - assets/brand/huarun-icon.png
+    - assets/licenses/apksig.txt
+    - assets/licenses/arsclib.txt
+    - assets/licenses/bouncycastle.txt

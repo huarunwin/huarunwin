@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><title>FlClash 安装失败怎么办？ · 翻墙应用商店</title><meta content="小米手机的三种安装方案与真我手机运行管控说明，附简要排查提示。" name="description"/><link href="https://huarun.win/articles/flclash-install-failed" rel="canonical"/><link href="/favicon.svg?v=huayun-1" rel="icon" type="image/svg+xml"/><link href="/apple-touch-icon.png?v=huayun-1" rel="apple-touch-icon"/></head><body><link as="image" href="/brand/huayun-icon.svg" rel="preload"/><main class="history-view article-view"><div id="article-site-header"><header class="topbar"><div class="topbar-leading"><a aria-label="华润赢首页" class="brand" href="/"><img alt="" aria-hidden="true" class="brand-mark" height="28" loading="eager" src="/brand/huayun-icon.svg" width="28"/><span class="brand-name">华润赢</span></a></div><nav aria-label="主要栏目" class="site-sections"><a href="/">应用</a><a href="/vps">VPS</a><a href="/jichang">机场</a><a href="/feed">动态</a><a aria-current="page" class="active" href="/history">纪事</a></nav><div class="topbar-end"><div class="topbar-actions"><a aria-label="Telegram 群组 @hunrunwin" class="topbar-tg-btn topbar-tg-group" href="https://t.me/hunrunwin" rel="noreferrer noopener" target="_blank" title="加入 Telegram 群组 @hunrunwin 交流使用经验与反馈建议"><span class="topbar-tg-label">群组</span></a><a aria-label="Telegram 频道 @huarunying" class="topbar-tg-btn topbar-tg-channel" href="https://t.me/huarunying" rel="noreferrer noopener" target="_blank" title="关注 Telegram 频道 @huarunying 获取客户端版本更新"><span class="topbar-tg-label">频道</span></a><div class="palette-selector-wrap"><button aria-expanded="false" aria-haspopup="true" aria-label="主题与配色设置" class="topbar-icon-btn palette-toggle-btn" title="当前：经典蓝 · 浅色（点击设置）" type="button"></button></div></div></div></header><nav aria-label="底部主要栏目" class="mobile-site-tabs"><a href="/"><span class="mobile-site-tab-icon"></span><span>应用</span></a><a href="/vps"><span class="mobile-site-tab-icon"></span><span>VPS</span></a><a href="/jichang"><span class="mobile-site-tab-icon"></span><span>机场</span></a><a href="/feed"><span class="mobile-site-tab-icon"></span><span>动态</span></a><a aria-current="page" href="/history"><span class="mobile-site-tab-icon"></span><span>纪事</span></a></nav></div><div class="history-page"><div class="article-reading"><a class="article-return" href="/articles">返回文章</a><div class="article-content">
+<article>
+<header>
+<p class="eyebrow">ANDROID · 安装问题</p>
+<h1>FlClash 安装失败怎么办？</h1>
+<p class="meta">华润赢 · 翻墙应用商店 · <time datetime="2026-10-14">2026 年 10 月 14 日</time></p>
+<p class="lead">本站注意到，FlClash 在部分手机提示“涉诈风险应用，已禁止安装”。</p>
+<p>按手机品牌查看处理方法。</p>
+</header>
+<nav aria-label="文章目录" class="toc">
+<div class="toc-label">阅读导航</div>
+<div>
+<a href="#xiaomi-phone"><strong>小米手机</strong></a>
+<ol>
+<li><a href="#offline">断网安装</a></li>
+<li><a href="#security-guard">关闭安全守护</a></li>
+<li><a href="#risk-detection">关闭「风险应用检测」</a></li>
+</ol>
+</div>
+<p><a href="#realme-running"><strong>真我手机</strong></a></p>
+<p><a href="#still-fails">其他问题</a></p>
+</nav>
+<section aria-labelledby="xiaomi-title" id="xiaomi-phone">
+<h2 id="xiaomi-title">小米手机</h2>
+<p>图示为小米手机，效果因系统版本而异。</p>
+<section aria-labelledby="error-title" id="install-error">
+<h3 id="error-title">错误提示：发现风险，已禁止安装</h3>
+<figure class="single-image">
+<a aria-label="放大图 1：联网时安装被拦截" class="image-link" href="/articles/flclash-install-failed/images/01-install-blocked.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="FlClash 从 0.8.99 更新到 0.9.0，安装器提示发现风险、已禁止安装，底部只有取消更新按钮。" decoding="async" height="3200" src="/articles/flclash-install-failed/images/01-install-blocked.jpg" width="1440"/>
+</a>
+<figcaption>图 1 · 风险拦截提示。</figcaption>
+</figure>
+<p class="image-hint">点图放大，左右切换。</p>
+</section>
+<p class="note">先核对 APK 来源；关闭防护会降低保护，操作后按需恢复。</p>
+<section aria-labelledby="offline-title" id="offline">
+<h3 id="offline-title"><span aria-hidden="true" class="number">1</span>断网安装</h3>
+<p class="path">下载好 APK → 关闭 <strong>Wi-Fi 和移动数据</strong> → 重新打开 APK → 继续安装／更新。</p>
+<p>用飞行模式时，也需关闭 Wi-Fi。安装结束后恢复网络。</p>
+<figure class="single-image">
+<a aria-label="放大图 2：断网后出现继续更新" class="image-link" href="/articles/flclash-install-failed/images/02-offline-continue.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="FlClash 更新页面提示网络异常、无法进行联网检测，底部出现继续更新与取消更新按钮。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/02-offline-continue.jpg" width="1440"/>
+</a>
+<figcaption>图 2 · 点击「继续更新」。</figcaption>
+</figure>
+<p>未出现继续按钮，可尝试下一种方法。图示未展示最终安装结果。</p>
+</section>
+<section aria-labelledby="guard-title" id="security-guard">
+<h3 id="guard-title"><span aria-hidden="true" class="number">2</span>关闭安全守护</h3>
+<p class="path">安装页面右上角设置 → <strong>安全守护</strong> → 右上角 ⋮ → <strong>关闭安全守护</strong> → 验证并关闭。</p>
+<div class="gallery three">
+<figure>
+<a aria-label="放大图 3：安装器设置中的安全守护" class="image-link" href="/articles/flclash-install-failed/images/03-installer-settings.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="安装器设置页面，安全守护一项显示已开启。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/03-installer-settings.jpg" width="1440"/>
+</a>
+<figcaption>图 3 · 进入「安全守护」。</figcaption>
+</figure>
+<figure>
+<a aria-label="放大图 4：右上角关闭安全守护菜单" class="image-link" href="/articles/flclash-install-failed/images/04-disable-security-guard.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="安全守护页面的右上角三点菜单展开，显示关闭安全守护选项。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/04-disable-security-guard.jpg" width="1440"/>
+</a>
+<figcaption>图 4 · 选择「关闭安全守护」。</figcaption>
+</figure>
+<figure>
+<a aria-label="放大图 5：验证并关闭确认弹窗" class="image-link" href="/articles/flclash-install-failed/images/05-confirm-disable.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="关闭安全守护的确认弹窗，提示关闭后不再提供相应风险防护，按钮为验证并关闭和取消。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/05-confirm-disable.jpg" width="1440"/>
+</a>
+<figcaption>图 5 · 验证并关闭后，重试安装。</figcaption>
+</figure>
+</div>
+</section>
+<section aria-labelledby="risk-title" id="risk-detection">
+<h3 id="risk-title"><span aria-hidden="true" class="number">3</span>关闭「风险应用检测」</h3>
+<p class="path">手机设置中搜索<strong>「病毒」</strong> → 病毒扫描 → 右上角设置 → 关闭<strong>「风险应用检测」</strong>，再重试安装。</p>
+<div class="gallery">
+<figure>
+<a aria-label="放大图 6：设置中搜索病毒扫描" class="image-link" href="/articles/flclash-install-failed/images/06-find-virus-scan.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="手机设置中搜索病毒，搜索结果显示病毒扫描，归属安全服务与应用功能。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/06-find-virus-scan.jpg" width="1440"/>
+</a>
+<figcaption>图 6 · 进入「病毒扫描」。</figcaption>
+</figure>
+<figure>
+<a aria-label="放大图 7：风险应用检测关闭状态" class="image-link" href="/articles/flclash-install-failed/images/07-risk-app-detection.jpg" rel="noopener noreferrer" target="_blank">
+<img alt="病毒扫描设置中的风险应用检测开关呈灰色关闭状态，说明为发现风险应用时智能提醒或拦截。" decoding="async" height="3200" loading="lazy" src="/articles/flclash-install-failed/images/07-risk-app-detection.jpg" width="1440"/>
+</a>
+<figcaption>图 7 · 关闭「风险应用检测」。</figcaption>
+</figure>
+</div>
+<p class="note">仅关闭这一项，其他开关无需照图修改。</p>
+</section>
+</section>
+<section aria-labelledby="realme-title" id="realme-running">
+<h2 id="realme-title">真我手机</h2>
+<h3>已安装但被禁止运行</h3>
+<p>若手机管家提供「解除管控」或「添加白名单」，核对来源后按提示处理。入口和效果未实测，以设备界面为准。</p>
+</section>
+<section aria-labelledby="fails-title" id="still-fails">
+<h2 id="fails-title">其他问题</h2>
+<details id="before-install">
+<summary id="before-title">安装包、权限与更新冲突</summary>
+<ul class="steps">
+<li><strong>安装包异常：</strong>从 <a href="https://github.com/chen08209/FlClash/releases" rel="noopener noreferrer" target="_blank">官方发布页</a>重下匹配架构的 APK，多数手机选 <strong>arm64-v8a</strong>；校验时对照同版本的 SHA256SUMS。</li>
+<li><strong>来源权限：</strong>给打开 APK 的浏览器或文件管理器开启「安装未知应用」。</li>
+<li><strong>更新冲突：</strong>沿用旧版安装渠道；自行重签名可能导致签名不兼容。</li>
+<li><strong>降级或重装：</strong>旧版通常不能覆盖新版；卸载会清除数据，先导出备份。</li>
+<li><strong>空间不足：</strong>清理手机存储后重试。</li>
+<li><strong>仍然失败：</strong>保留机型、系统版本、新旧应用版本、APK 文件名及完整报错。</li>
+</ul>
+</details>
+</section>
+<footer>七张截图由读者提供；图 1、2 为 0.8.99 更新至 0.9.0。本文不分发 APK。</footer>
+</article>
+<dialog aria-describedby="viewer-caption" aria-label="截图查看器" id="image-viewer">
+<div class="viewer-top"><span id="viewer-count"></span><button autofocus="" id="viewer-close" type="button">关闭 ×</button></div>
+<img alt="" id="viewer-image"/>
+<p id="viewer-caption"></p>
+<div class="viewer-controls">
+<button aria-label="上一张截图" id="viewer-prev" type="button">← 上一张</button>
+<a id="viewer-original" rel="noopener noreferrer" target="_blank">查看原图</a>
+<button aria-label="下一张截图" id="viewer-next" type="button">下一张 →</button>
+</div>
+</dialog></div></div><footer class="site-footer"><div><h2>关于这份目录</h2><p>依据项目说明、应用官网及商店页面整理。本站不提供代理节点、订阅配置或破解软件，也不托管、镜像或重新分发安装包。</p><p class="analytics-notice">使用无 Cookie 的匿名统计，不建立个人画像。 <a href="/privacy">查看隐私说明</a> · <span>加入 Telegram 群组 <a class="footer-tg-mention" href="https://t.me/hunrunwin" rel="noreferrer noopener" target="_blank">@hunrunwin</a> 交流使用经验</span> · <span>关注 Telegram 频道 <a class="footer-tg-mention" href="https://t.me/huarunying" rel="noreferrer noopener" target="_blank">@huarunying</a> 接收客户端最新版本推送</span></p></div><nav aria-label="网站说明"><a href="/about">关于本站</a><a href="/editorial-policy">编辑与收录标准</a><a href="/corrections">信息纠错</a><a href="/privacy">隐私政策</a><a href="/terms">使用条款</a><div class="site-footer-community"><a class="site-footer-tg-link" href="https://t.me/hunrunwin" rel="noreferrer noopener" target="_blank"><span>Telegram 群组</span></a><a class="site-footer-tg-link" href="https://t.me/huarunying" rel="noreferrer noopener" target="_blank"><span>Telegram 频道</span></a></div></nav></footer></div></main>
+</body></html>

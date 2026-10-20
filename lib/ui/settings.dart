@@ -1,0 +1,495 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../data/site_parser.dart';
+import '../services/app_controller.dart';
+import '../services/download_locations.dart';
+import '../services/downloads.dart';
+import 'adaptive_dialog.dart';
+import 'app_updates.dart';
+import 'components.dart';
+import 'client_privacy_page.dart';
+import 'licenses_page.dart';
+import 'page_components.dart';
+import 'site_page.dart';
+import 'theme.dart';
+
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({
+    super.key,
+    required this.controller,
+    required this.downloads,
+    this.showBackButton = false,
+  });
+  final AppController controller;
+  final DownloadManager downloads;
+  final bool showBackButton;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([controller, downloads]),
+    builder: (context, _) => ContentPage(
+      title: '设置',
+      showBackButton: showBackButton,
+      onRefresh: () async {
+        try {
+          await controller.refreshPreferences();
+          await downloads.locations?.refreshPreferences();
+        } catch (_) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('暂时无法读取本机偏好，请稍后重试。')));
+          }
+        }
+      },
+      children: [
+        if (downloads.locations case final locations?)
+          PageSection(
+            title: '下载与安装',
+            children: [
+              PageRow(
+                title: '下载目录',
+                subtitle: locations.directory.path,
+                icon: Icons.folder_outlined,
+                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        _DownloadDirectoryPage(locations: locations),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        PageSection(
+          title: '外观',
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (index, mode) in ThemeMode.values.indexed) ...[
+                    if (index > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: _AppearanceChoice(
+                        mode: mode,
+                        selected: controller.themeMode == mode,
+                        onTap: () => controller.setTheme(mode),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        PageSection(
+          title: '应用目录',
+          children: [
+            PageRow(
+              title: '重置为默认值',
+              subtitle: '清除记住的平台与设备筛选，恢复当前设备平台。',
+              icon: Icons.restart_alt_rounded,
+              onTap: () async {
+                await controller.resetCatalogPlatform();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('已恢复默认平台筛选')));
+                }
+              },
+            ),
+          ],
+        ),
+        PageSection(
+          title: '网站与社区',
+          footer: '纠错在应用内打开，社区链接在系统浏览器中打开。',
+          children: [
+            for (final entry in SiteRoutes.onlineLinks.entries)
+              PageRow(
+                title: entry.value,
+                icon: switch (entry.key) {
+                  '/corrections' => Icons.edit_note_rounded,
+                  _ => Icons.send_outlined,
+                },
+                trailing: Icon(
+                  entry.key == '/corrections'
+                      ? Icons.chevron_right_rounded
+                      : Icons.open_in_new_rounded,
+                  size: 18,
+                ),
+                onTap: () => openLink(
+                  context,
+                  entry.key.startsWith('/')
+                      ? '${SiteRoutes.origin}${entry.key}'
+                      : entry.key,
+                ),
+              ),
+          ],
+        ),
+        PageSection(
+          title: '关于华润赢',
+          children: [
+            AppVersionRows(manager: downloads),
+            PageRow(
+              title: '访问网站',
+              icon: Icons.language_rounded,
+              trailing: const Icon(Icons.open_in_new_rounded, size: 16),
+              onTap: () => openLink(context, SiteRoutes.origin),
+            ),
+            PageRow(
+              title: '客户端隐私',
+              icon: Icons.privacy_tip_outlined,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const ClientPrivacyPage(),
+                ),
+              ),
+            ),
+            PageRow(
+              title: '软件许可',
+              icon: Icons.code_rounded,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const LicensesPage()),
+              ),
+            ),
+          ],
+        ),
+        PageSection(
+          title: '网站说明',
+          children: [
+            for (final path in const [
+              '/about',
+              '/editorial-policy',
+              '/privacy',
+              '/terms',
+            ])
+              PageRow(
+                title: SiteRoutes.sections[path]!,
+                icon: switch (path) {
+                  '/editorial-policy' => Icons.fact_check_outlined,
+                  '/privacy' => Icons.privacy_tip_outlined,
+                  '/terms' => Icons.description_outlined,
+                  _ => Icons.info_outline_rounded,
+                },
+                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => SitePage(
+                      url: '${SiteRoutes.origin}$path',
+                      controller: controller,
+                      downloads: downloads,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '偏好保存在这台设备。目录内容可以离线浏览，下载和刷新需要网络。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DownloadDirectoryPage extends StatefulWidget {
+  const _DownloadDirectoryPage({required this.locations});
+
+  final DownloadLocations locations;
+
+  @override
+  State<_DownloadDirectoryPage> createState() => _DownloadDirectoryPageState();
+}
+
+class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
+  bool _working = false;
+
+  void _message(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_working) return;
+    setState(() => _working = true);
+    try {
+      await widget.locations.refreshPreferences();
+    } catch (_) {
+      _message('暂时无法读取下载目录设置，请稍后重试。');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _change({bool reset = false}) async {
+    if (_working) return;
+    setState(() => _working = true);
+    var selecting = !reset;
+    try {
+      if (reset) {
+        final confirmed = await showAdaptiveForm<bool>(
+          context: context,
+          builder: (context) => AdaptiveDialog(
+            title: '恢复默认下载目录？',
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(widget.locations.defaultDirectory.path),
+                const SizedBox(height: 12),
+                const Text('新任务将保存到此目录，已有任务及文件保留原位置。'),
+              ],
+            ),
+            actions: DialogActionsRow(
+              confirmLabel: '恢复默认',
+              onCancel: () => Navigator.pop(context, false),
+              onConfirm: () => Navigator.pop(context, true),
+            ),
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+        await widget.locations.resetDirectory();
+      } else {
+        final current = widget.locations.directory;
+        final initial = await current.exists() ? current.path : null;
+        if (!mounted) return;
+        final selected = await FilePicker.getDirectoryPath(
+          dialogTitle: '选择下载目录',
+          initialDirectory: initial,
+        );
+        if (selected == null || !mounted) return;
+        selecting = false;
+        await widget.locations.selectDirectory(selected);
+      }
+      _message('下载目录已更新，仅对新任务生效。');
+    } catch (_) {
+      _message(selecting ? '无法打开目录选择窗口，请重试。' : '无法使用此目录，请检查文件夹权限、磁盘连接和可用空间。');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _open() async {
+    if (_working) return;
+    setState(() => _working = true);
+    try {
+      final directory = await widget.locations.prepareDirectory();
+      if (!await launchUrl(
+        directory.uri,
+        mode: LaunchMode.externalApplication,
+      )) {
+        throw StateError('open_directory');
+      }
+    } catch (_) {
+      _message('无法打开下载目录，请检查文件夹是否可访问。');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: PageSafeArea(
+      child: ListenableBuilder(
+        listenable: widget.locations,
+        builder: (context, _) => ContentPage(
+          title: '下载目录',
+          showBackButton: true,
+          onRefresh: _refresh,
+          children: [
+            PageSection(
+              title: '当前目录',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText(
+                    widget.locations.directory.path,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+            PageSection(
+              title: '目录操作',
+              footer: '更改目录仅对新下载和新导入生效，已有任务及文件保留原位置。',
+              children: [
+                PageRow(
+                  title: '修改目录',
+                  icon: Icons.folder_outlined,
+                  trailing: _working
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.chevron_right_rounded, size: 18),
+                  onTap: _working ? null : _change,
+                ),
+                PageRow(
+                  title: '打开目录',
+                  icon: Icons.folder_open_outlined,
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: _working ? null : _open,
+                ),
+                PageRow(
+                  title: '恢复默认目录',
+                  icon: Icons.restart_alt_rounded,
+                  onTap: _working ? null : () => _change(reset: true),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _AppearanceChoice extends StatelessWidget {
+  const _AppearanceChoice({
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ThemeMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final label = switch (mode) {
+      ThemeMode.system => '跟随系统',
+      ThemeMode.light => '浅色',
+      ThemeMode.dark => '深色',
+    };
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: SurfacePanel.raisedColor(context),
+        shape: surfaceShape(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              children: [
+                ExcludeSemantics(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 88),
+                    child: ClipPath.shape(
+                      shape: surfaceShape(8),
+                      child: AspectRatio(
+                        aspectRatio: 1.65,
+                        child: mode == ThemeMode.system
+                            ? const Row(
+                                children: [
+                                  Expanded(child: _MiniWindow(dark: false)),
+                                  Expanded(child: _MiniWindow(dark: true)),
+                                ],
+                              )
+                            : _MiniWindow(dark: mode == ThemeMode.dark),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ),
+                    if (selected) ...[
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: colors.primary,
+                        size: 18,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniWindow extends StatelessWidget {
+  const _MiniWindow({required this.dark});
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: dark ? const Color(0xFF141414) : const Color(0xFFF4F4F4),
+    child: Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: ColoredBox(
+            color: dark ? const Color(0xFF242424) : const Color(0xFFDDDDDD),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Expanded(
+          flex: 7,
+          child: Padding(
+            padding: const EdgeInsets.all(7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  height: 5,
+                  decoration: ShapeDecoration(
+                    shape: surfaceShape(3),
+                    color: dark
+                        ? const Color(0xFF777777)
+                        : const Color(0xFFAAAAAA),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: surfaceShape(5),
+                      color: dark
+                          ? const Color(0xFF333333)
+                          : const Color(0xFFFFFFFF),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}

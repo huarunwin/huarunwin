@@ -1,0 +1,6 @@
+# Optional: copy to android/debug-signing.local.properties for a fixed local Debug identity.
+# Keep the actual configuration and keystore outside version control.
+storeFile=/path/to/android-debug.p12
+storePassword=replace-with-keystore-password
+keyAlias=AndroidDebugKey
+keyPassword=replace-with-key-password

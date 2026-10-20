@@ -1,0 +1,154 @@
+name: Build and release
+run-name: Android / macOS · ${{ github.ref_name }} · ${{ github.run_number }}
+
+on:
+  push:
+    branches: [main]
+    tags: ['**', '!pre']
+    # Tag pushes always build; branch pushes skip documentation-only changes.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!**/.gitignore'
+      # This document is bundled in the application.
+      - 'docs/privacy.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!**/.gitignore'
+      - 'docs/privacy.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Match the hosted source recorded in pubspec.lock on every runner.
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
+# PR checks cancel older checks for that PR; publication remains serialized.
+concurrency:
+  group: huarunwin-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('release-{0}', github.ref_type == 'tag' && github.ref_name || 'pre') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate changelog
+        run: python3 tool/ci/release.py validate
+      - name: Resolve release version
+        if: github.event_name != 'pull_request'
+        run: python3 tool/ci/release.py metadata
+      - name: Install FVM
+        run: brew install leoafarias/fvm/fvm
+      - name: Select the pinned Flutter SDK
+        run: python3 tool/ci/build.py setup
+      - name: Install dependencies
+        run: python3 tool/ci/build.py deps
+      - name: Analyze and test
+        run: |
+          python3 -m unittest discover -s tool/ci -p 'test_*.py'
+          python3 tool/ci/build.py verify
+          python3 tool/check_installer.py
+      - name: Build and package universal macOS
+        if: github.event_name != 'pull_request'
+        run: python3 tool/ci/build.py package
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: package-macos
+          path: |
+            build/release/packages/*-macos-universal.dmg
+            build/release/packages/*-macos-universal.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
+  android:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate changelog
+        run: python3 tool/ci/release.py validate
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install FVM
+        run: brew install leoafarias/fvm/fvm
+      - name: Select the pinned Flutter SDK
+        run: python3 tool/ci/build.py setup
+      - name: Install dependencies
+        run: python3 tool/ci/build.py deps
+      - name: Compile Android application and instrumentation
+        run: |
+          fvm flutter build apk --debug --no-pub
+          cd android
+          ./gradlew :app:assembleDebugAndroidTest
+      - name: Resolve release version
+        id: android_metadata
+        if: github.event_name != 'pull_request'
+        run: python3 tool/ci/release.py metadata
+      - name: Build and verify signed APKs
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets[format('{0}_KEYSTORE_BASE64', steps.android_metadata.outputs.android_signing_prefix)] }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets[format('{0}_KEYSTORE_PASSWORD', steps.android_metadata.outputs.android_signing_prefix)] }}
+          ANDROID_KEY_ALIAS: ${{ secrets[format('{0}_KEY_ALIAS', steps.android_metadata.outputs.android_signing_prefix)] }}
+          ANDROID_KEY_PASSWORD: ${{ secrets[format('{0}_KEY_PASSWORD', steps.android_metadata.outputs.android_signing_prefix)] }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets[format('{0}_SIGNING_CERT_SHA256', steps.android_metadata.outputs.android_signing_prefix)] }}
+        run: python3 tool/ci/android_release.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: package-android
+          path: |
+            build/release/packages/*-android-*.apk
+            build/release/packages/*-android-signing.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  release:
+    needs: [build, android]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: build/release/packages
+      - name: Resolve release version
+        run: python3 tool/ci/release.py metadata
+      - name: Publish verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tool/ci/release.py publish

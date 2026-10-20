@@ -1,0 +1,7 @@
+// Opt-in instrumentation install, isolated from the user's normal client.
+// Pass with Gradle --init-script; the normal application ID stays unchanged.
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.application') {
+        project.android.buildTypes.getByName('debug').applicationIdSuffix = '.updateqa'
+    }
+}
