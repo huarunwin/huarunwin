@@ -12,8 +12,7 @@ $backup = Join-Path $Job 'backup'
 function PlainPath([string]$path) {
   $item = Get-Item -LiteralPath $path
   if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw '更新路径包含符号链接。' }
-  $parent = $item.Parent
-  if ($item -is [IO.FileInfo]) { $parent = $item.Directory }
+  $parent = if ($item -is [IO.FileInfo]) { $item.Directory } else { $item.Parent }
   while ($null -ne $parent) {
     if (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw '更新目录包含符号链接。' }
     $parent = $parent.Parent
@@ -57,7 +56,22 @@ function CheckExe([string]$path, [switch]$Installer) {
   CheckVersion (([string]$info.ProductVersion).TrimEnd([char]' ')) $true
   CheckSigner $path
 }
+function MoveUpdateItem([string]$source, [string]$destination) {
+  # All update moves stay on the installation volume. Directory.Move is an
+  # atomic rename; Move-Item can partially move a directory before a locked
+  # child makes it fail, leaving an incomplete original outside the journal.
+  if (Test-Path -LiteralPath $source -PathType Container) {
+    [IO.Directory]::Move($source, $destination)
+  } else {
+    [IO.File]::Move($source, $destination)
+  }
+}
 try {
+  # A client started from PowerShell 7 may inherit its module search path.
+  # Load the Windows PowerShell modules from this process's own trusted home.
+  foreach ($module in @('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Security')) {
+    Import-Module (Join-Path $PSHOME ("Modules\$module\$module.psd1")) -ErrorAction Stop
+  }
   PlainPath $Package
   PlainPath $CurrentExe
   $currentHash = (Get-FileHash -LiteralPath $CurrentExe -Algorithm SHA256).Hash
@@ -141,9 +155,9 @@ try {
       $target = Join-Path $currentRoot $item.Name
       $saved = Join-Path $backup $item.Name
       $exists = Test-Path -LiteralPath $target
-      if ($exists) { PlainPath $target; Move-Item -LiteralPath $target -Destination $saved }
+      if ($exists) { PlainPath $target; MoveUpdateItem $target $saved }
       $moves.Add(@{ target = $target; backup = $saved; existed = $exists })
-      Move-Item -LiteralPath $item.FullName -Destination $target
+      MoveUpdateItem $item.FullName $target
     }
     [IO.File]::WriteAllText((Join-Path $Job 'result'), 'installed')
     Start-Process -FilePath $CurrentExe -WorkingDirectory $currentRoot
@@ -159,7 +173,7 @@ try {
     $move = $moves[$index]
     try {
       if (Test-Path -LiteralPath $move.target) { Remove-Item -LiteralPath $move.target -Recurse -Force }
-      if ($move.existed) { Move-Item -LiteralPath $move.backup -Destination $move.target }
+      if ($move.existed) { MoveUpdateItem $move.backup $move.target }
     } catch { $rollbackFailed = $true }
   }
   if ($rollbackFailed) { $failureMessage += "`n恢复旧文件未完成，请使用备份目录手动恢复：$backup" }

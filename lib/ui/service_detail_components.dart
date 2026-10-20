@@ -32,18 +32,16 @@ class ServiceDetailHero extends StatelessWidget {
           : 112.0;
       final purchase = detail.purchase;
       final actionStyle = compact
-          ? downloadButtonStyle(context).merge(
-              FilledButton.styleFrom(
-                backgroundColor: colors.primary,
-                foregroundColor: colors.onPrimary,
-                overlayColor: colors.onPrimary,
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  height: 20 / 16,
-                  fontWeight: FontWeight.w600,
-                ),
+          ? FilledButton.styleFrom(
+              backgroundColor: colors.primary,
+              foregroundColor: colors.onPrimary,
+              overlayColor: colors.onPrimary,
+              textStyle: const TextStyle(
+                fontSize: 16,
+                height: 20 / 16,
+                fontWeight: FontWeight.w600,
               ),
-            )
+            ).merge(downloadButtonStyle(context))
           : downloadButtonStyle(context);
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,

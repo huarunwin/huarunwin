@@ -337,20 +337,18 @@ class _DetailPageState extends State<DetailPage> {
   Widget _primaryAction(AppDetails detail, {required bool compact}) {
     final colors = Theme.of(context).colorScheme;
     final style = compact && !detail.app.withdrawn
-        ? downloadButtonStyle(context).merge(
-            FilledButton.styleFrom(
-              backgroundColor: colors.primary,
-              foregroundColor: colors.onPrimary,
-              disabledBackgroundColor: colors.primary,
-              disabledForegroundColor: colors.onPrimary,
-              overlayColor: colors.onPrimary,
-              textStyle: const TextStyle(
-                fontSize: 16,
-                height: 20 / 16,
-                fontWeight: FontWeight.w600,
-              ),
+        ? FilledButton.styleFrom(
+            backgroundColor: colors.primary,
+            foregroundColor: colors.onPrimary,
+            disabledBackgroundColor: colors.primary,
+            disabledForegroundColor: colors.onPrimary,
+            overlayColor: colors.onPrimary,
+            textStyle: const TextStyle(
+              fontSize: 16,
+              height: 20 / 16,
+              fontWeight: FontWeight.w600,
             ),
-          )
+          ).merge(downloadButtonStyle(context))
         : downloadButtonStyle(context);
     if (detail.app.withdrawn) {
       return FilledButton(

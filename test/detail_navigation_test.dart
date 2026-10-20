@@ -8,7 +8,9 @@ import 'package:huarunwin/data/repository.dart';
 import 'package:huarunwin/main.dart';
 import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
+import 'package:huarunwin/ui/app_download_button.dart';
 import 'package:huarunwin/ui/detail.dart';
+import 'package:huarunwin/ui/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const app = CatalogApp(
@@ -68,6 +70,56 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('detail action keeps solid colors only in narrow windows', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final brightness in Brightness.values) {
+      for (final width in [1240.0, 390.0, 320.0, 1240.0]) {
+        tester.view.physicalSize = Size(width, 900);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: appTheme(brightness),
+            home: DetailPage(
+              app: app,
+              controller: controller,
+              downloads: downloads,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final action = find.descendant(
+          of: find.byType(AppDownloadButton),
+          matching: find.byType(FilledButton),
+        );
+        final colors = Theme.of(tester.element(action)).colorScheme;
+        final style = tester.widget<FilledButton>(action).style!;
+        expect(
+          style.backgroundColor!.resolve({}),
+          width < 600 ? colors.primary : colors.surfaceContainer,
+        );
+        expect(
+          style.foregroundColor!.resolve({}),
+          width < 600 ? colors.onPrimary : colors.primary,
+        );
+        if (width < 600) {
+          expect(
+            style.backgroundColor!.resolve({WidgetState.disabled}),
+            colors.primary,
+          );
+          expect(
+            style.foregroundColor!.resolve({WidgetState.disabled}),
+            colors.onPrimary,
+          );
+        }
+        expect(style.textStyle!.resolve({})!.fontSize, width < 600 ? 16 : 14);
+        expect(tester.takeException(), isNull);
+      }
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   for (final commandBack in [false, true]) {
     testWidgets(

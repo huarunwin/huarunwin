@@ -185,16 +185,37 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(ServiceDetailHero), findsOneWidget);
         expect(find.byType(TextField), findsNothing);
+        void checkActionColors({required bool compact}) {
+          final action = find.descendant(
+            of: find.byType(ServiceDetailHero),
+            matching: find.byType(FilledButton),
+          );
+          final colors = Theme.of(tester.element(action)).colorScheme;
+          final style = tester.widget<FilledButton>(action).style!;
+          expect(
+            style.backgroundColor!.resolve({}),
+            compact ? colors.primary : colors.surfaceContainer,
+          );
+          expect(
+            style.foregroundColor!.resolve({}),
+            compact ? colors.onPrimary : colors.primary,
+          );
+          expect(style.textStyle!.resolve({})!.fontSize, compact ? 16 : 14);
+        }
+
+        checkActionColors(compact: false);
         expect(tester.takeException(), isNull);
         for (final size in [const Size(390, 844), const Size(320, 740)]) {
           tester.view.physicalSize = size;
           await tester.pumpWidget(app(1.6, Brightness.dark));
           await tester.pumpAndSettle();
+          checkActionColors(compact: true);
           expect(tester.takeException(), isNull);
         }
         tester.view.physicalSize = const Size(390, 844);
         await tester.pumpWidget(app(1, Brightness.light));
         await tester.pumpAndSettle();
+        checkActionColors(compact: true);
         await tester.tap(find.byTooltip('查找正文'));
         await tester.pumpAndSettle();
         final target = name == 'jichang_naixi'
