@@ -137,7 +137,7 @@ void main() {
 
   Map<String, Object?> channelData({
     String? published = '0.1.0',
-    String url = 'https://downloads.example.com/0.1.0',
+    Object? url = 'https://downloads.example.com/0.1.0',
   }) => {
     'publishedVersion': published,
     'releases': [
@@ -151,7 +151,7 @@ void main() {
 
   test('unpublished channels do not promote prepared versions', () {
     final data = AppUpdateFeed.decode(
-      jsonEncode({'release': channelData(published: null)}),
+      jsonEncode({'release': channelData(published: null, url: null)}),
       channel: AppUpdateChannel.release,
     );
     final result = AppUpdateResult(currentVersion: '0.0.9', feed: data);
@@ -169,13 +169,15 @@ void main() {
     );
   });
 
-  test('remote download links must be explicit absolute HTTPS URLs', () {
+  test('explicit remote download links must be absolute HTTPS URLs', () {
     for (final url in [
       '',
       '/download',
       'http://example.com/file',
       'file:///tmp/app',
       'https://user:password@example.com/file',
+      42,
+      false,
     ]) {
       expect(
         () => AppUpdateFeed.decode(
@@ -185,14 +187,54 @@ void main() {
         throwsFormatException,
       );
     }
-    final missing = channelData();
-    (missing['releases'] as List).single.remove('downloadUrl');
+  });
+
+  test('missing or null download links use the exact version release page', () {
+    for (final channel in AppUpdateChannel.values) {
+      for (final omitUrl in [true, false]) {
+        final source = jsonDecode(changelog());
+        if (!omitUrl) {
+          for (final release in source['releases'] as List) {
+            release['downloadUrl'] = null;
+          }
+        }
+        final data = AppUpdateFeed.decode(
+          jsonEncode({channel.name: source}),
+          channel: channel,
+        );
+        final result = AppUpdateResult(currentVersion: '0.0.9', feed: data);
+        expect(result.update?.version, '0.1.0');
+        expect(
+          result.releaseUrl.toString(),
+          'https://github.com/huarunwin/huarunwin/releases/tag/v0.1.0',
+        );
+        expect(
+          data.releases.first.downloadUrl.toString(),
+          'https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0',
+        );
+      }
+    }
+    expect(AppChangelog.decode(changelog()).published.downloadUrl, isNull);
+  });
+
+  test('default download links retain the full prerelease version', () {
+    final data = AppUpdateFeed.decode(
+      jsonEncode({
+        'debug': {
+          'publishedVersion': '0.2.0-pre.42',
+          'releases': [
+            {
+              'version': '0.2.0-pre.42',
+              'changes': ['Preview'],
+            },
+          ],
+        },
+      }),
+      channel: AppUpdateChannel.debug,
+    );
     expect(
-      () => AppUpdateFeed.decode(
-        jsonEncode({'release': missing}),
-        channel: AppUpdateChannel.release,
-      ),
-      throwsFormatException,
+      data.published?.downloadUrl.toString(),
+      'https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0-pre.42',
     );
   });
 

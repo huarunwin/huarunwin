@@ -4,7 +4,7 @@
 
 ## 安装包配置
 
-兼容已有的每版本 `downloadUrl`。确切的 GitHub `/releases/tag/...` 地址仅解析该发布页及其真实附件 HTML，不读取 Latest 或自行构造附件地址；也可直接配置本机可识别的安装包直链。多个候选按系统架构和格式推荐，只有唯一且架构已知的推荐包才直接开始下载，否则由用户选择并确认。未知架构不声称兼容，缺少本机安装包明确报错。
+每版本 `downloadUrl` 可省略或为 `null`，此时使用 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`，例如 `0.2.0` 对应 `/releases/tag/v0.2.0`。显式配置继续优先，可使用确切发布页或本机可识别的安装包直链。GitHub 发布页仍仅解析其真实附件 HTML，不读取 Latest 或自行构造附件地址；发布页不存在或缺少本机安装包时明确失败。多个候选按系统架构和格式推荐，只有唯一且架构已知的推荐包才直接开始下载，否则由用户选择并确认。未知架构不声称兼容。
 
 建议在每个远端版本添加可选的 `packages` 数组，明确区分平台、架构和下载地址。以下是单条版本记录的格式示例，域名与版本仅用于展示格式，不能原样当作已发布内容：
 
@@ -12,7 +12,6 @@
 {
   "version": "0.2.0",
   "changes": ["更新说明"],
-  "downloadUrl": "https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0",
   "packages": [
     {
       "platform": "Android",
@@ -24,7 +23,8 @@
 }
 ```
 
-- `downloadUrl` 必须是绝对 HTTPS 地址，不带用户名或密码。各渠道、版本及安装包可分别迁移地址；同一固定 URL 的不同目标版本也创建独立任务。
+- 版本记录顶层的 `downloadUrl` 为可选字段；省略或 `null` 使用默认发布页，空字符串、错误类型、非 HTTPS 或带用户名密码的显式地址仍被拒绝。默认地址保留完整版本，包括预发布后缀，不自动改为 `pre`；当前 dev 测试包需通过显式版本安装包直链或 `packages` 指向真实资源。兼容尚不支持默认地址的旧客户端时，继续提供顶层 `downloadUrl`。
+- `packages` 内每份安装包的 `downloadUrl` 仍须是绝对 HTTPS 地址，不带用户名或密码，不使用发布页默认规则。各渠道、版本及安装包可分别迁移地址；同一固定 URL 的不同目标版本也创建独立任务。顶层地址省略时，安装包的来源记录使用解析后的默认发布页。
 - 有 `packages` 时只从该数组选包，不回退到其他平台、渠道或旧版本。每项非 iOS 安装包须提供架构：`arm64`、`armv7`、`x64`、`x86`、`universal`。`universal` 必须确实包含相应架构。
 - 可选 `sha256` 是安装包的真实 64 位十六进制 SHA-256。建议为所有包提供；未配置 `packages` 而从 GitHub 发布页读取附件时，也会使用 HTML 中公开且能唯一绑定该附件的摘要。AppImage 自身替换必须具有这两种来源之一的公开摘要；显式 `packages` 中的 AppImage 须配置 `sha256`。
 - iOS 使用 `platform: "iOS"`、`kind: "store"`，无需架构；每版本每渠道只允许一个 App Store 或 `https://testflight.apple.com/join/...` 地址。不能配置 IPA 或任意网页冒充系统更新渠道。
@@ -42,7 +42,7 @@
 
 Android 自身更新只接受与当前客户端相同的一组签名证书，不自动重签、改包或卸载；当前实现不处理签名密钥轮换谱系。更新成功可能导致旧进程被系统终止，未收到明确系统成功回调的记录仍为未确认，不通过包名存在推断本次成功。
 
-Android CI 按更新渠道使用两份固定密钥：dev／预发布 tag 使用 Debug 身份，正式 tag 使用独立 Release 身份。Debug 沿用迁移前的证书，后续同渠道构建保持身份；不同证书的 Debug 与 Release 不能直接互相覆盖安装。APK 的 `versionName` 保留与 Hub 记录相同的完整版本，包括 `-pre.…` 等后缀。`*-android-signing.json` 提供每份真实 APK 的版本码、证书指纹和文件摘要；Hub 的安装包链接及摘要仍需按实际公开产物配置，流水线不自动修改 Hub 指针。
+Android CI 按更新渠道使用两份固定密钥：dev 预发布使用 Debug 身份，正式 tag 使用独立 Release 身份。Debug 沿用迁移前的证书，后续同渠道构建保持身份；不同证书的 Debug 与 Release 不能直接互相覆盖安装。APK 的 `versionName` 保留与 Hub 记录相同的完整版本，包括 `-pre.…` 等后缀。`*-android-signing.json` 提供每份真实 APK 的版本码、证书指纹和文件摘要；Hub 的安装包链接及摘要仍需按实际公开产物配置，流水线不自动修改 Hub 指针。
 
 macOS 的 `CFBundleShortVersionString` 保持纯数字。构建阶段从与 Dart 相同的 `HUARUNWIN_VERSION`／`HUARUNWIN_UPDATE_CHANNEL` 生成 `Contents/Resources/huarunwin-build.plist`，随后纳入应用签名，原生安装助手据此校验完整预发布版本与渠道；缺少此资源的旧包不能作为自身更新目标。无显式定义时采用 Flutter 版本和实际 Debug／其他构建模式。当前 ad-hoc 构建可以继续采用有效 ad-hoc 签名；当前客户端已有开发者签名时更新包须同 Team ID，不降级到 ad-hoc。目标目录不可写时通过系统管理员授权启动独立助手，重启应用前恢复原用户身份。
 

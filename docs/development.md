@@ -27,7 +27,7 @@ GitHub Actions 的 Android 任务编译 Debug 应用与 instrumentation APK，PR
 
 Dart 检查同样使用 `fvm dart ...`，例如 `fvm dart analyze lib test`。Android 构建所需的 JDK、Android SDK 和目标设备分别通过 `JAVA_HOME`、`ANDROID_HOME`、`ANDROID_SERIAL` 等标准环境变量配置；具体值由开发者在本地设置，不写入仓库。文档命令使用仓库相对路径或占位符，不包含个人用户目录、机器标识、代理配置及参考项目的个人检出位置。
 
-客户端自身更新的本地 debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。`HUARUNWIN_UPDATE_CHANNEL` 只选择更新渠道，不自动更换本地签名文件；需要经过 release 优化且沿用 Debug 身份的测试包时，使用 CI 的 dev／预发布 tag 流程，由工作流明确选择 Debug Secrets。两类渠道的日志与下载地址均配置在公开仓库 `huarunwin-hub/api/updates.json`；详情见[发布与许可](releasing.md)。
+客户端自身更新的本地 debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。`HUARUNWIN_UPDATE_CHANNEL` 只选择更新渠道，不自动更换本地签名文件；需要经过 release 优化且沿用 Debug 身份的测试包时，使用 CI 的 dev 预发布流程，由工作流明确选择 Debug Secrets。两类渠道的日志与下载地址均配置在公开仓库 `huarunwin-hub/api/updates.json`；详情见[发布与许可](releasing.md)。
 
 纠错页的 Debug 与正式构建均固定使用 `https://huarun.win/corrections/app`，不再读取局域网覆盖参数。页面及样式是静态文件，提交仍使用网站既有在线接口；可直接运行客户端检查线上页面，验收无需提交真实纠错。
 

@@ -36,20 +36,24 @@
 
 | 项目 | 位置 | 用途 |
 | --- | --- | --- |
-| 本项目 | `huarunwin` | 华润赢 Flutter 客户端 |
-| 公共资源 | [huarunwin-hub](https://github.com/huarunwin/huarunwin-hub) | 公开更新信息及后续公共资料 |
+| 本项目 | `.` | 华润赢 Flutter 客户端源码、构建与 Release 安装包 |
+| [公共资源](https://github.com/huarunwin/huarunwin-hub) | `../huarunwin-hub` | 公开更新信息及后续公共资料 |
 | 网站源码 | 独立检出的网站仓库，位置由开发者配置 | 理解静态 HTML 的生成方式、内容结构和下载入口 |
 | 视觉与版本参考 | [FlClash](https://github.com/chen08209/FlClash) | 参考当前视觉体系、跨端布局和 Flutter 版本 |
 | Android 重签参考 | [AppManager](https://github.com/MuntashirAkon/AppManager) | 参考 Android APK 重签与签名密钥管理设计 |
 | Android APK 修改参考 | [APKEditor](https://github.com/REAndroid/APKEditor)、[ARSCLib](https://github.com/REAndroid/ARSCLib) | 参考二进制 Manifest 与资源表编辑；直接依赖 ARSCLib 1.4.0（Apache-2.0），不手写二进制格式或全局替换包名字符串 |
 | Android 解包与重建参考 | [Apktool](https://github.com/iBotPeaches/Apktool) | 参考资源解包与重建思路，不在手机端内嵌其桌面命令行及 aapt 工具链 |
 
+客户端与 Hub 约定检出在同一父目录下，分别为 `huarunwin/` 和 `huarunwin-hub/`，两者是独立 Git 仓库。表中的本地路径相对于当前仓库根目录；从客户端访问 Hub 使用 `../huarunwin-hub`，从 Hub 访问客户端使用 `../huarunwin`。这是本地协作约定，客户端运行时仍读取公开地址，不依赖相邻目录；本地目录缺失时先确认检出位置。
+
+涉及客户端更新数据格式、版本与渠道规则、下载地址或发布流程的任务，应联动检查双方的实现、配置与文档，并同步完成必要改动。操作前读取各自的 `AGENTS.md`（Hub 约定位于 [../huarunwin-hub/AGENTS.md](../huarunwin-hub/AGENTS.md)），分别检查 Git 状态并保留已有改动。提交、推送与发布按用户任务范围分别在对应仓库处理，完成时说明双方结果；Hub 的更新字段与发布顺序见 [../huarunwin-hub/README.md](../huarunwin-hub/README.md)。
+
 阅读或修改参考项目时遵循各自的 AGENTS.md。客户端任务不自动授权修改、提交或发布网站及 FlClash；需要跨项目配合时明确说明涉及的改动。
 
 ## 数据来源：只解析静态 HTML
 
 - 用户明确选择从静态 HTML 解析数据，不新增 JSON API，也不新增供客户端读取的独立静态 JSON 数据文件。
-- 客户端自身的在线版本更新唯一依赖公开仓库 `huarunwin/huarunwin-hub` 的 [api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)，客户端实际读取地址为 `https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json`。按 `release`／`debug` 渠道仅比较各自的 `publishedVersion` 与本机版本，每个版本使用独立的 HTTPS `downloadUrl`；`null` 表示尚未发布。不根据 GitHub Latest Release、tag 或日志中的最高版本推断更新。根目录 `changelog.json` 保留随包日志和 tag 编译校验，不参与在线更新判断。这是本条网站取数约束之外的客户端发布信息，详情见 [发布与许可](docs/releasing.md)。
+- 客户端自身的在线版本更新唯一依赖公开仓库 `huarunwin/huarunwin-hub` 的 [api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)，客户端实际读取地址为 `https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json`。按 `release`／`debug` 渠道仅比较各自的 `publishedVersion` 与本机版本；该指针为 `null` 表示尚未发布。每个版本的 HTTPS `downloadUrl` 可省略或为 `null`，此时按完整版本生成 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`；显式地址优先，无效地址不回退。该默认规则只生成发布页地址，安装包仍从真实附件解析；`packages` 内的安装包地址仍必填。不根据 GitHub Latest Release、tag 或日志中的最高版本推断更新，也不将预发布版本自动映射到 `pre`。根目录 `changelog.json` 保留随包日志和 tag 编译校验，不参与在线更新判断。这是本条网站取数约束之外的客户端发布信息，详情见 [发布与许可](docs/releasing.md)。
 - 客户端更新提醒按 FlClash 默认视觉独立实现，所有平台及窗口宽度均使用居中浮层，标题、版本、可选择滚动的日志和胶囊按钮分层展示；按钮放不下时改为主操作在上、取消在下。更新提醒不采用窄屏底部表单。独立提供“取消”“本版本不再提示”和“前往下载”；取消仅关闭当次提醒。“本版本不再提示”按当前渠道持久化所提示的精确版本，重启后自动检查仍跳过该版本，其他新版本继续提示，设置中的手动检查仍可查看被忽略版本。点击遮罩、返回或 Esc 关闭不写入忽略记录。
 - 客户端自身更新要求：各平台点击“前往下载”后，由客户端按当前渠道、真实平台与架构取得对应安装包，自行管理下载进度、取消和失败重试，下载完成后直接衔接该平台的更新安装流程；仅打开 GitHub Release 页面或系统浏览器不算完成此要求。安装包地址必须来自 Hub 记录或该记录所指发布页的真实附件，不猜测地址，不误用其他平台或渠道的包。Android 交给系统确认覆盖安装；macOS、Windows、Linux 使用适合自身更新的安装或替换流程，需要退出客户端时先明确提示并由独立安装进程继续。保留摘要、应用身份和签名兼容性检查，不对自身更新自动改包或重签，失败保留可重试的安装包。iOS 按实际分发渠道使用系统允许的更新方式，App Store／TestFlight 分发交接对应系统渠道，不承诺平台不允许的应用内安装。上述为更新流程的产品要求，实际实现与验证状态见 [发布与许可](docs/releasing.md) 及 [验证记录](docs/verification.md)。
 - 使用 HTTP 客户端获取 HTML，通过 DOM 解析转换成客户端自己的数据模型，再交给 Flutter 展示。
@@ -288,7 +292,7 @@ Android 原生页面与弹层的滚动区在用户开始拖动时收起键盘，
 
 ## 后续开发与验证
 
-- GitHub Actions 的分支预发布仅从 `dev` 构建并更新固定 `pre` Release，发布前核对 `dev` 最新提交；PR 检查仅针对目标为 `dev` 的 PR。`main` 推送及面向 `main` 的 PR 不触发工作流，手动选择 `main` 时跳过所有任务。保留版本 tag 发布及手动运行 `dev`／版本 tag，不自动修改 Hub 发布指针。
+- GitHub Actions 的分支预发布仅从 `dev` 构建并更新固定 `pre` Release，发布前核对 `dev` 最新提交；PR 检查仅针对目标为 `dev` 的 PR。`main` 推送及面向 `main` 的 PR 不触发工作流，手动选择 `main` 时跳过所有任务。正式 tag 只使用 `vX.Y.Z`（例如 `v0.1.0`），三段数字不得有前导零或附加后缀；dev 自动维护的 `pre` 是唯一例外。保留正式 tag 发布及手动运行 `dev`／正式 tag，不自动修改 Hub 发布指针。Hub 的版本字段不带 `v`，安装包尚不可用时保持对应渠道 `publishedVersion: null`。
 - GitHub Actions 使用 GitHub 标准托管 runner：检查、Android 及 Apple Silicon Mac 构建固定使用 `macos-15`，Intel Mac 构建使用 `macos-15-intel`，Release 发布使用 `ubuntu-24.04`；不依赖个人机器或网站项目的 runner。Mac 参照 FlClash 分别发布 `macos-arm64.dmg` 和 `macos-amd64.dmg`，不再生成 Universal DMG／ZIP，签名与公证状态维护在发布文档。PR 编译 Android Debug 及 instrumentation 源码，无需签名 Secrets；Android 发布按更新渠道使用 `ANDROID_DEBUG_*`／`ANDROID_RELEASE_*` 两组固定密钥，核对精确证书、应用身份、版本与 ABI 后才合并发布。正式渠道拒绝调试证书，缺少任一组配置均不生成替代身份或回退另一组。密钥、密码及个人路径只存放于忽略的私有配置，具体流程见 [发布与许可](docs/releasing.md)。
 - Windows 自动打包参照 FlClash 使用 `windows-2022`／`windows-11-arm`，分别发布 x64 和 ARM64 的安装版 EXE、完整便携 ZIP。所有 Flutter／Dart 操作仍通过 FVM 使用 `.fvmrc` 版本；原生文本版本保留完整预发布标识。安装器与便携包共用已核对架构和身份的运行目录，缺少任一平台产物不得更新 Release。Release 正文按系统分组使用下载徽章，徽章链接对应本次真实附件，保留 GitHub 下载量、源码提交、构建记录与校验文件入口；不展示尚未构建的平台。详情与验证范围见 [发布与许可](docs/releasing.md)。
 - 按用户最新要求，后续需求直接修改代码，默认不运行测试；只有用户明确要求测试时才执行，不将测试作为完成普通改动的前置步骤。

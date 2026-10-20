@@ -63,11 +63,11 @@ def metadata(env, pubspec, changelog):
         notes_version = match[1].split("+", 1)[0]
     elif ref.startswith("refs/tags/") and ref != "refs/tags/pre":
         tag = ref.removeprefix("refs/tags/")
-        parsed = re.fullmatch("v" + VERSION, tag)
+        parsed = re.fullmatch(rf"v({NUMBER}\.{NUMBER}\.{NUMBER})", tag)
         if not parsed:
-            raise ValueError("Release tags must use v<version>, for example v0.1.0")
+            raise ValueError("Release tags must use vX.Y.Z, for example v0.1.0, without suffixes")
         notes_version = app_version = tag[1:]
-        version, pre = parsed[1], bool(parsed[2])
+        version, pre = parsed[1], False
         if not any(entry["version"] == notes_version for entry in changelog["releases"]):
             raise ValueError(f"Missing changelog for tag {tag}; add version {notes_version} to changelog.json")
     else:

@@ -44,16 +44,15 @@ class MetadataTests(unittest.TestCase):
     def test_semantic_tag_overrides_pubspec_version(self):
         info = identity("refs/tags/v2.3.4")
         self.assertEqual((info["tag"], info["build_name"], info["prerelease"]), ("v2.3.4", "2.3.4", False))
-        self.assertTrue(identity("refs/tags/v2.3.4-rc.1")["prerelease"])
         self.assertEqual(info["update_channel"], "release")
-        self.assertEqual(identity("refs/tags/v2.3.4-rc.1")["update_channel"], "debug")
         self.assertEqual(info["app_version"], "2.3.4")
-        self.assertEqual(identity("refs/tags/v2.3.4-rc.1")["app_version"], "2.3.4-rc.1")
         self.assertIn("changelog.json", info["assets"])
         self.assertEqual(info["changes"], ["Changes for 2.3.4"])
 
     def test_tag_requires_matching_changelog_and_canonical_name(self):
-        for ref in ("refs/tags/v9.9.9", "refs/tags/release/october", "refs/tags/2.3.4"):
+        for ref in ("refs/tags/v9.9.9", "refs/tags/release/october", "refs/tags/2.3.4",
+                    "refs/tags/v2.3.4-rc.1", "refs/tags/v2.3.4+1", "refs/tags/v02.3.4",
+                    "refs/tags/V2.3.4", "refs/tags/v2.3", "refs/tags/v2.3.4.5"):
             with self.subTest(ref=ref), self.assertRaises(ValueError):
                 identity(ref)
 
@@ -136,7 +135,7 @@ class PublicationTests(unittest.TestCase):
         api.request.assert_not_called()
 
     def test_download_badges_link_to_each_package_in_the_exact_release(self):
-        for ref, tag in (("refs/heads/dev", "pre"), ("refs/tags/v2.3.4-rc.1", "v2.3.4-rc.1")):
+        for ref, tag in (("refs/heads/dev", "pre"), ("refs/tags/v2.3.4", "v2.3.4")):
             with self.subTest(tag=tag):
                 info = identity(ref)
                 notes = release_notes(info, "https://github.com/example/app/actions/runs/42")

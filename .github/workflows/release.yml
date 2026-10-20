@@ -4,8 +4,9 @@ run-name: Android / macOS / Windows · ${{ github.ref_name }} · ${{ github.run_
 on:
   push:
     branches: [dev]
-    tags: ['**', '!pre']
-    # Tag pushes always build; branch pushes skip documentation-only changes.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    # Version tags always build; release.py rejects leading zeroes and missing changelogs.
+    # Branch pushes skip documentation-only changes; the reserved pre tag never triggers.
     paths:
       - '**'
       - '!**/*.md'

@@ -9,7 +9,7 @@
 工作流为 [release.yml](../.github/workflows/release.yml)，配置打包 Android、macOS 和 Windows，使用 GitHub 标准托管 runner：
 
 - 推送到 `dev`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 dev 的最新提交，已过时的任务不覆盖 Release。
-- 推送其他 tag：仅接受 `v<version>`，例如 `v1.2.3`、`v1.2.3-rc.1`；后者仍标记为预发布。tag 必须对应 `changelog.json` 中唯一且非空的版本日志，否则在安装 FVM 和 Flutter 前失败。`pre` 是自动维护的保留 tag，不触发新构建。
+- 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，发布脚本严格核对格式及 `changelog.json` 中对应的唯一、非空日志。`pre` 是 dev 自动维护的唯一例外，不触发新构建；测试包统一由 dev 发布。
 - 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
 - dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源、`LICENSE` 和 `changelog.json` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
 - 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。版本 tag 还附带 `changelog.json` 快照，校验文件覆盖上述全部附件。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
@@ -23,7 +23,7 @@ Windows 参照 [FlClash 的构建矩阵](https://github.com/chen08209/FlClash/bl
 
 Android 本地 Debug 构建可通过忽略的 `android/debug-signing.local.properties` 指定固定调试身份，模板见 [`debug-signing.local.properties.example`](../android/debug-signing.local.properties.example)；未配置时使用 Android 默认调试密钥。文件存在但配置无效时明确失败。本地 release 构建使用 `android/key.properties`，模板见 [`key.properties.example`](../android/key.properties.example)，缺失时不回退调试签名。两份配置与密钥、密码均不得提交。
 
-CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定身份。dev 和预发布 tag 的 `debug` 更新渠道使用 `ANDROID_DEBUG_*`，正式 tag 的 `release` 渠道使用 `ANDROID_RELEASE_*`。两种渠道都采用 release 编译优化，签名按更新渠道分别选择；没有回退到另一组的逻辑。
+CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定身份。dev 的 `debug` 更新渠道使用 `ANDROID_DEBUG_*`，正式 tag 的 `release` 渠道使用 `ANDROID_RELEASE_*`。两种渠道都采用 release 编译优化，签名按更新渠道分别选择；没有回退到另一组的逻辑。
 
 | Debug Secret | Release Secret | 内容 |
 | --- | --- | --- |
@@ -64,7 +64,6 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
     "releases": [
       {
         "version": "0.1.0",
-        "downloadUrl": "https://github.com/huarunwin/huarunwin/releases/tag/v0.1.0",
         "changes": ["首次发布"]
       }
     ]
@@ -76,13 +75,15 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 }
 ```
 
-每个渠道仅比较自己的 `publishedVersion` 与本机版本；`null` 表示该渠道尚未发布版本。非空指针必须对应唯一且有非空日志的记录。版本使用三段语义化版本，可带 `-beta.1`、`-rc.1` 等预发布标识，不带 `v` 或 `+构建号`，不另存日期、tag 或发布序号。提前准备的高版本记录不会触发更新。
+每个渠道仅比较自己的 `publishedVersion` 与本机版本；`null` 表示该渠道尚未发布版本。非空指针必须对应唯一且有非空日志的记录。正式渠道版本使用 `X.Y.Z`，测试渠道使用 dev 包的完整版本，如 `0.1.0-pre.42`，不带 `v` 或 `+构建号`，不另存日期、tag 或发布序号。Git tag 为 `v0.1.0` 时，这里的版本仍写 `0.1.0`。提前准备的高版本记录不会触发更新；删除尚未发布版本的安装包后，应移除其失效下载记录并保持渠道指针为 `null`。
 
-每条远端版本记录必须有独立的 HTTPS `downloadUrl`。点击“前往下载”后进入应用内更新页：读取该地址指向的确切 GitHub Release 的真实附件，或使用直接安装包地址，不根据 tag、版本或仓库名拼接地址，不读取 Latest 选择版本。也可通过可选的 `packages` 按平台、架构明确配置直链和 SHA-256，便于迁移下载来源。正式和测试渠道可使用不同下载地址；渠道缺失、地址错误或未提供本机安装包时提示失败，不互相回退。格式、身份要求及平台行为见 [客户端自身更新](self-updating.md)。
+每条远端版本记录的 `downloadUrl` 可省略或为 `null`，此时默认使用 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`，例如 `0.1.0` 对应 `/releases/tag/v0.1.0`。显式配置的绝对 HTTPS 地址优先；空字符串、类型错误或无效地址仍报错，不改用默认地址。点击“前往下载”后读取该确切发布页的真实附件，或使用显式安装包直链；默认规则只生成发布页地址，不构造安装包地址，也不读取 Latest 选择版本。可选 `packages` 继续按平台、架构配置真实直链和 SHA-256，各项安装包的 `downloadUrl` 仍必填。正式和测试渠道独立处理，缺少渠道、发布页或本机安装包时提示失败，不互相回退。格式、身份要求及平台行为见 [客户端自身更新](self-updating.md)。
+
+默认地址保留完整预发布版本，不自动映射到固定 `pre`。当前 dev 构建发布在 `pre` 下，启用 Hub 测试渠道时须用显式版本安装包直链或 `packages` 绑定目标包。旧客户端仍要求顶层 `downloadUrl`，兼容这些版本时应继续提供该字段；省略规则在支持本次解析逻辑的客户端中生效。
 
 下载由现有下载管理器处理，显示进度并支持取消、重试；完成后衔接系统安装或独立桌面更新进程。Android 保留系统覆盖安装确认，macOS／Windows／Linux AppImage 替换前明确确认退出，iOS 使用 App Store／TestFlight。自身更新不提供改包或重签入口，失败保留安装包；关闭更新页后仍可从下载管理继续安装，后台完成下载不会自行安装。此流程与第三方应用的安装助手分开。
 
-本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 dev 构建和预发布 tag 选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
+本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 dev 构建选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
 
 发布时先准备记录、上传安装包并确认下载地址可匿名访问，最后再修改 Hub 对应渠道的 `publishedVersion`。如果下载地址或 Release 尚未公开，保持对应渠道为 `null`，不能把仅维护者可见的附件当作公开下载地址。Hub 不自动同步源码仓库的 Release，也不要求客户端持有 Token。
 

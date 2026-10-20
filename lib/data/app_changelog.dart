@@ -78,7 +78,7 @@ class AppUpdateFeed {
             !AppChangelog.isVersion(publishedVersion))) {
       throw const FormatException('Invalid publishedVersion');
     }
-    final releases = _readReleases(entry['releases'], requireDownloadUrl: true);
+    final releases = _readReleases(entry['releases'], includeDownloads: true);
     if (publishedVersion != null &&
         !releases.any((release) => release.version == publishedVersion)) {
       throw const FormatException('publishedVersion has no changelog');
@@ -96,7 +96,7 @@ class AppUpdateFeed {
 
 List<AppRelease> _readReleases(
   dynamic entries, {
-  bool requireDownloadUrl = false,
+  bool includeDownloads = false,
 }) {
   if (entries is! List) {
     throw const FormatException('Missing releases array');
@@ -117,8 +117,11 @@ List<AppRelease> _readReleases(
       throw const FormatException('Release changes must not be empty');
     }
     Uri? downloadUrl;
-    if (requireDownloadUrl) {
-      final value = entry['downloadUrl'];
+    if (includeDownloads) {
+      final value =
+          entry['downloadUrl'] ??
+          'https://github.com/huarunwin/huarunwin/releases/tag/'
+              'v${entry['version']}';
       downloadUrl = value is String ? Uri.tryParse(value) : null;
       if (downloadUrl == null ||
           downloadUrl.scheme != 'https' ||
@@ -135,14 +138,16 @@ List<AppRelease> _readReleases(
         version: entry['version'] as String,
         changes: List.unmodifiable(changes.cast<String>()),
         downloadUrl: downloadUrl,
-        packages: requireDownloadUrl ? _readPackages(entry) : const [],
+        packages: downloadUrl == null
+            ? const []
+            : _readPackages(entry, downloadUrl),
       ),
     );
   }
   return List.unmodifiable(releases);
 }
 
-List<DownloadLink> _readPackages(Map<String, dynamic> release) {
+List<DownloadLink> _readPackages(Map<String, dynamic> release, Uri releaseUrl) {
   final entries = release['packages'];
   if (entries == null) return const [];
   if (entries is! List || entries.isEmpty) {
@@ -202,7 +207,7 @@ List<DownloadLink> _readPackages(Map<String, dynamic> release) {
             ? null
             : 'huarunwin-hub/api/updates.json',
         version: release['version'] as String,
-        releaseUrl: release['downloadUrl'] as String,
+        releaseUrl: releaseUrl.toString(),
       ),
     );
   }

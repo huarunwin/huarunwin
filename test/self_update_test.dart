@@ -49,23 +49,25 @@ Future<void> downloaded(DownloadManager manager, DownloadTask task) async {
   await manager.flushHistory();
 }
 
-AppUpdateFeed packageFeed(List<Map<String, Object?>> packages) =>
-    AppUpdateFeed.decode(
-      jsonEncode({
-        'release': {
-          'publishedVersion': '0.2.0',
-          'releases': [
-            {
-              'version': '0.2.0',
-              'changes': ['Update'],
-              'downloadUrl': 'https://example.com/releases/0.2.0',
-              'packages': packages,
-            },
-          ],
+AppUpdateFeed packageFeed(
+  List<Map<String, Object?>> packages, {
+  String? downloadUrl = 'https://example.com/releases/0.2.0',
+}) => AppUpdateFeed.decode(
+  jsonEncode({
+    'release': {
+      'publishedVersion': '0.2.0',
+      'releases': [
+        {
+          'version': '0.2.0',
+          'changes': ['Update'],
+          'downloadUrl': ?downloadUrl,
+          'packages': packages,
         },
-      }),
-      channel: AppUpdateChannel.release,
-    );
+      ],
+    },
+  }),
+  channel: AppUpdateChannel.release,
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -111,6 +113,8 @@ void main() {
       {'platform': 'macOS'},
       {'architecture': null},
       {'architecture': 'unknown'},
+      {'downloadUrl': null},
+      {'downloadUrl': ''},
       {'downloadUrl': 'http://example.com/app.apk'},
       {'downloadUrl': 'https://user:password@example.com/app.apk'},
       {'sha256': 'invalid'},
@@ -123,6 +127,21 @@ void main() {
         throwsFormatException,
       );
     }
+  });
+
+  test('explicit packages work without a release download link', () async {
+    final release = packageFeed([android], downloadUrl: null).published!;
+    const expected =
+        'https://github.com/huarunwin/huarunwin/releases/tag/v0.2.0';
+    expect(release.packages.single.releaseUrl, expected);
+    final packages = await SelfUpdatePackages.resolve(
+      release,
+      'Android',
+      manager,
+    );
+    expect(packages.single.url, android['downloadUrl']);
+    expect(packages.single.version, '0.2.0');
+    expect(packages.single.releaseUrl, expected);
   });
 
   test('latest release pages do not choose a self update version', () async {

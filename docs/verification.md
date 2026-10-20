@@ -527,3 +527,19 @@ GitHub 五项签名 Secrets 由维护者后续配置，本轮没有生成发布�
 按维护者要求，将分支推送和 PR 目标筛选切换为 `dev`，固定 `pre` Release 的版本生成及发布前最新提交核对均改为读取 `dev`。`main` 推送和面向 `main` 的 PR 不再自动触发工作流；手动选择 `main` 或其他不支持的分支时跳过所有任务，其并发组与 dev 预发布隔离。保留版本 tag 发布及手动运行 dev／版本 tag，未修改 Hub 更新信息来源或发布指针。
 
 工作流 YAML、发布脚本及调整后的回归用例 Python AST 语法解析和 `git diff --check` 通过。回归用例同步包含 main 发布拒绝及 dev 过期提交保护，按项目约定未执行测试，也未运行远端 Actions、创建分支、提交或推送；前述 main 的历史产物验收记录继续保留原有背景。
+
+## 2026-10-20 正式 tag 格式与 Hub 失效记录
+
+按维护者确认，正式 tag 仅使用 `vX.Y.Z`，dev 自动维护的 `pre` 继续作为唯一例外。Actions 的 tag 推送筛选收紧为三段数字，发布脚本另拒绝前导零、缺少 `v`、预发布后缀及构建元数据。正式 tag 使用 release 渠道，dev 继续使用 debug 渠道；调整已有回归用例，保留对 dev 预发布及固定版本下载链接的检查。
+
+匿名读取 Hub 时，两个渠道的 `publishedVersion` 均为 `null`，不会触发更新，但正式渠道仍有指向已删除 `v0.1.0` 的预备记录；该下载页面实际返回 HTTP 404。已在本地 Hub 仓库移除这条失效记录，保持两个渠道指针为 `null`、版本列表为空，并说明 Git tag 的 `v` 前缀不进入更新 JSON 的版本字段。客户端 `changelog.json` 中的随包日志保留，未据此启用在线更新。
+
+Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --check` 通过。按项目约定未运行测试，未创建 tag、触发 Actions 或发布安装包；本节代码和 Hub 配置改动尚未提交推送，线上 Hub 内容仍以远端文件为准。
+
+## 2026-10-20 可选更新下载地址
+
+按维护者要求，远端版本记录省略 `downloadUrl` 或将其设为 `null` 时，客户端按已校验的完整版本使用 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`；显式 HTTPS 地址优先，空字符串、错误类型和不合法地址仍报错。默认规则只生成发布页，不构造安装包直链，也不把预发布版本改为固定 `pre`。显式 `packages` 的来源地址同步使用解析后的发布页，各项安装包 URL 仍须提供。随包日志及 `publishedVersion` 控制规则保持原有行为。
+
+客户端发布／更新文档与 Hub README 已同步说明字段省略方式及旧客户端兼容条件；Hub 两个渠道的发布指针仍为 `null`。补充缺失／null 地址、完整版本、未发布指针、无效显式地址及无顶层地址的 packages 回归用例，按项目约定未执行测试。
+
+修改的三个 Dart 文件通过格式化及 `fvm dart analyze` 静态分析，无问题；Hub JSON 语法和两个仓库的 `git diff --check` 通过。未执行实际在线更新或平台安装验收，未提交推送两个仓库的本地改动。
