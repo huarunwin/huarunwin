@@ -572,3 +572,5 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 提交前，修改的 Python 脚本、工作流 YAML、Windows 打包及工作流 PowerShell 命令、Hub JSON 和两个仓库的 `git diff --check` 均通过语法或差异检查。本机 `python3 tool/ci/build.py setup` 仍经 FVM 成功核对 Flutter 3.47.6；`python3 tool/ci/release.py check-tag v0.1.0` 通过匿名远端 Hub 校验。本地未运行测试，远端构建与既有检查将在重建 tag 后由 Actions 执行。
 
 首次切换后的 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434108622) 中，两种 Windows 的 Flutter Action 安装成功，但首次执行 `--version --machine` 时 SDK 初始化输出导致 JSON 解析失败。版本核对增加一次普通 `--version`，先完成冷启动初始化，再单独读取机器格式版本；继续要求实际版本精确匹配 `.fvmrc`。
+
+第二轮 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434938256) 中，两个 Windows SDK 版本校验、应用编译及数字版本运行库目录选择均通过；ARM64 在打包架构检查中发现运行库目录中的不匹配 DLL，x64 在安装器身份检查中失败。运行库收集改为按实际 PE 架构筛选，并通过 dumpbin 检查受管理运行库依赖完整性；安装器编译输出完整日志，身份核对输出实际版本字段以便诊断，继续严格拒绝错误身份和版本。

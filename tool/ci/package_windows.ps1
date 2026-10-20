@@ -50,12 +50,8 @@ $runtime = Get-ChildItem -LiteralPath (Join-Path $visualStudio 'VC/Redist/MSVC')
   ForEach-Object { Get-ChildItem -Path (Join-Path $_.FullName "$target/Microsoft.VC*.CRT") -Directory -ErrorAction SilentlyContinue } |
   Select-Object -First 1
 if ($null -eq $runtime) { throw "Missing Visual C++ runtime for $target" }
-Get-ChildItem -LiteralPath $runtime.FullName -Filter '*.dll' -File | Copy-Item -Destination $stage
-foreach ($required in @('msvcp140.dll', 'vcruntime140.dll')) {
-  if (-not (Test-Path -LiteralPath (Join-Path $stage $required))) { throw "Missing runtime: $required" }
-}
 
-function AssertArchitecture([string]$path) {
+function TestArchitecture([string]$path) {
   $stream = [IO.File]::OpenRead($path)
   $reader = [IO.BinaryReader]::new($stream)
   try {
@@ -68,12 +64,24 @@ function AssertArchitecture([string]$path) {
     $expected = if ($Architecture -eq 'amd64') { 0x8664 } else { 0xAA64 }
     # Current Visual C++ ARM64 runtimes can be ARM64X hybrid DLLs.
     $arm64x = $Architecture -eq 'arm64' -and [IO.Path]::GetExtension($path) -ieq '.dll' -and $machine -eq 0xA64E
-    if ($machine -ne $expected -and -not $arm64x) { throw "Wrong architecture in bundle: $path" }
+    return $machine -eq $expected -or $arm64x
   } finally { $reader.Dispose() }
+}
+
+Get-ChildItem -LiteralPath $runtime.FullName -Filter '*.dll' -File | ForEach-Object {
+  if (TestArchitecture $_.FullName) {
+    Copy-Item -LiteralPath $_.FullName -Destination $stage
+  } else {
+    Write-Host "Skipping incompatible Visual C++ runtime: $($_.Name)"
+  }
+}
+foreach ($required in @('msvcp140.dll', 'vcruntime140.dll')) {
+  if (-not (Test-Path -LiteralPath (Join-Path $stage $required))) { throw "Missing runtime: $required" }
 }
 
 function AssertIdentity([string]$path, [switch]$Installer) {
   $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+  Write-Host ($info | Select-Object CompanyName, ProductName, ProductVersion, OriginalFilename, FileDescription | ConvertTo-Json -Compress)
   if ($info.CompanyName -ne 'win.huarun' -or $info.ProductName -ne 'huarunwin' -or
       ($info.ProductVersion -split '\+')[0] -ne $metadata.app_version) {
     throw "Incorrect Windows application identity or version: $path"
@@ -86,7 +94,24 @@ function AssertIdentity([string]$path, [switch]$Installer) {
 }
 
 Get-ChildItem -LiteralPath $stage -File | Where-Object { $_.Extension -in @('.exe', '.dll') } |
-  ForEach-Object { AssertArchitecture $_.FullName }
+  ForEach-Object {
+    if (-not (TestArchitecture $_.FullName)) { throw "Wrong architecture in bundle: $($_.Name)" }
+  }
+$toolsVersion = (Get-Content -LiteralPath (Join-Path $visualStudio 'VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt') -Raw).Trim()
+$dumpbin = Join-Path $visualStudio "VC/Tools/MSVC/$toolsVersion/bin/Host$target/$target/dumpbin.exe"
+if (-not (Test-Path -LiteralPath $dumpbin)) { throw 'dumpbin is required to verify runtime dependencies' }
+Get-ChildItem -LiteralPath $stage -File | Where-Object { $_.Extension -in @('.exe', '.dll') } |
+  ForEach-Object {
+    $dependencies = & $dumpbin /nologo /dependents $_.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect dependencies: $($_.Name)" }
+    foreach ($line in $dependencies) {
+      $dependency = $line.Trim()
+      if ($dependency -match '^(msvcp|vcruntime|concrt|vcomp)\d.*\.dll$' -and
+          -not (Test-Path -LiteralPath (Join-Path $stage $dependency))) {
+        throw "Missing Visual C++ dependency $dependency for $($_.Name)"
+      }
+    }
+  }
 AssertIdentity (Join-Path $stage 'huarunwin.exe')
 $license = Get-Content -LiteralPath 'LICENSE' -Raw -Encoding UTF8
 [IO.File]::WriteAllText((Join-Path $stage 'LICENSE.txt'), $license, [Text.UTF8Encoding]::new($true))
@@ -95,10 +120,10 @@ $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw 'Inno Setup 6 is required' }
 $installerArchitecture = if ($Architecture -eq 'amd64') { 'x64compatible' } else { 'arm64' }
 $minimumVersion = if ($Architecture -eq 'amd64') { '10.0.17763' } else { '10.0.22000' }
-& $compiler /Qp "/DBundleDir=$stage" "/DOutputDir=$output" "/DAssetStem=$stem" `
+& $compiler "/DBundleDir=$stage" "/DOutputDir=$output" "/DAssetStem=$stem" `
   "/DAppVersion=$($metadata.app_version)" "/DNativeVersion=$nativeVersion" `
   "/DArchitecture=$installerArchitecture" "/DMinimumVersion=$minimumVersion" `
-  (Join-Path $PSScriptRoot 'windows_setup.iss')
+  (Join-Path $PSScriptRoot 'windows_setup.iss') | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'Windows installer compilation failed' }
 $installer = Join-Path $output "$stem-setup.exe"
 AssertIdentity $installer -Installer
