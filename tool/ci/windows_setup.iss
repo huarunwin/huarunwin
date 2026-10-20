@@ -1,6 +1,6 @@
-[Setup]
+﻿[Setup]
 AppId=win.huarun.huarunwin
-AppName=HuarunWin
+AppName=华润赢
 AppVersion={#AppVersion}
 AppPublisher=win.huarun
 AppPublisherURL=https://huarun.win/
@@ -28,6 +28,7 @@ VersionInfoProductVersion={#NativeVersion}
 VersionInfoProductTextVersion={#AppVersion}
 VersionInfoCompany=win.huarun
 VersionInfoProductName=huarunwin
+; Keep these installer identity fields compatible with existing updaters.
 VersionInfoDescription=HuarunWin Setup
 VersionInfoOriginalFileName=huarunwin-setup.exe
 
@@ -37,9 +38,13 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#BundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+Type: files; Name: "{autoprograms}\HuarunWin.lnk"
+Type: files; Name: "{autodesktop}\HuarunWin.lnk"
+
 [Icons]
-Name: "{autoprograms}\HuarunWin"; Filename: "{app}\huarunwin.exe"
-Name: "{autodesktop}\HuarunWin"; Filename: "{app}\huarunwin.exe"; Tasks: desktopicon
+Name: "{autoprograms}\华润赢"; Filename: "{app}\huarunwin.exe"
+Name: "{autodesktop}\华润赢"; Filename: "{app}\huarunwin.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\huarunwin.exe"; Description: "{cm:LaunchProgram,HuarunWin}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\huarunwin.exe"; Description: "{cm:LaunchProgram,华润赢}"; Flags: nowait postinstall skipifsilent

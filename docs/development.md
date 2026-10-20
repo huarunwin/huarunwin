@@ -35,6 +35,8 @@ Windows 纠错页通过 [`webview_flutter_windows`](https://pub.dev/packages/web
 
 本机 Windows 使用目标架构对应的 Windows 主机与 FVM，执行 `fvm flutter build windows --release`；当前 Flutter 按运行 SDK 的主机架构选择 x64／ARM64。产物分别位于 `build/windows/x64/runner/Release` 和 `build/windows/arm64/runner/Release`。Windows CMake 禁用仅由 Android 依赖引入的 JNI 探测，客户端在 Windows 不依赖 JVM。CI 的 EXE／ZIP 包装另需 Inno Setup 6 及对应架构的 Visual C++ 可再分发运行库，详见[发布与许可](releasing.md)。
 
+Windows 应用显示名称为“华润赢”，覆盖原生窗口标题、程序描述、安装器、快捷方式和卸载列表；主程序仍为 `huarunwin.exe`。名称变更从重新构建／打包后生效，既有 Release 附件保持原样。
+
 macOS 产物：`build/macos/Build/Products/Release/华润赢.app`，应用名称统一为“华润赢”。最低 macOS 13，本机构建默认包含 arm64 和 x86_64，CI 按架构分别构建。构建自动编译并嵌入 Swift 安装助手。
 
 macOS 窗口在 Flutter 首帧完成绘制后显示，避免冷启动初始化期间露出黑色空窗；目录网络请求异步进行，不作为显示窗口的条件。

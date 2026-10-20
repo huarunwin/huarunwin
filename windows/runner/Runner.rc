@@ -90,7 +90,7 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "win.huarun" "\0"
-            VALUE "FileDescription", "huarunwin" "\0"
+            VALUE "FileDescription", "华润赢" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "huarunwin" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 win.huarun. All rights reserved." "\0"

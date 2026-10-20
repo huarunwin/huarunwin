@@ -47,6 +47,8 @@ CI 在仓库 Settings → Secrets and variables → Actions 配置两组固定�
 
 macOS 应用包为 `华润赢.app`，`CFBundleName`、`CFBundleDisplayName` 和 DMG 挂载卷名均为“华润赢”；打包脚本从应用的 `Info.plist` 读取实际可执行文件名。Release 附件继续沿用上述 ASCII 文件名，Bundle ID 保持 `win.huarun.huarunwin`，Hub 无需修改安装包地址格式。
 
+Windows 的原生窗口标题及主程序 `FileDescription`、安装器 `AppName`、开始菜单／可选桌面快捷方式与卸载列表均显示“华润赢”。覆盖安装时清理旧安装器生成的两处 `HuarunWin.lnk`，避免中英文入口重复。主程序文件名仍为 `huarunwin.exe`，安装器 `AppId` 仍为 `win.huarun.huarunwin`，安装目录沿用 `%LOCALAPPDATA%\Programs\HuarunWin`；`CompanyName: win.huarun`、`InternalName`／`ProductName: huarunwin` 继续用于既有数据目录及更新身份识别。安装器的 `OriginalFilename: huarunwin-setup.exe`、`FileDescription: HuarunWin Setup` 同样保留，供已发布客户端校验。Inno 模板以带 BOM 的 UTF-8 保存中文。上述显示名调整不改变 Release 附件名称或 Hub 地址格式。
+
 上述架构拆分从下一次构建生效，已发布的 Universal DMG／ZIP 保持原有内容；不将旧包改名冒充单架构包。正式版本已发布的安装包不会由同版本重跑替换，发布新的正式包须使用新版本。
 
 ## 版本与更新日志
