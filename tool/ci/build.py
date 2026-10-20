@@ -37,6 +37,8 @@ def setup():
     command = flutter_command()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         run(command[0], "install", version, "--skip-pub-get")
+    # A fresh Windows SDK prints bootstrap progress before any machine output.
+    flutter("--version")
     result = subprocess.run([*command, "--version", "--machine"],
                             text=True, capture_output=True, check=True)
     installed = json.loads(result.stdout)

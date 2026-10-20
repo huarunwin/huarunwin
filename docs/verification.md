@@ -570,3 +570,5 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 已核对 FlClash 工作流、Flutter Action 的版本文件读取及 tag 检出实现，以及官方 Flutter 3.47.6 Windows stable 清单仅包含 x64 的事实。双方项目约定、客户端运行与发布文档同步区分本机和 CI。Hub 的更新协议、预备日志和两个发布指针保持不变。
 
 提交前，修改的 Python 脚本、工作流 YAML、Windows 打包及工作流 PowerShell 命令、Hub JSON 和两个仓库的 `git diff --check` 均通过语法或差异检查。本机 `python3 tool/ci/build.py setup` 仍经 FVM 成功核对 Flutter 3.47.6；`python3 tool/ci/release.py check-tag v0.1.0` 通过匿名远端 Hub 校验。本地未运行测试，远端构建与既有检查将在重建 tag 后由 Actions 执行。
+
+首次切换后的 [Actions](https://github.com/huarunwin/huarunwin/actions/runs/39434108622) 中，两种 Windows 的 Flutter Action 安装成功，但首次执行 `--version --machine` 时 SDK 初始化输出导致 JSON 解析失败。版本核对增加一次普通 `--version`，先完成冷启动初始化，再单独读取机器格式版本；继续要求实际版本精确匹配 `.fvmrc`。
