@@ -12,6 +12,8 @@ import sys
 import tempfile
 import zipfile
 
+from build import flutter_command
+
 
 ROOT = Path(__file__).resolve().parents[2]
 APPLICATION_ID = "win.huarun.huarunwin"
@@ -107,9 +109,7 @@ def package() -> None:
     properties = ROOT / "android/key.properties"
     if properties.exists():
         raise ValueError("Refusing to overwrite android/key.properties; use a clean CI checkout")
-    fvm = shutil.which("fvm")
-    if not fvm:
-        raise ValueError("Install FVM before building")
+    flutter = flutter_command()
     output = ROOT / "build/release/packages"
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="huarunwin-signing-") as directory:
@@ -124,7 +124,7 @@ def package() -> None:
                 created = True
                 properties.chmod(0o600)
                 stream.write("".join(f"{key}={property_value(value)}\n" for key, value in values.items()))
-            subprocess.run([fvm, "flutter", "build", "apk", "--release", "--no-pub", "--split-per-abi",
+            subprocess.run([*flutter, "build", "apk", "--release", "--no-pub", "--split-per-abi",
                             "--build-name", info["app_version"], "--build-number", info["build_number"],
                             f'--dart-define=HUARUNWIN_VERSION={info["app_version"]}',
                             f'--dart-define=HUARUNWIN_UPDATE_CHANNEL={info["update_channel"]}'],

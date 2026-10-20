@@ -19,7 +19,7 @@
 - 后续必要的开发说明、设计方案、调研结论、平台限制、发布操作和验证记录也可存入 `docs/`；优先更新对应主题的文档，新建文档时同步更新索引。
 - 产品与开发约束继续在本文件维护，详细背景和操作步骤可通过链接指向 `docs/`。历史记录保留日期和适用范围，不把旧测试数量或设备验证当作最新结论；仅在实际执行检查后记录结果。
 - 所有受版本控制的源码、配置、文档、命令示例、日志摘录及截图不得包含开发者真实的本机信息，包括用户名、个人绝对路径、机器名、设备序列号、模拟器自定义名称、局域网地址、个人代理地址及端口、SDK／JDK 安装位置和工作区外的个人目录布局。记录前先脱敏；路径使用仓库相对路径、标准环境变量或明确的占位符，参考项目使用公开仓库链接或各自仓库内的相对路径。操作系统标准路径和明确虚构的测试夹具不属于个人环境信息。
-- Flutter／Dart 命令统一使用 `fvm flutter ...`／`fvm dart ...`，版本以 `.fvmrc` 为准；需要 SDK 路径时使用项目内 `.fvm/flutter_sdk`，不记录个人 SDK 安装路径，也不依赖 PATH 中可能不同的全局版本。JDK、Android SDK 和设备选择通过 `JAVA_HOME`、`ANDROID_HOME`、`ANDROID_SERIAL` 等变量配置，文档不写开发者实际值；个人环境配置仅存于未跟踪且已忽略的本地文件。隐私清理覆盖待提交内容及新增记录，历史提交中的信息不能因当前文件已修改就视为消除。
+- 本机 Flutter／Dart 命令统一使用 `fvm flutter ...`／`fvm dart ...`，版本以 `.fvmrc` 为准；本机需要 SDK 路径时使用项目内 `.fvm/flutter_sdk`，不记录个人 SDK 安装路径，也不依赖 PATH 中可能不同的全局版本。GitHub Actions 通过固定提交的 `subosito/flutter-action` 读取同一 `.fvmrc` 安装 SDK，核对实际版本后直接使用 `flutter`／`dart`，CI 不安装 FVM。JDK、Android SDK 和设备选择通过 `JAVA_HOME`、`ANDROID_HOME`、`ANDROID_SERIAL` 等变量配置，文档不写开发者实际值；个人环境配置仅存于未跟踪且已忽略的本地文件。隐私清理覆盖待提交内容及新增记录，历史提交中的信息不能因当前文件已修改就视为消除。
 
 ## 产品定位
 
@@ -295,7 +295,7 @@ Android 原生页面与弹层的滚动区在用户开始拖动时收起键盘，
 - GitHub Actions 的分支预发布仅从 `dev` 构建并更新固定 `pre` Release，发布前核对 `dev` 最新提交；PR 检查仅针对目标为 `dev` 的 PR。`main` 推送及面向 `main` 的 PR 不触发工作流，手动选择 `main` 时跳过所有任务。正式 tag 只使用 `vX.Y.Z`（例如 `v0.1.0`），三段数字不得有前导零或附加后缀；dev 自动维护的 `pre` 是唯一例外。保留正式 tag 发布及手动运行 `dev`／正式 tag，不自动修改 Hub 发布指针。Hub 的版本字段不带 `v`，安装包尚不可用时保持对应渠道 `publishedVersion: null`。
 - 创建或推送正式 tag 前，先将对应版本日志提交推送到 Hub 的 `main`，再在客户端执行 `python3 tool/ci/release.py check-tag vX.Y.Z`。必须确认匿名读取的 Hub `api/updates.json` 的 `release.releases` 包含去掉 `v` 后的精确版本、唯一记录及非空字符串日志；只修改相邻 Hub 工作区不算就绪。校验失败或无法读取远端时停止，不先推 tag 再补日志。Actions 对正式 tag 在安装工具链前执行相同校验，dev／PR 不要求 Hub 预备日志。预备日志不推进 `publishedVersion`，安装包公开可用后再按发布流程启用更新。
 - GitHub Actions 使用 GitHub 标准托管 runner：检查、Android 及 Apple Silicon Mac 构建固定使用 `macos-15`，Intel Mac 构建使用 `macos-15-intel`，Release 发布使用 `ubuntu-24.04`；不依赖个人机器或网站项目的 runner。Mac 参照 FlClash 分别发布 `macos-arm64.dmg` 和 `macos-amd64.dmg`，不再生成 Universal DMG／ZIP，签名与公证状态维护在发布文档。PR 编译 Android Debug 及 instrumentation 源码，无需签名 Secrets；Android 发布按更新渠道使用 `ANDROID_DEBUG_*`／`ANDROID_RELEASE_*` 两组固定密钥，核对精确证书、应用身份、版本与 ABI 后才合并发布。正式渠道拒绝调试证书，缺少任一组配置均不生成替代身份或回退另一组。密钥、密码及个人路径只存放于忽略的私有配置，具体流程见 [发布与许可](docs/releasing.md)。
-- Windows 自动打包参照 FlClash 使用 `windows-2022`／`windows-11-arm`，分别发布 x64 和 ARM64 的安装版 EXE、完整便携 ZIP。所有 Flutter／Dart 操作仍通过 FVM 使用 `.fvmrc` 版本；原生文本版本保留完整预发布标识。安装器与便携包共用已核对架构和身份的运行目录，缺少任一平台产物不得更新 Release。Release 正文按系统分组使用下载徽章，徽章链接对应本次真实附件，保留 GitHub 下载量、源码提交、构建记录与校验文件入口；不展示尚未构建的平台。详情与验证范围见 [发布与许可](docs/releasing.md)。
+- Windows 自动打包参照 FlClash 使用 `windows-2022`／`windows-11-arm`，分别发布 x64 和 ARM64 的安装版 EXE、完整便携 ZIP。CI 通过 Flutter Action 使用 `.fvmrc` 版本，Windows ARM64 参照 FlClash 使用 `master` 安装通道检出固定版本 tag，其他 runner 使用 `stable`；不能使用浮动版本。本机继续使用 FVM，原生文本版本保留完整预发布标识。安装器与便携包共用已核对架构和身份的运行目录，缺少任一平台产物不得更新 Release。Release 正文按系统分组使用下载徽章，徽章链接对应本次真实附件，保留 GitHub 下载量、源码提交、构建记录与校验文件入口；不展示尚未构建的平台。详情与验证范围见 [发布与许可](docs/releasing.md)。
 - 按用户最新要求，后续需求直接修改代码，默认不运行测试；只有用户明确要求测试时才执行，不将测试作为完成普通改动的前置步骤。
 - 从应用目录、详情和 HTML 解析开始，再接下载管理与 Mac 安装能力。
 - 用少量代表性 HTML 样本验证解析，包括多平台、缺失字段、下架条目和不同下载入口；源码规则与线上样本都要核对。

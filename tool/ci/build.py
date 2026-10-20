@@ -1,4 +1,4 @@
-"""Build macOS packages with the project's pinned Flutter SDK."""
+"""Check and build with the project's pinned Flutter SDK."""
 
 import json
 import os
@@ -16,20 +16,33 @@ def run(*args, **kwargs):
     subprocess.run([str(arg) for arg in args], check=True, **kwargs)
 
 
-def flutter(*args):
-    fvm = shutil.which("fvm")
-    if not fvm:
+def flutter_command():
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        executable = shutil.which("flutter")
+        if not executable:
+            raise ValueError("Set up Flutter with flutter-action before building")
+        return [executable]
+    executable = shutil.which("fvm")
+    if not executable:
         raise ValueError("Install FVM and expose it in PATH")
-    run(fvm, "flutter", *args)
+    return [executable, "flutter"]
+
+
+def flutter(*args):
+    run(*flutter_command(), *args)
 
 
 def setup():
     version = json.loads((ROOT / ".fvmrc").read_text())["flutter"]
-    fvm = shutil.which("fvm")
-    if not fvm:
-        raise ValueError("Install FVM and expose it in PATH")
-    run(fvm, "install", version, "--skip-pub-get")
-    flutter("--version")
+    command = flutter_command()
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        run(command[0], "install", version, "--skip-pub-get")
+    result = subprocess.run([*command, "--version", "--machine"],
+                            text=True, capture_output=True, check=True)
+    installed = json.loads(result.stdout)
+    if installed["frameworkVersion"] != version:
+        raise ValueError(f"Flutter SDK must match .fvmrc version {version}")
+    print(f"Flutter {version} verified ({installed['frameworkRevision']})")
 
 
 def package(architecture):

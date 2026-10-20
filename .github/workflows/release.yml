@@ -53,9 +53,13 @@ jobs:
       - name: Resolve release version
         if: github.event_name != 'pull_request'
         run: python3 tool/ci/release.py metadata
-      - name: Install FVM
-        run: brew install leoafarias/fvm/fvm
-      - name: Select the pinned Flutter SDK
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: ${{ github.ref_type != 'tag' }}
+      - name: Verify the pinned Flutter SDK
         run: python3 tool/ci/build.py setup
       - name: Install dependencies
         run: python3 tool/ci/build.py deps
@@ -88,9 +92,13 @@ jobs:
           persist-credentials: false
       - name: Resolve release version
         run: python3 tool/ci/release.py metadata
-      - name: Install FVM
-        run: brew install leoafarias/fvm/fvm
-      - name: Select the pinned Flutter SDK
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: ${{ github.ref_type != 'tag' }}
+      - name: Verify the pinned Flutter SDK
         run: python3 tool/ci/build.py setup
       - name: Install dependencies
         run: python3 tool/ci/build.py deps
@@ -122,15 +130,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install FVM
-        run: brew install leoafarias/fvm/fvm
-      - name: Select the pinned Flutter SDK
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: ${{ github.ref_type != 'tag' }}
+      - name: Verify the pinned Flutter SDK
         run: python3 tool/ci/build.py setup
       - name: Install dependencies
         run: python3 tool/ci/build.py deps
       - name: Compile Android application and instrumentation
         run: |
-          fvm flutter build apk --debug --no-pub
+          flutter build apk --debug --no-pub
           cd android
           ./gradlew :app:assembleDebugAndroidTest
       - name: Resolve release version
@@ -168,17 +180,14 @@ jobs:
         include:
           - arch: amd64
             os: windows-2022
-            fvm_arch: x64
-            fvm_sha256: 97696d118ad35bf25dc91fd28c70bb3d77b6d1fee6658fbd744e838b5f81da4a
+            flutter_channel: stable
           - arch: arm64
             os: windows-11-arm
-            fvm_arch: arm64
-            fvm_sha256: ea10b12a756d0b66476f303f47a1169c662c84b9a98a6debd7529ee564ec6869
+            flutter_channel: master
     defaults:
       run:
         shell: pwsh
     env:
-      FVM_VERSION: '4.3.2'
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -188,23 +197,20 @@ jobs:
         run: git config --global core.longpaths true
       - name: Validate formal tag Hub changelog
         run: python tool/ci/release.py validate
-      - name: Install native FVM
-        run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'fvm.zip'
-          $directory = Join-Path $env:RUNNER_TEMP 'fvm'
-          Invoke-WebRequest "https://github.com/btwld/fvm/releases/download/$env:FVM_VERSION/fvm-$env:FVM_VERSION-windows-${{ matrix.fvm_arch }}.zip" -OutFile $archive
-          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '${{ matrix.fvm_sha256 }}') { throw 'FVM checksum mismatch' }
-          Expand-Archive -LiteralPath $archive -DestinationPath $directory
-          $executables = @(Get-ChildItem -LiteralPath $directory -Filter fvm.exe -File -Recurse)
-          if ($executables.Count -ne 1) { throw 'FVM archive must contain one executable' }
-          Add-Content -LiteralPath $env:GITHUB_PATH -Value $executables[0].DirectoryName
-      - name: Select the pinned Flutter SDK
+      # ARM64 uses a source checkout at the .fvmrc tag because stable has no host archive.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: ${{ matrix.flutter_channel }}
+          flutter-version-file: .fvmrc
+          cache: ${{ github.ref_type != 'tag' }}
+      - name: Verify the pinned Flutter SDK
         run: python tool/ci/build.py setup
       - name: Install dependencies
         run: python tool/ci/build.py deps
       - name: Compile Windows application
         if: github.event_name == 'pull_request'
-        run: fvm flutter build windows --debug --no-pub
+        run: flutter build windows --debug --no-pub
       - name: Resolve release version
         if: github.event_name != 'pull_request'
         run: python tool/ci/release.py metadata

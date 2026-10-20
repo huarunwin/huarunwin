@@ -17,7 +17,13 @@ $stage = Join-Path $PWD "build/release/windows-$Architecture"
 $stem = "$($metadata.asset_stem)-windows-$Architecture"
 $nativeVersion = "$($metadata.build_name).$($metadata.build_number)"
 
-& fvm flutter build windows --release --no-pub `
+$flutterCommand = 'flutter'
+$flutterArguments = @()
+if ($env:GITHUB_ACTIONS -ne 'true') {
+  $flutterCommand = 'fvm'
+  $flutterArguments += 'flutter'
+}
+& $flutterCommand @flutterArguments build windows --release --no-pub `
   --build-name $metadata.app_version --build-number $metadata.build_number `
   "--dart-define=HUARUNWIN_VERSION=$($metadata.app_version)" `
   "--dart-define=HUARUNWIN_UPDATE_CHANNEL=$($metadata.update_channel)"
@@ -36,6 +42,10 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer
 $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Redist.14.Latest -property installationPath
 if ($LASTEXITCODE -ne 0 -or -not $visualStudio) { throw 'Visual C++ redistributable files are unavailable' }
 $runtime = Get-ChildItem -LiteralPath (Join-Path $visualStudio 'VC/Redist/MSVC') -Directory |
+  Where-Object {
+    $version = $null
+    [Version]::TryParse($_.Name, [ref]$version)
+  } |
   Sort-Object { [Version]$_.Name } -Descending |
   ForEach-Object { Get-ChildItem -Path (Join-Path $_.FullName "$target/Microsoft.VC*.CRT") -Directory -ErrorAction SilentlyContinue } |
   Select-Object -First 1

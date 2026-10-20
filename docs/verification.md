@@ -559,3 +559,14 @@ Python AST、工作流 YAML、Hub JSON 语法及两个仓库的 `git diff --chec
 发布流程不再生成或上传日志 JSON 快照；已公开正式版本改为依据来源提交和完整附件集合保留既有内容，不再依赖日志附件作为发布标记。双方 AGENTS、Hub README、客户端功能、架构、发布、更新与隐私文档已同步。前述随包日志和双份日志校验记录仅保留为历史背景。
 
 四个修改的 Dart 文件经 `fvm dart format` 格式化并通过 `fvm dart analyze`，无问题；发布脚本及回归用例通过 Python AST 解析，工作流与 pubspec YAML、Hub JSON 和两个仓库的 `git diff --check` 通过。删除本地日志文件后，`python3 tool/ci/release.py check-tag v0.1.0` 仍通过公开 Hub 校验。按项目约定未运行测试，未进行页面运行、平台构建或安装验证；现有 tag 未移动，Hub 发布指针未推进。
+
+## 2026-10-20 CI Flutter 安装与 Windows 打包修复
+
+核对 [Actions #25](https://github.com/huarunwin/huarunwin/actions/runs/39427438624) 的实际日志：旧 `v0.1.0` 指向提交 `a4b69d1`，检查、Android 签名构建及两种 macOS DMG 构建均成功；Windows 两个任务失败，最终 Release 任务跳过。
+
+- x64 已完成 Flutter 编译，随后收集 Visual C++ 运行库时，将 `v143` 工具集目录名转换为 `System.Version` 导致失败。打包脚本先筛选可解析的数字版本目录，再按版本排序并查找对应架构的运行库。
+- ARM64 在安装 FVM 时失败：FVM 4.3.2 的 ARM64 压缩包实际提供 `fvm.bat`，旧流程只查找 `fvm.exe`。按维护者要求改用 FlClash 的 CI 方案，全部构建任务通过固定提交的 Flutter Action 读取 `.fvmrc`，不再安装 FVM。Windows ARM64 使用 `master` 安装通道检出精确版本 tag，其他平台使用 stable SDK；构建前核对实际版本。本机命令与本机执行构建脚本仍使用 FVM。
+
+已核对 FlClash 工作流、Flutter Action 的版本文件读取及 tag 检出实现，以及官方 Flutter 3.47.6 Windows stable 清单仅包含 x64 的事实。双方项目约定、客户端运行与发布文档同步区分本机和 CI。Hub 的更新协议、预备日志和两个发布指针保持不变。
+
+提交前，修改的 Python 脚本、工作流 YAML、Windows 打包及工作流 PowerShell 命令、Hub JSON 和两个仓库的 `git diff --check` 均通过语法或差异检查。本机 `python3 tool/ci/build.py setup` 仍经 FVM 成功核对 Flutter 3.47.6；`python3 tool/ci/release.py check-tag v0.1.0` 通过匿名远端 Hub 校验。本地未运行测试，远端构建与既有检查将在重建 tag 后由 Actions 执行。
