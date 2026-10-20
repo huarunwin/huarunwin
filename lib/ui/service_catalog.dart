@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -214,8 +216,11 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                           child: const Text('重试'),
                         ),
                         TextButton(
-                          onPressed: () =>
-                              openLink(context, widget.document.url),
+                          onPressed: () => openLink(
+                            context,
+                            widget.document.url,
+                            inApp: Platform.isAndroid,
+                          ),
                           child: const Text('查看网页'),
                         ),
                       ],

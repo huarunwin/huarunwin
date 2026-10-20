@@ -1,6 +1,6 @@
 # 数据与结构
 
-内容获取只请求公开 HTML，不要求 JSON API、独立 JSON 文件或执行网页 JavaScript。已有 JSON-LD 可补充版本和日期。本地缓存与任务索引使用 JSON 编码，与网站接口无关。客户端自身更新按用户要求读取公开仓库 `huarunwin-hub` 的 `api/updates.json`，区分正式／测试渠道，使用各版本配置的下载地址，不参与网站目录取数，规则见 [发布与许可](releasing.md)。纠错 WebView 单独执行网页交互所需的 JavaScript，不参与内容获取与解析。
+内容获取只请求公开 HTML，不要求 JSON API、独立 JSON 文件或执行网页 JavaScript。已有 JSON-LD 可补充版本和日期。本地缓存与任务索引使用 JSON 编码，与网站接口无关。客户端自身更新按用户要求读取公开仓库 `huarunwin-hub` 的 `api/updates.json`，区分正式／测试渠道，使用各版本配置的下载地址，不参与网站目录取数，规则见 [发布与许可](releasing.md)。纠错及 Android 的机场／VPS 购买、访问网站入口使用 WebView 加载网页并执行交互所需的 JavaScript，不参与目录内容获取与解析。服务目录与详情继续使用原生 HTML 解析和页面；站内跳转及安装包下载按原有流程处理，其余购买／访问链接在 Android 的 WebView 中打开。
 
 应用内核筛选按需读取并缓存网站现有的 `/core/{slug}` 分类 HTML，以正确包含多内核应用。价格区分完整功能免费、付费和费用待核实；“免费下载”不等于完整功能免费，缺少价格信息的历史条目不猜测归类。代码状态保留许可限制说明。
 
@@ -44,7 +44,7 @@
 | `lib/ui/detail.dart`、`lib/ui/detail_components.dart` | 应用详情与获取入口、元信息、展开阅读、截图浏览 |
 | `lib/ui/site_page.dart`、`lib/ui/site_reader.dart` | 栏目导航、原生列表／筛选、跨页加载与阅读组件 |
 | `lib/ui/reading_catalog.dart` | 动态、人物、文章、内核和协议的响应式目录、分类筛选及内容卡片 |
-| `lib/ui/corrections_page.dart` | 应用内纠错 WebView、返回、刷新及失败重试 |
+| `lib/ui/web_page.dart`、`lib/ui/corrections_page.dart` | 共用应用内 WebView、返回、刷新及失败重试；纠错入口单独保留固定地址与主题同步 |
 | `lib/ui/service_catalog.dart` | 机场与 VPS 共用的目录布局、桌面菜单、窄屏浮动筛选、自定义金额确认及套餐卡片；两个栏目分别由 `airport_catalog.dart`、`vps_catalog.dart` 进入 |
 | `lib/ui/service_detail_components.dart` | VPS 与机场详情的响应式顶部、单个购买按钮、介绍及原始报价分区 |
 | `macos/Runner/AppDelegate.swift` | MethodChannel、普通权限执行、按需授权 |

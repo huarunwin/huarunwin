@@ -10,6 +10,7 @@ import '../services/mac_downloads.dart';
 import 'corrections_page.dart';
 import 'page_components.dart';
 import 'theme.dart';
+import 'web_page.dart';
 
 export 'page_bar.dart' show RefreshIconButton;
 
@@ -17,6 +18,7 @@ Future<void> openLink(
   BuildContext context,
   String url, {
   String? downloadPlatform,
+  bool inApp = false,
 }) async {
   final uri = Uri.tryParse(url);
   if (uri == null || !['https', 'http'].contains(uri.scheme)) return;
@@ -25,6 +27,15 @@ Future<void> openLink(
       await Navigator.push(
         context,
         MaterialPageRoute<void>(builder: (_) => const CorrectionsPage()),
+      );
+      return;
+    }
+    if (inApp) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => WebPage(uri: uri, title: '访问网站'),
+        ),
       );
       return;
     }

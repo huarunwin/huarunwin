@@ -85,6 +85,11 @@ class _SitePageState extends State<SitePage> {
   // Only an explicit directory change creates a new catalog state.
   Object catalogIdentity = Object();
   String get pageUrl => catalogUrl ?? widget.url;
+  bool get _usesInAppBrowser =>
+      Platform.isAndroid &&
+      const {'vps', 'jichang'}.contains(
+        Uri.parse(pageUrl).pathSegments.firstOrNull,
+      );
 
   @override
   void initState() {
@@ -383,8 +388,14 @@ class _SitePageState extends State<SitePage> {
       }
       return;
     }
-    await openLink(context, url);
+    await _visit(url);
   }
+
+  Future<void> _visit(String url) => openLink(
+    context,
+    url,
+    inApp: _usesInAppBrowser,
+  );
 
   Iterable<SiteBlock> _walk(Iterable<SiteBlock> blocks) sync* {
     for (final block in blocks) {
@@ -569,7 +580,7 @@ class _SitePageState extends State<SitePage> {
     if (service && MediaQuery.sizeOf(context).width >= 600)
       IconButton(
         tooltip: '在网站查看',
-        onPressed: () => openLink(context, pageUrl),
+        onPressed: () => _visit(pageUrl),
         icon: const Icon(Icons.open_in_new_rounded),
       ),
     if (showMenu)
@@ -581,7 +592,7 @@ class _SitePageState extends State<SitePage> {
             PopupMenuItem(value: _outline, child: const Text('阅读目录')),
           if (service && MediaQuery.sizeOf(context).width < 600)
             PopupMenuItem(
-              value: () => openLink(context, pageUrl),
+              value: () => _visit(pageUrl),
               child: const Text('在网站查看'),
             ),
           PopupMenuItem(
@@ -591,8 +602,8 @@ class _SitePageState extends State<SitePage> {
           PopupMenuItem(value: _linkSheet, child: const Text('查看 / 复制资料链接')),
           if (!service)
             PopupMenuItem(
-              value: () => openLink(context, pageUrl),
-              child: const Text('在浏览器查看'),
+              value: () => _visit(pageUrl),
+              child: Text(_usesInAppBrowser ? '在网站查看' : '在浏览器查看'),
             ),
           PopupMenuItem(
             value: () => openLink(context, '${SiteRoutes.origin}/corrections'),
@@ -752,7 +763,7 @@ class _SitePageState extends State<SitePage> {
                                     child: const Text('重试'),
                                   ),
                                   TextButton(
-                                    onPressed: () => openLink(context, pageUrl),
+                                    onPressed: () => _visit(pageUrl),
                                     child: const Text('查看网页'),
                                   ),
                                 ],
