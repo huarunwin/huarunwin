@@ -15,6 +15,7 @@ import 'app_library_navigation.dart';
 import 'app_download_button.dart';
 import 'mac_window.dart';
 import 'page_components.dart';
+import 'share_link_button.dart';
 import 'site_page.dart';
 import 'theme.dart';
 
@@ -296,10 +297,9 @@ class _DetailPageState extends State<DetailPage> {
                           loading: loading,
                           onPressed: refresh,
                         ),
-                        IconButton(
-                          tooltip: '在网站查看',
-                          onPressed: () => openLink(context, widget.app.url),
-                          icon: const Icon(Icons.open_in_new_rounded),
+                        ShareLinkButton(
+                          url: widget.app.url,
+                          title: widget.app.name,
                         ),
                       ],
                     ),

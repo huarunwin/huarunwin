@@ -109,6 +109,16 @@ class DownloadTask {
   Set<DownloadPackage> removedPackages;
   DateTime? originalModifiedAt, resignedModifiedAt;
   final Map<DownloadPackage, AndroidApkIdentity> apkIdentities;
+  final _apkDetails =
+      <
+        DownloadPackage,
+        ({
+          AndroidApkDetails details,
+          String path,
+          String? sha256,
+          DateTime modifiedAt,
+        })
+      >{};
   String? packageName(DownloadPackage package) =>
       apkIdentities[package]?.packageName ??
       (package == DownloadPackage.original
@@ -999,6 +1009,15 @@ class DownloadManager extends ChangeNotifier {
         before.changed != after.changed) {
       return false;
     }
+    _cacheApkDetails(
+      task,
+      package,
+      AndroidApkDetails(
+        info: AndroidPackageInfo.fromMap(identity.toJson()),
+        bytes: after.size,
+      ),
+      after,
+    );
     if (jsonEncode(task.apkIdentities[package]?.toJson()) ==
         jsonEncode(identity.toJson())) {
       return false;
@@ -2117,6 +2136,46 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  // Display snapshots keep the UI stable while the file is checked again.
+  // They never authorize installation or replace its independent inspection.
+  AndroidApkDetails? cachedApkDetails(
+    DownloadTask task,
+    DownloadPackage package,
+  ) {
+    final cached = task._apkDetails[package];
+    final modifiedAt = package == DownloadPackage.original
+        ? task.originalModifiedAt
+        : task.resignedModifiedAt;
+    final sha256 = package == DownloadPackage.original
+        ? task.verifiedSha256
+        : task.resignedSha256;
+    if (!tasks.contains(task) ||
+        !task.hasPackage(package) ||
+        cached == null ||
+        cached.path != task.packagePath(package) ||
+        cached.sha256 != sha256 ||
+        modifiedAt != null && modifiedAt.toUtc() != cached.modifiedAt) {
+      return null;
+    }
+    return cached.details;
+  }
+
+  void _cacheApkDetails(
+    DownloadTask task,
+    DownloadPackage package,
+    AndroidApkDetails details,
+    FileStat stat,
+  ) {
+    task._apkDetails[package] = (
+      details: details,
+      path: task.packagePath(package),
+      sha256: package == DownloadPackage.original
+          ? task.verifiedSha256
+          : task.resignedSha256,
+      modifiedAt: stat.modified.toUtc(),
+    );
+  }
+
   // Display reads never authorize installation or change the task result.
   Future<AndroidApkDetails> readApkDetails(
     DownloadTask task,
@@ -2149,7 +2208,13 @@ class DownloadManager extends ChangeNotifier {
         before.changed != after.changed) {
       throw StateError('安装包已变化，请重新读取。');
     }
-    return AndroidApkDetails(info: info, bytes: after.size, error: error);
+    final details = AndroidApkDetails(
+      info: info,
+      bytes: after.size,
+      error: error,
+    );
+    if (error == null) _cacheApkDetails(task, package, details, after);
+    return details;
   }
 
   Future<void> shareApk(DownloadTask task, DownloadPackage package) async {

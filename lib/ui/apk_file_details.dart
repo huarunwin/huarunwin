@@ -57,25 +57,37 @@ class _ApkFileDetailsState extends State<ApkFileDetails> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<AndroidApkDetails>(
+    key: ValueKey((
+      widget.manager,
+      widget.task,
+      widget.package,
+      widget.fingerprint,
+    )),
     future: _details,
+    initialData: widget.manager.cachedApkDetails(widget.task, widget.package),
     builder: (context, snapshot) {
       final colors = Theme.of(context).colorScheme;
       final style = Theme.of(context).textTheme.bodySmall
           ?.copyWith(color: colors.onSurfaceVariant);
-      final details = snapshot.connectionState == ConnectionState.done
-          ? snapshot.data
-          : null;
+      final cached = widget.manager.cachedApkDetails(
+        widget.task,
+        widget.package,
+      );
+      final failed = snapshot.hasError || snapshot.data?.error != null;
+      final details = failed
+          ? cached ?? snapshot.data
+          : snapshot.data ?? cached;
       final info = details?.info;
       final certificates = info?.certificateSha256 ?? const <String>[];
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (details == null && !snapshot.hasError)
+          if (details == null && !failed)
             Text(
               widget.readable ? '正在读取包名、版本、大小与签名…' : '包名与签名待文件空闲后读取',
               style: style,
             ),
-          if (snapshot.hasError || details?.error != null)
+          if (failed)
             TextButton.icon(
               onPressed: widget.readable ? () => setState(_load) : null,
               icon: const Icon(Icons.refresh_rounded, size: 16),

@@ -203,7 +203,7 @@ void main() {
         );
         await scrollDown(tester, size);
         expect(find.byTooltip('刷新详情').hitTestable(), findsNothing);
-        expect(find.byTooltip('在网站查看').hitTestable(), findsNothing);
+        expect(find.byTooltip('分享链接').hitTestable(), findsNothing);
         expect(
           find.byTooltip(RegExp(r'^(返回|Back)$')).hitTestable(),
           findsNothing,

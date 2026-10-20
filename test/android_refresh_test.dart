@@ -239,7 +239,7 @@ void main() {
       await tester.pumpAndSettle();
       expectScrollingTop(tester);
       expect(find.byTooltip('刷新详情'), findsNothing);
-      expect(find.byTooltip('在网站查看'), findsOneWidget);
+      expect(find.byTooltip('分享链接'), findsOneWidget);
       repository.pending = Completer<void>();
       await pull(tester);
       expect(repository.refreshes, 1);

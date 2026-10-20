@@ -348,7 +348,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
               revision: widget.manager.apkMetadataRevision,
               readable: !task.busy && !task.deleting,
               fingerprint:
-                  '${task.packagePath(selected)}:${task.verifiedSha256}:${task.resignedSha256}',
+                  '${task.packagePath(selected)}:${task.verifiedSha256}:${task.resignedSha256}:${task.packageSortTime(selected).microsecondsSinceEpoch}',
             ),
           if (!isApk || selected == DownloadPackage.original && !available)
             Text(

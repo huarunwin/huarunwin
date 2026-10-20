@@ -21,6 +21,7 @@ import 'page_components.dart';
 import 'catalog_controls.dart';
 import 'reading_catalog.dart';
 import 'service_detail_components.dart';
+import 'share_link_button.dart';
 import 'theme.dart';
 import 'site_reader.dart';
 import 'vps_catalog.dart';
@@ -577,12 +578,8 @@ class _SitePageState extends State<SitePage> {
         icon: const Icon(Icons.toc_rounded),
       ),
     RefreshIconButton(loading: loading, onPressed: () => _load(refresh: true)),
-    if (service && MediaQuery.sizeOf(context).width >= 600)
-      IconButton(
-        tooltip: '在网站查看',
-        onPressed: () => _visit(pageUrl),
-        icon: const Icon(Icons.open_in_new_rounded),
-      ),
+    if (service || doc?.directory == false)
+      ShareLinkButton(url: pageUrl, title: doc?.title ?? '华润赢'),
     if (showMenu)
       PopupMenuButton<VoidCallback>(
         tooltip: '页面操作',
@@ -597,7 +594,7 @@ class _SitePageState extends State<SitePage> {
             ),
           PopupMenuItem(
             value: () => _copyLink(pageUrl),
-            child: const Text('复制链接 / 分享'),
+            child: const Text('复制链接'),
           ),
           PopupMenuItem(value: _linkSheet, child: const Text('查看 / 复制资料链接')),
           if (!service)
