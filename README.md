@@ -37,7 +37,7 @@
 
 ## 下载
 
-正式版见 [GitHub Releases](https://github.com/huarunwin/huarunwin/releases/latest)，测试版见 [预发布页面](https://github.com/huarunwin/huarunwin/releases/tag/pre)。
+正式版见 [GitHub Releases](https://github.com/huarunwin/huarunwin/releases/latest)。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
