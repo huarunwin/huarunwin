@@ -11,14 +11,51 @@ class AppDownloadStatus {
     this.versionCode,
     this.installedPath,
     this.installedPackage,
+    this.uninstallId,
+    this.bundleIdentifier,
     this.certificates = const [],
   });
 
   final String? version, installedPath, installedPackage;
+  final String? uninstallId, bundleIdentifier;
   final int? versionCode;
   final List<String> certificates;
   bool get canOpenApplication =>
       installedPath != null || installedPackage != null;
+  bool get isInstalled => canOpenApplication || uninstallId != null;
+  String? get identity => installedPackage ?? installedPath ?? uninstallId;
+  String? get comparableVersion {
+    final value = version;
+    // Distribution epochs/revisions are not upstream prerelease identifiers.
+    // Keep the real version for display without claiming a false update.
+    if (value != null &&
+        uninstallId != null &&
+        ['deb:', 'rpm:', 'arch:'].any(uninstallId!.startsWith) &&
+        RegExp('[-:]').hasMatch(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  factory AppDownloadStatus.fromApplication(InstalledApplication app) =>
+      AppDownloadStatus(
+        version: app.version.isEmpty ? null : app.version,
+        installedPath: app.path.isEmpty ? null : app.path,
+        installedPackage: app.packageName,
+        bundleIdentifier: app.bundleIdentifier.isEmpty
+            ? null
+            : app.bundleIdentifier,
+        uninstallId: app.uninstallId,
+      );
+
+  bool canUninstallOn(String? platform) => switch (platform) {
+    'Android' => installedPackage?.isNotEmpty == true,
+    'macOS' => installedPath?.isNotEmpty == true,
+    'Windows' => uninstallId?.isNotEmpty == true,
+    'Linux' =>
+      installedPath?.isNotEmpty == true || uninstallId?.isNotEmpty == true,
+    _ => false,
+  };
 }
 
 String appDownloadLabel(CatalogApp app) {
@@ -58,14 +95,15 @@ Future<AppDownloadStatus?> readAppDownloadStatus(
   Map<String, AppDownloadStatus?>? androidPackages,
 }) async {
   if (!app.isClient || app.withdrawn) return null;
-  if (platform == 'macOS') {
+  if (['macOS', 'Windows', 'Linux'].contains(platform)) {
     try {
-      final installed = await manager.installedApps.find(app, refresh: refresh);
+      final installed = await manager.installedApps.find(
+        app,
+        platform: platform,
+        refresh: refresh,
+      );
       if (installed != null) {
-        return AppDownloadStatus(
-          version: installed.version,
-          installedPath: installed.path,
-        );
+        return AppDownloadStatus.fromApplication(installed);
       }
     } catch (_) {
       // A failed system query must not hide an already downloaded package.

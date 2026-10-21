@@ -16,6 +16,10 @@ class AppLibraryOverview extends StatelessWidget {
     this.warning,
     this.onCheckUpdates,
     this.onViewDetails,
+    this.onUninstallInstallation,
+    this.onUninstallHelp,
+    this.uninstalling = false,
+    this.uninstallStatus,
   });
 
   final LibraryItem item;
@@ -23,7 +27,28 @@ class AppLibraryOverview extends StatelessWidget {
   final bool checking;
   final Widget? action;
   final String? warning;
-  final VoidCallback? onCheckUpdates, onViewDetails;
+  final VoidCallback? onCheckUpdates, onViewDetails, onUninstallHelp;
+  final ValueChanged<AppDownloadStatus>? onUninstallInstallation;
+  final bool uninstalling;
+  final String? uninstallStatus;
+
+  bool _canUninstall(AppDownloadStatus installation) =>
+      installation.canUninstallOn(item.platform) &&
+      onUninstallInstallation != null;
+
+  Widget _uninstallButton(
+    BuildContext context,
+    AppDownloadStatus installation, {
+    String label = '卸载应用',
+  }) => TextButton(
+    style: TextButton.styleFrom(
+      foregroundColor: Theme.of(context).colorScheme.error,
+    ),
+    onPressed: uninstalling || checking || item.activeTasks.isNotEmpty
+        ? null
+        : () => onUninstallInstallation!(installation),
+    child: Text(label),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -66,9 +91,7 @@ class AppLibraryOverview extends StatelessWidget {
               if (installed.length == 1) ...[
                 const SizedBox(height: 4),
                 SelectableText(
-                  installed.single.installedPackage ??
-                      installed.single.installedPath ??
-                      '',
+                  installed.single.identity ?? '',
                   style: theme.textTheme.bodySmall,
                 ),
               ],
@@ -92,41 +115,58 @@ class AppLibraryOverview extends StatelessWidget {
                   ),
                 ),
               ],
+              if (uninstallStatus case final status?) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(status)),
+                  ],
+                ),
+              ],
               if (action != null) ...[const SizedBox(height: 16), action!],
               if (installed.length > 1)
                 for (final installation in installed) ...[
                   const SizedBox(height: 16),
                   const Divider(height: 1),
                   const SizedBox(height: 12),
-                  Row(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SelectableText(
-                              installation.installedPackage ??
-                                  installation.installedPath ??
-                                  '',
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '本机版本：${installation.version ?? '未读取到版本'}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
+                      SelectableText(installation.identity ?? ''),
+                      const SizedBox(height: 4),
+                      Text(
+                        '本机版本：${installation.version ?? '未读取到版本'}',
+                        style: theme.textTheme.bodySmall,
                       ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () => onOpenInstallation(installation),
-                        child: const Text('打开'),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: [
+                          if (installation.canOpenApplication)
+                            TextButton(
+                              onPressed: () => onOpenInstallation(installation),
+                              child: const Text('打开'),
+                            ),
+                          if (_canUninstall(installation))
+                            _uninstallButton(
+                              context,
+                              installation,
+                              label: '卸载',
+                            ),
+                        ],
                       ),
                     ],
                   ),
                 ],
-              if (onCheckUpdates != null || onViewDetails != null) ...[
+              if (onCheckUpdates != null ||
+                  onViewDetails != null ||
+                  onUninstallHelp != null ||
+                  installed.length == 1 && _canUninstall(installed.single)) ...[
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 12,
@@ -141,6 +181,14 @@ class AppLibraryOverview extends StatelessWidget {
                       TextButton(
                         onPressed: onViewDetails,
                         child: const Text('查看应用介绍'),
+                      ),
+                    if (installed.length == 1 &&
+                        _canUninstall(installed.single))
+                      _uninstallButton(context, installed.single),
+                    if (onUninstallHelp != null)
+                      TextButton(
+                        onPressed: onUninstallHelp,
+                        child: const Text('卸载指引'),
                       ),
                   ],
                 ),

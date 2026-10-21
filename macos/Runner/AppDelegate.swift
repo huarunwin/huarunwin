@@ -50,6 +50,71 @@ final class InstallerChannel {
       }
       return
     }
+    if call.method == "uninstallApplication" {
+      guard let path = args["path"] as? String,
+            let identifier = args["bundleIdentifier"] as? String,
+            let version = args["version"] as? String, !working else {
+        result(FlutterError(code: "busy", message: "卸载参数无效或另一个安装操作正在进行。", details: nil)); return
+      }
+      working = true
+      let authorizationTarget = args["authorizationTarget"] as? [String: String]
+      queue.async {
+        do {
+          let target = try self.uninstallTarget(path: path, identifier: identifier, version: version)
+          let snapshot = try self.uninstallSnapshot(target, identifier: identifier, version: version)
+          if let authorizationTarget {
+            guard authorizationTarget == snapshot else {
+              throw self.failure("changed", "卸载目标已变化，请刷新后重新选择。")
+            }
+            // Resolve/create the original user's Trash before elevation. The
+            // helper independently constrains and opens this directory.
+            let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask,
+                                                    appropriateFor: target, create: true)
+            let data = try JSONSerialization.data(withJSONObject: snapshot.merging(["trash": trash.path]) { _, new in new })
+            _ = try self.authorized(["trash", String(decoding: data, as: UTF8.self), String(getuid()), String(getpid())],
+                                    progress: { _ in }, operation: "卸载")
+            DispatchQueue.main.async { self.working = false; result(nil) }
+            return
+          }
+          DispatchQueue.main.async {
+            let running = NSWorkspace.shared.runningApplications.contains {
+              !$0.isTerminated && $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == target
+            }
+            guard !running else {
+              self.working = false
+              result(FlutterError(code: "running", message: "请先保存内容并退出所选应用，再重试卸载。", details: nil)); return
+            }
+            // Try the ordinary-user Trash API first. Permission failures return
+            // a bound snapshot for a separate, explicitly confirmed retry.
+            NSWorkspace.shared.recycle([target]) { _, error in
+              DispatchQueue.main.async {
+                self.working = false
+                if let error {
+                  if self.requiresTrashAuthorization(error as NSError) {
+                    result(FlutterError(code: "permission_required", message: "移到废纸篓需要系统管理员授权。", details: snapshot))
+                  } else {
+                    NSWorkspace.shared.activateFileViewerSelecting([target])
+                    result(FlutterError(code: "trash", message: "未能移到废纸篓。已在 Finder 中定位应用，请重试或手动处理。\n" + error.localizedDescription, details: nil))
+                  }
+                } else {
+                  result(nil)
+                }
+              }
+            }
+          }
+        } catch let error as NSError {
+          DispatchQueue.main.async {
+            self.working = false
+            let code = error.userInfo["installerCode"] as? String ?? "uninstall"
+            if authorizationTarget != nil && !["cancelled", "changed", "running", "caller"].contains(code) {
+              NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            }
+            result(FlutterError(code: code, message: error.localizedDescription, details: error.userInfo["installerDetails"]))
+          }
+        }
+      }
+      return
+    }
     if call.method == "architecture" {
       var arm64: Int32 = 0
       var size = MemoryLayout<Int32>.size
@@ -143,6 +208,48 @@ final class InstallerChannel {
   }
 
   private var helper: String { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/HuarunInstaller").path }
+  private func uninstallTarget(path: String, identifier: String, version: String) throws -> URL {
+    let target = URL(fileURLWithPath: path).standardizedFileURL
+    let roots = [
+      URL(fileURLWithPath: "/Applications", isDirectory: true),
+      FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+    ].map { $0.standardizedFileURL.path }
+    let values = try? target.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+    guard geteuid() != 0,
+          roots.contains(target.deletingLastPathComponent().path),
+          target.pathExtension.lowercased() == "app",
+          target == target.resolvingSymlinksInPath().standardizedFileURL,
+          values?.isDirectory == true, values?.isSymbolicLink != true,
+          !identifier.isEmpty, !identifier.lowercased().hasPrefix("com.apple."),
+          identifier != Bundle.main.bundleIdentifier,
+          target.appendingPathComponent("Contents/Info.plist").resolvingSymlinksInPath().path.hasPrefix(target.path + "/"),
+          let info = NSDictionary(contentsOf: target.appendingPathComponent("Contents/Info.plist")),
+          info["CFBundleIdentifier"] as? String == identifier,
+          info["CFBundleShortVersionString"] as? String == version else {
+      throw failure("changed", "应用路径或身份已变化，或属于受保护的应用，请刷新后重新选择。")
+    }
+    return target
+  }
+  private func uninstallSnapshot(_ target: URL, identifier: String, version: String) throws -> [String: String] {
+    var attributes = stat()
+    guard lstat(target.path, &attributes) == 0, attributes.st_mode & S_IFMT == S_IFDIR,
+          attributes.st_flags & UInt32(SF_RESTRICTED) == 0 else {
+      throw failure("changed", "应用路径已变化或属于受保护的应用，请刷新后重新选择。")
+    }
+    return ["path": target.path, "bundleIdentifier": identifier, "version": version,
+            "device": String(attributes.st_dev), "inode": String(attributes.st_ino)]
+  }
+  private func requiresTrashAuthorization(_ error: NSError, depth: Int = 0) -> Bool {
+    guard depth < 8 else { return false }
+    if error.domain == NSCocoaErrorDomain && [NSFileWriteNoPermissionError, NSFileReadNoPermissionError].contains(error.code) { return true }
+    if error.domain == NSPOSIXErrorDomain && [Int(EACCES), Int(EPERM)].contains(error.code) { return true }
+    // File Manager / AFP permission errors may be surfaced by the Trash API.
+    if error.domain == NSOSStatusErrorDomain && [-54, -5000].contains(error.code) { return true }
+    if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+      return requiresTrashAuthorization(underlying, depth: depth + 1)
+    }
+    return false
+  }
   private func scheduleSelfUpdate(path: String, digest: String, version: String, channel: String) throws -> String {
     let package = URL(fileURLWithPath: path).standardizedFileURL
     let values = try package.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
@@ -219,12 +326,12 @@ final class InstallerChannel {
       return (try? JSONSerialization.jsonObject(with: data)) as? [String: String]
     }
   }
-  private func response(_ result: InstallerProcessResult, authorized: Bool = false) throws -> [String: String] {
+  private func response(_ result: InstallerProcessResult, authorized: Bool = false, operation: String = "安装") throws -> [String: String] {
     let messages = jsonLines(result.stdout) + jsonLines(result.stderr)
     if let error = messages.last(where: { $0["code"] != nil }) { throw failure(error) }
     if result.status == 0, let value = messages.last(where: { $0["path"] != nil && $0["event"] == nil }) { return value }
     if authorized && result.stderr.contains("(-128)") { throw failure("cancelled", "你已取消管理员授权。") }
-    let message = authorized ? "管理员授权未完成，请重试或手动安装。" : "安装助手未返回有效结果，请重试或手动安装。"
+    let message = authorized ? "管理员授权未完成，请重试或手动\(operation)。" : "助手未返回有效结果，请重试或手动\(operation)。"
     throw failure(authorized ? "authorization" : "installation", message + (result.stderr.isEmpty ? "" : "\n" + String(result.stderr.suffix(1500))))
   }
   private func invoke(_ args: [String], progress: @escaping ([String: String]) -> Void) throws -> [String: String] {
@@ -233,7 +340,7 @@ final class InstallerChannel {
     })
     return try response(result)
   }
-  private func authorized(_ args: [String], progress: @escaping ([String: String]) -> Void) throws -> [String: String] {
+  private func authorized(_ args: [String], progress: @escaping ([String: String]) -> Void, operation: String = "安装") throws -> [String: String] {
     func shellQuote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
     let command = ([helper] + args).map(shellQuote).joined(separator: " ")
     let literal = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -242,6 +349,6 @@ final class InstallerChannel {
     let result = try InstallerProcess.run("/usr/bin/osascript", ["-e", "do shell script \"\(literal)\" with administrator privileges"], onLine: { line in
       if let event = self.jsonLines(line).first, event["event"] == "progress" { progress(event) }
     })
-    return try response(result, authorized: true)
+    return try response(result, authorized: true, operation: operation)
   }
 }

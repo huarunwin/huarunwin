@@ -314,6 +314,92 @@ func commit(_ source: URL, quarantine: Bool, signerApproval: [String: String]? =
     return destination
 }
 
+func trashApplication(_ approval: [String: String], user: uid_t, clientPID: pid_t) throws -> URL {
+    guard geteuid() == 0, user > 0, clientPID > 1,
+          Set(approval.keys) == Set(["path", "bundleIdentifier", "version", "device", "inode", "trash"]),
+          let account = getpwuid(user) else {
+        try fail("arguments", "卸载授权信息无效，请重新选择应用。")
+    }
+    let home = URL(fileURLWithPath: String(cString: account.pointee.pw_dir), isDirectory: true).standardizedFileURL
+    var process = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.size
+    var query: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, clientPID]
+    guard sysctl(&query, UInt32(query.count), &process, &size, nil, 0) == 0,
+          size == MemoryLayout<kinfo_proc>.size,
+          process.kp_eproc.e_ucred.cr_uid == user, process.kp_eproc.e_pcred.p_ruid == user,
+          let client = NSRunningApplication(processIdentifier: clientPID), !client.isTerminated,
+          client.bundleIdentifier == "win.huarun.huarunwin" else {
+        try fail("caller", "无法确认发起卸载的客户端与用户，请重新打开华润赢后重试。")
+    }
+    let app = URL(fileURLWithPath: approval["path"]!).standardizedFileURL
+    let identifier = approval["bundleIdentifier"]!
+    let parent = app.deletingLastPathComponent()
+    let roots = [URL(fileURLWithPath: "/Applications", isDirectory: true), home.appendingPathComponent("Applications", isDirectory: true)]
+    let infoURL = app.appendingPathComponent("Contents/Info.plist")
+    let infoValues = try infoURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+    guard roots.contains(parent), app.pathExtension.lowercased() == "app",
+          app == app.resolvingSymlinksInPath().standardizedFileURL,
+          !identifier.isEmpty, !identifier.lowercased().hasPrefix("com.apple."), identifier != "win.huarun.huarunwin",
+          infoURL.resolvingSymlinksInPath().path.hasPrefix(app.path + "/"),
+          infoValues.isRegularFile == true, let infoSize = infoValues.fileSize, infoSize <= 4 * 1024 * 1024,
+          let info = NSDictionary(contentsOf: infoURL), info["CFBundleIdentifier"] as? String == identifier,
+          info["CFBundleShortVersionString"] as? String == approval["version"] else {
+        try fail("changed", "应用路径或身份已变化，或属于受保护的应用，请刷新后重新选择。")
+    }
+    let trash = URL(fileURLWithPath: approval["trash"]!, isDirectory: true).standardizedFileURL
+    var trashRoots = [home.appendingPathComponent(".Trash", isDirectory: true)]
+    if let volume = try app.resourceValues(forKeys: [.volumeURLKey]).volume {
+        trashRoots.append(volume.appendingPathComponent(".Trashes", isDirectory: true).appendingPathComponent(String(user), isDirectory: true))
+    }
+    guard trashRoots.contains(trash), trash == trash.resolvingSymlinksInPath().standardizedFileURL else {
+        try fail("trash", "无法安全确认当前用户的废纸篓，请在 Finder 中手动处理。")
+    }
+    // Never create a root-owned Trash, copy/delete across volumes, follow a
+    // replacement symlink, or overwrite an existing item in the user's Trash.
+    let sourceFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+    guard sourceFD >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+    defer { close(sourceFD) }
+    let trashFD = open(trash.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+    guard trashFD >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+    defer { close(trashFD) }
+    var sourceAttributes = stat(), trashAttributes = stat()
+    guard fstat(sourceFD, &sourceAttributes) == 0, fstat(trashFD, &trashAttributes) == 0,
+          trashAttributes.st_uid == user, trashAttributes.st_mode & 0o077 == 0,
+          trashAttributes.st_mode & S_IFMT == S_IFDIR else {
+        try fail("trash", "废纸篓的归属或权限无效，请在 Finder 中手动处理。")
+    }
+    guard sourceAttributes.st_dev == trashAttributes.st_dev else {
+        try fail("trash", "应用与废纸篓不在同一磁盘卷，请在 Finder 中手动处理。")
+    }
+    func recheck() throws {
+        var current = stat()
+        guard fstatat(sourceFD, app.lastPathComponent, &current, AT_SYMLINK_NOFOLLOW) == 0,
+              current.st_mode & S_IFMT == S_IFDIR, current.st_flags & UInt32(SF_RESTRICTED) == 0,
+              String(current.st_dev) == approval["device"], String(current.st_ino) == approval["inode"],
+              let currentInfo = NSDictionary(contentsOf: infoURL),
+              currentInfo["CFBundleIdentifier"] as? String == identifier,
+              currentInfo["CFBundleShortVersionString"] as? String == approval["version"] else {
+            try fail("changed", "授权期间卸载目标已变化，请刷新后重新选择。")
+        }
+        guard !NSWorkspace.shared.runningApplications.contains(where: {
+            !$0.isTerminated && $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == app
+        }) else {
+            try fail("running", "请先保存内容并退出所选应用，再重试卸载。")
+        }
+    }
+    try recheck()
+    var name = app.lastPathComponent
+    if renameatx_np(sourceFD, app.lastPathComponent, trashFD, name, UInt32(RENAME_EXCL)) != 0 {
+        guard errno == EEXIST else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        name = app.deletingPathExtension().lastPathComponent + " (" + UUID().uuidString + ").app"
+        try recheck()
+        guard renameatx_np(sourceFD, app.lastPathComponent, trashFD, name, UInt32(RENAME_EXCL)) == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+    return trash.appendingPathComponent(name)
+}
+
 func selfUpdate(_ source: URL, destination: URL, parentPID: pid_t, version: String, job: URL, user: uid_t, channel: String) throws {
     let identity = "win.huarun.huarunwin"
     guard source == source.resolvingSymlinksInPath().standardizedFileURL,
@@ -405,6 +491,11 @@ do {
             try? message.write(to: job.appendingPathComponent("error.txt"), atomically: true, encoding: .utf8)
             throw error
         }
+    } else if arguments.count == 4 && arguments[0] == "trash",
+              let user = UInt32(arguments[2]), let clientPID = Int32(arguments[3]),
+              let data = arguments[1].data(using: .utf8), let approval = try JSONSerialization.jsonObject(with: data) as? [String: String] {
+        let result = try trashApplication(approval, user: user, clientPID: clientPID)
+        output(["path": result.path])
     } else if arguments.count == 2 && arguments[0] == "prepare" {
         let result = try prepare(URL(fileURLWithPath: arguments[1]).resolvingSymlinksInPath().standardizedFileURL)
         progress("signature")
@@ -426,5 +517,7 @@ do {
 } catch let error as InstallerFailure {
     output(error.details.merging(["code": error.code, "message": error.message]) { _, value in value }); exit(1)
 } catch {
-    output(["code": "installation", "message": "安装未完成：" + error.localizedDescription]); exit(1)
+    let uninstalling = arguments.first == "trash"
+    output(["code": uninstalling ? "trash" : "installation",
+            "message": (uninstalling ? "未能移到废纸篓，请重试或在 Finder 中手动处理：" : "安装未完成：") + error.localizedDescription]); exit(1)
 }

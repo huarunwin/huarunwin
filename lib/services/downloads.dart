@@ -408,6 +408,7 @@ class NativeInstaller {
   }
 
   Future<List<InstalledApplication>> installedApplications() async {
+    if (Platform.isLinux) return linux.installedApplications();
     final result = await channel.invokeListMethod<Object?>(
       'installedApplications',
     );
@@ -621,6 +622,38 @@ class NativeInstaller {
 
   Future<void> openAndroidApp(String packageName) async => channel
       .invokeMethod<void>('openAndroidApp', {'packageName': packageName});
+
+  /// Returns when the system UI closes, without implying uninstallation.
+  Future<void> uninstallAndroidApp(String packageName) async => channel
+      .invokeMethod<void>('uninstallAndroidApp', {'packageName': packageName});
+
+  Future<void> uninstallApplication(
+    InstalledApplication application, {
+    Map<String, String>? authorizationTarget,
+  }) async {
+    if (Platform.isLinux) {
+      if (application.path.isNotEmpty) {
+        await linux.uninstallAppImage(application.path);
+      } else {
+        await linux.uninstallPackage(
+          application.uninstallId!,
+          application.version,
+        );
+      }
+      return;
+    }
+    await channel.invokeMethod<void>('uninstallApplication', {
+      'path': application.path,
+      'bundleIdentifier': application.bundleIdentifier,
+      'uninstallId': application.uninstallId,
+      'version': application.version,
+      'name': application.names.firstOrNull ?? '',
+      'authorizationTarget': ?authorizationTarget,
+    });
+  }
+
+  Future<void> openApplicationSettings() =>
+      channel.invokeMethod<void>('openApplicationSettings');
 }
 
 class DownloadManager extends ChangeNotifier {

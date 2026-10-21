@@ -166,19 +166,20 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
         refresh: refresh,
       );
       if (!mounted || request != _statusRequest || local == null) return;
-      if (local.version == null) return;
+      final installedVersion = local.comparableVersion;
+      if (installedVersion == null) return;
       final detail = widget.details ?? await widget.loadDetails();
       if (!mounted || request != _statusRequest) return;
       final version = detail.versionForPlatform(platform);
       if (detail.app.key != widget.app.key ||
           detail.app.withdrawn ||
           version == null ||
-          !hasNewerVersion(local.version!, version)) {
+          !hasNewerVersion(installedVersion, version)) {
         return;
       }
       available = true;
       description =
-          '${local.canOpenApplication ? '本机' : '已下载'} ${local.version}，可更新至 $version';
+          '${local.isInstalled ? '本机' : '已下载'} ${local.version}，可更新至 $version';
     } catch (_) {
       // Unavailable local metadata must not prevent the normal download flow.
     } finally {
@@ -203,6 +204,8 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
         ? appDownloadLabel(widget.app)
         : updateAvailable
         ? '更新'
+        : localDownload!.isInstalled && !localDownload!.canOpenApplication
+        ? '已安装'
         : '打开';
     final child = checkingStatus || loading && !_waitingForChoice
         ? SizedBox.square(
@@ -221,7 +224,7 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
     final button = ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 200),
       child: FilledButton(
-        onPressed: busy
+        onPressed: busy || label == '已安装'
             ? null
             : localDownload != null && !updateAvailable
             ? _open

@@ -7,12 +7,13 @@ class InstalledApplication {
     this.path = '',
     this.bundleIdentifier = '',
     this.packageName,
+    this.uninstallId,
     required this.version,
     required this.names,
   });
 
   final String path, bundleIdentifier, version;
-  final String? packageName;
+  final String? packageName, uninstallId;
   final List<String> names;
 
   factory InstalledApplication.fromMap(Map<Object?, Object?> map) =>
@@ -20,6 +21,7 @@ class InstalledApplication {
         path: map['path'] as String? ?? '',
         bundleIdentifier: map['bundleIdentifier'] as String? ?? '',
         packageName: map['packageName'] as String?,
+        uninstallId: map['uninstallId'] as String?,
         version: map['version'] as String? ?? '',
         names: List<String>.from(map['names'] as List),
       );
@@ -61,30 +63,38 @@ class InstalledApplications extends ChangeNotifier {
     String platform = 'macOS',
     bool refresh = false,
   }) async {
+    final matches = await findAll(app, platform: platform, refresh: refresh);
+    return matches.length == 1 ? matches.single : null;
+  }
+
+  Future<List<InstalledApplication>> findAll(
+    CatalogApp app, {
+    String platform = 'macOS',
+    bool refresh = false,
+  }) async {
     if (!app.isClient ||
         app.withdrawn ||
-        !['macOS', 'Android'].contains(platform) ||
+        !['macOS', 'Android', 'Windows', 'Linux'].contains(platform) ||
         !app.platforms.contains(platform)) {
-      return null;
+      return const [];
     }
     final names = {
       if (app.name.trim().isNotEmpty) app.name.trim().toLowerCase(),
       if (app.alias.trim().isNotEmpty) app.alias.trim().toLowerCase(),
     };
-    final matches = (await read(refresh: refresh))
+    return (await read(refresh: refresh))
         .where(
           (candidate) =>
               (platform == 'Android'
                   ? candidate.packageName?.isNotEmpty == true
-                  : candidate.bundleIdentifier.isNotEmpty &&
-                        candidate.version.isNotEmpty) &&
+                  : platform == 'macOS'
+                  ? candidate.bundleIdentifier.isNotEmpty
+                  : candidate.uninstallId?.isNotEmpty == true) &&
               candidate.names.any(
                 (name) => names.contains(name.trim().toLowerCase()),
               ),
         )
         .toList();
-    // Multiple copies or different applications with the same name are ambiguous.
-    return matches.length == 1 ? matches.single : null;
   }
 }
 

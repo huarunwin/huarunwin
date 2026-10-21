@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../data/models.dart';
+import 'installed_apps.dart';
 import 'package_integrity.dart';
 
 typedef LinuxProcessRunner = Future<ProcessResult> Function(
@@ -132,6 +133,137 @@ class LinuxInstaller {
     return LinuxSystemInfo.parse(release, machine);
   }
 
+  /// Read the distribution database; launching an installer never supplies this
+  /// identity or proves that the package is installed.
+  Future<List<InstalledApplication>> installedApplications() async {
+    final kind = (await systemInfo()).packageKind;
+    final (String command, List<String> arguments) = switch (kind) {
+      'deb' => (
+        'dpkg-query',
+        [
+          '-W',
+          r'-f=${Package}\t${Architecture}\t${Version}\t${db:Status-Status}\n',
+        ],
+      ),
+      'rpm' => (
+        'rpm',
+        [
+          '-qa',
+          '--qf',
+          r'%{NAME}\t%{ARCH}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\n',
+        ],
+      ),
+      'pkg.tar.zst' => ('pacman', ['-Q']),
+      _ => ('', <String>[]),
+    };
+    if (command.isEmpty) return const [];
+    final result = await run(command, arguments);
+    if (result.exitCode != 0) {
+      throw PlatformException(
+        code: 'installed_apps',
+        message: '无法读取系统软件包数据库，请刷新后重试。',
+      );
+    }
+    final applications = <InstalledApplication>[];
+    for (final line in result.stdout.toString().split('\n')) {
+      final fields = line.trim().split(kind == 'pkg.tar.zst' ? ' ' : '\t');
+      if (kind == 'pkg.tar.zst') {
+        if (fields.length != 2 || !_packageToken(fields[0])) continue;
+        applications.add(
+          InstalledApplication(
+            uninstallId: 'arch:${fields[0]}',
+            version: fields[1],
+            names: [fields[0]],
+          ),
+        );
+      } else {
+        if (fields.length < 3 ||
+            !_packageToken(fields[0]) ||
+            !_packageToken(fields[1]) ||
+            kind == 'deb' && (fields.length != 4 || fields[3] != 'installed')) {
+          continue;
+        }
+        applications.add(
+          InstalledApplication(
+            uninstallId:
+                '${kind == 'deb' ? 'deb' : 'rpm'}:${fields[0]}:${fields[1]}'
+                '${kind == 'rpm' ? ':${fields[2]}' : ''}',
+            version: fields[2],
+            names: [fields[0]],
+          ),
+        );
+      }
+    }
+    return applications;
+  }
+
+  static bool _packageToken(String value) =>
+      RegExp(r'^[A-Za-z0-9][A-Za-z0-9+_.-]*$').hasMatch(value);
+
+  Future<String?> _executable(String name) async {
+    for (final root in ['/usr/bin', '/bin', '/usr/local/bin']) {
+      final path = p.join(root, name);
+      if (await File(path).exists()) return path;
+    }
+    return null;
+  }
+
+  Future<void> uninstallPackage(String identity, String? version) async {
+    final matches = (await installedApplications()).where(
+      (app) => app.uninstallId == identity,
+    );
+    if (matches.length != 1 || matches.single.version != version) {
+      throw PlatformException(code: 'changed', message: '本机软件包已变化，请刷新后重新选择卸载。');
+    }
+    final parts = identity.split(':');
+    String? executable;
+    late List<String> arguments;
+    switch (parts.first) {
+      case 'deb':
+        executable = await _executable('apt-get');
+        arguments = ['remove', '--', '${parts[1]}:${parts[2]}'];
+      case 'rpm':
+        final dnf = await _executable('dnf');
+        executable = dnf ?? await _executable('zypper');
+        arguments = [
+          'remove',
+          '--',
+          dnf != null
+              ? '${parts[1]}-$version.${parts[2]}'
+              : '${parts[1]}.${parts[2]}=$version',
+        ];
+      case 'arch':
+        executable = await _executable('pacman');
+        arguments = ['-R', '--', parts[1]];
+      default:
+        throw PlatformException(code: 'package', message: '无法确认软件包身份。');
+    }
+    final authorize = await _executable('pkexec');
+    if (executable != null && authorize != null) {
+      for (final (terminal, prefix) in [
+        ('x-terminal-emulator', ['-e']),
+        ('gnome-terminal', ['--']),
+        ('konsole', ['-e']),
+        ('xterm', ['-e']),
+      ]) {
+        final window = await _executable(terminal);
+        if (window == null) continue;
+        try {
+          // The package manager retains its own dependency/confirmation prompt.
+          // No shell, automatic yes, purge, or autoremove operation is used.
+          await start(window, [...prefix, authorize, executable, ...arguments]);
+          return;
+        } on ProcessException {
+          continue;
+        }
+      }
+    }
+    throw PlatformException(
+      code: 'uninstall_unavailable',
+      message: '未找到可用的系统终端、授权程序或包管理器，请在系统软件管理器中卸载所选软件包。',
+    );
+  }
+
   Future<void> _regularFile(String path) async {
     if (!p.isAbsolute(path) ||
         await FileSystemEntity.type(path, followLinks: false) !=
@@ -187,7 +319,7 @@ class LinuxInstaller {
     );
   }
 
-  Future<String> _root() async {
+  Future<String> _root({bool create = true}) async {
     final userHome = home;
     if (userHome == null || !p.isAbsolute(userHome)) {
       throw PlatformException(code: 'home', message: '无法确认用户目录，不能安装 AppImage。');
@@ -197,7 +329,7 @@ class LinuxInstaller {
     for (final component in ['Applications', 'HuarunWin']) {
       current = p.join(current, component);
       final type = await FileSystemEntity.type(current, followLinks: false);
-      if (type == FileSystemEntityType.notFound) {
+      if (type == FileSystemEntityType.notFound && create) {
         await Directory(current).create();
       } else if (type != FileSystemEntityType.directory) {
         throw PlatformException(
@@ -308,6 +440,41 @@ class LinuxInstaller {
         code: 'launch',
         message: 'AppImage 未能启动，请检查系统兼容性和 FUSE 支持；安装文件已保留。',
       );
+    }
+  }
+
+  Future<void> uninstallAppImage(String path) async {
+    final root = await _root(create: false);
+    final parent = p.dirname(path);
+    if (!p.isAbsolute(path) ||
+        p.normalize(path) != path ||
+        p.dirname(parent) != root ||
+        !p.basename(parent).startsWith('app-') ||
+        p.basename(path) != 'Application.AppImage' ||
+        await FileSystemEntity.type(parent, followLinks: false) !=
+            FileSystemEntityType.directory ||
+        await File(path).resolveSymbolicLinks() != path) {
+      throw PlatformException(
+        code: 'install_path',
+        message: '应用不在受管理的用户安装目录内，不能卸载。',
+      );
+    }
+    await _regularFile(path);
+    final trash = await _executable('gio');
+    if (trash == null ||
+        (await run(trash, ['trash', '--', path])).exitCode != 0) {
+      throw PlatformException(
+        code: 'trash',
+        message: '无法移到系统回收站，请使用文件管理器处理；不会永久删除应用。',
+      );
+    }
+    // Remove only the now-empty task folder, preserving any unexpected files.
+    try {
+      if (await Directory(parent).list().isEmpty) {
+        await Directory(parent).delete();
+      }
+    } on FileSystemException {
+      // The app has already moved to Trash; an empty folder is harmless.
     }
   }
 }

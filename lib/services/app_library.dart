@@ -22,10 +22,12 @@ class LibraryAppStatus {
     this.local, {
     this.details,
     this.updateCheckFailed = false,
+    this.installations = const [],
   });
   final AppDownloadStatus local;
   final AppDetails? details;
   final bool updateCheckFailed;
+  final List<AppDownloadStatus> installations;
 }
 
 class LibraryStatusResult {
@@ -56,7 +58,8 @@ Future<LibraryStatusResult> readLibraryStatus({
             app.isClient && !app.withdrawn && app.platforms.contains(platform),
       )
       .toList();
-  if (candidates.isNotEmpty && ['macOS', 'Android'].contains(platform)) {
+  if (candidates.isNotEmpty &&
+      ['macOS', 'Android', 'Windows', 'Linux'].contains(platform)) {
     // Share one native snapshot. A failed system query retains the previous
     // library instead of treating every application as uninstalled.
     await manager.installedApps.read();
@@ -92,14 +95,31 @@ Future<LibraryStatusResult> readLibraryStatus({
   Future<void> worker() async {
     while (isCurrent() && next < candidates.length) {
       final app = candidates[next++];
-      final local = await readAppDownloadStatus(
+      var local = await readAppDownloadStatus(
         manager,
         app,
         platform!,
         androidPackages: platform == 'Android' ? packages : null,
       );
       if (!isCurrent()) return;
-      if (local == null || !local.canOpenApplication) continue;
+      final installations = [
+        if (['macOS', 'Windows', 'Linux'].contains(platform))
+          for (final application in await manager.installedApps.findAll(
+            app,
+            platform: platform,
+          ))
+            AppDownloadStatus.fromApplication(application),
+      ];
+      if (!isCurrent()) return;
+      if (local?.isInstalled != true && installations.isNotEmpty) {
+        local = installations.length == 1
+            ? installations.single
+            : const AppDownloadStatus();
+      }
+      local ??= installations.firstOrNull;
+      if (local == null || !local.isInstalled && installations.isEmpty) {
+        continue;
+      }
       AppDetails? details;
       var checkFailed = false;
       if (local.version != null) {
@@ -118,6 +138,7 @@ Future<LibraryStatusResult> readLibraryStatus({
           local,
           details: details,
           updateCheckFailed: checkFailed,
+          installations: installations,
         );
       }
     }
@@ -164,7 +185,7 @@ class LibraryItem {
   List<AppDownloadStatus> get installations {
     final installed = <String, AppDownloadStatus>{};
     void add(AppDownloadStatus value) {
-      final identity = value.installedPackage ?? value.installedPath;
+      final identity = value.identity;
       if (identity != null) installed[identity] = value;
     }
 
@@ -199,7 +220,12 @@ class LibraryItem {
         ),
       );
     }
-    if (status case final current?) add(current.local);
+    if (status case final current?) {
+      add(current.local);
+      for (final installation in current.installations) {
+        add(installation);
+      }
+    }
     for (final current in additionalInstallations) {
       add(current);
     }
@@ -209,7 +235,7 @@ class LibraryItem {
   bool get isInstalled => installations.isNotEmpty;
   String? get updateVersion {
     if (installations.length != 1) return null;
-    final local = status?.local.version;
+    final local = status?.local.comparableVersion;
     final detail = status?.details;
     final available = platform == null
         ? null
@@ -276,7 +302,7 @@ class LibraryItem {
           hasNewerVersion(local.version!, version);
     }
     if (!isInstalled) return task.state != DownloadState.installed;
-    final local = status?.local.version;
+    final local = status?.local.comparableVersion;
     return local != null &&
         task.version != null &&
         hasNewerVersion(local, task.version!);

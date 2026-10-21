@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../data/models.dart';
@@ -9,6 +10,7 @@ import '../services/app_download_status.dart';
 import '../services/app_library.dart';
 import '../services/download_platform.dart';
 import '../services/downloads.dart';
+import '../services/installed_apps.dart';
 import 'app_download_button.dart';
 import 'app_library_navigation.dart';
 import 'app_library_overview.dart';
@@ -62,9 +64,10 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       _checkAgain = false,
       _online = false,
       _statusCheckFailed = false,
+      _uninstalling = false,
       _hasSnapshot = false;
   Future<void>? _checks, _refreshRequest;
-  String? _refreshError, _statusError;
+  String? _refreshError, _statusError, _uninstallStatus;
 
   String? get _platform => runningDownloadPlatform;
   List<CatalogApp> get _apps => widget.controller.snapshot?.apps ?? const [];
@@ -160,7 +163,10 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       // release details as the result of the new source's update check.
       _statuses = {
         for (final entry in _statuses.entries)
-          entry.key: LibraryAppStatus(entry.value.local),
+          entry.key: LibraryAppStatus(
+            entry.value.local,
+            installations: entry.value.installations,
+          ),
       };
       _statusError = null;
     }
@@ -187,7 +193,9 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     });
     _detailChanges.value++;
     _generation++;
-    if (_platform == 'macOS') widget.manager.installedApps.invalidate();
+    if (['macOS', 'Windows', 'Linux'].contains(_platform)) {
+      widget.manager.installedApps.invalidate();
+    }
     try {
       await widget.manager.refresh();
     } catch (_) {
@@ -255,6 +263,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                         entry.value.local,
                         details: _statuses[entry.key]?.details,
                         updateCheckFailed: true,
+                        installations: entry.value.installations,
                       )
                     : entry.value,
             };
@@ -371,6 +380,23 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                                   .headlineMedium,
                               showBackButton: widget.showBackButton,
                               actions: [
+                                if (_platform == 'Windows')
+                                  IconButton(
+                                    tooltip: '系统应用管理',
+                                    icon: const Icon(
+                                      Icons.app_settings_alt_outlined,
+                                    ),
+                                    onPressed: _openSystemApplicationManagement,
+                                  ),
+                                if (['iOS', 'Linux'].contains(_platform))
+                                  IconButton(
+                                    tooltip: '卸载指引',
+                                    icon: const Icon(
+                                      Icons.help_outline_rounded,
+                                    ),
+                                    onPressed: () =>
+                                        _showUninstallHelp(context),
+                                  ),
                                 RefreshIconButton(
                                   tooltip: '刷新应用库',
                                   loading: _refreshing || _checking,
@@ -787,7 +813,9 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     }
     if (item.app != null &&
         item.status?.details != null &&
-        item.installations.length == 1) {
+        item.installations.length == 1 &&
+        (item.installations.single.canOpenApplication ||
+            item.updateVersion != null)) {
       return AppDownloadButton(
         app: item.app!,
         manager: widget.manager,
@@ -802,6 +830,14 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       );
     }
     if (item.installations.length == 1) {
+      if (!item.installations.single.canOpenApplication) {
+        return managing
+            ? null
+            : TextButton(
+                onPressed: () => _openFiles(item: item),
+                child: const Text('管理'),
+              );
+      }
       return FilledButton(
         style: downloadButtonStyle(context),
         onPressed: () => _openInstallation(
@@ -858,6 +894,242 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       }
     }
   }
+
+  Future<void> _uninstallInstallation(
+    LibraryItem item,
+    AppDownloadStatus installed,
+    BuildContext pageContext,
+  ) async {
+    if (!installed.canUninstallOn(_platform) ||
+        item.activeTasks.isNotEmpty ||
+        _uninstalling) {
+      return;
+    }
+    void showStatus(String message) {
+      setState(() {
+        _uninstalling = true;
+        _uninstallStatus = message;
+      });
+      _detailChanges.value++;
+    }
+
+    showStatus('正在核对卸载目标…');
+    var requested = false;
+    try {
+      var target = installed;
+      InstalledApplication? application;
+      if (['macOS', 'Windows'].contains(_platform) ||
+          _platform == 'Linux' && installed.uninstallId != null) {
+        requested = true;
+        final applications = await widget.manager.installer
+            .installedApplications();
+        application = applications
+            .where(
+              (candidate) => _platform == 'macOS'
+                  ? candidate.path == installed.installedPath
+                  : candidate.uninstallId == installed.uninstallId,
+            )
+            .singleOrNull;
+        if (application == null) {
+          throw PlatformException(
+            code: 'changed',
+            message: '本机应用已变化，请刷新后重新选择卸载。',
+          );
+        }
+        target = AppDownloadStatus.fromApplication(application);
+      }
+      if (!mounted || !pageContext.mounted) return;
+      final explanation = switch (_platform) {
+        'Android' => '卸载将清除该应用的数据，请先备份需要保留的内容。继续后，由 Android 系统确认卸载。',
+        'macOS' => '请先保存并退出该应用。所选应用包将移到废纸篓，应用外的设置、数据和后台服务不会自动清理。',
+        'Windows' =>
+          '将打开该应用登记的卸载程序，或进入 Windows“已安装的应用”选择目标。数据是否保留取决于卸载程序，请先备份需要的内容。',
+        'Linux' when target.uninstallId != null =>
+          '将打开系统终端，由包管理器显示依赖变更、确认及授权。请核对后继续；数据是否保留取决于包管理器，请先备份需要的内容。',
+        _ => '请先保存并退出该应用。受管理的 AppImage 副本将移到系统回收站，应用数据不会自动清理。',
+      };
+      final approved = await showDialog<bool>(
+        context: pageContext,
+        builder: (context) => AlertDialog(
+          title: const Text('卸载应用？'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(application?.names.firstOrNull ?? item.name),
+                const SizedBox(height: 8),
+                SelectableText(target.identity ?? ''),
+                if (target.bundleIdentifier case final identifier?) ...[
+                  const SizedBox(height: 4),
+                  SelectableText(identifier),
+                ],
+                if (target.version case final version?) ...[
+                  const SizedBox(height: 4),
+                  Text('本机版本：$version'),
+                ],
+                const SizedBox(height: 16),
+                Text(explanation),
+                const SizedBox(height: 8),
+                const Text('已下载的安装包和下载记录会保留。'),
+              ],
+            ),
+          ),
+          scrollable: true,
+          actions: [
+            DialogActionsRow(
+              confirmLabel: _platform == 'macOS' ? '移到废纸篓' : '卸载',
+              destructive: true,
+              onCancel: () => Navigator.pop(context, false),
+              onConfirm: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      );
+      if (approved != true || !mounted || !pageContext.mounted) return;
+      requested = true;
+      showStatus(_platform == 'macOS' ? '正在移到废纸篓…' : '正在交给系统卸载…');
+      if (_platform == 'Android') {
+        await widget.manager.installer.uninstallAndroidApp(
+          target.installedPackage!,
+        );
+      } else {
+        final selected =
+            application ??
+            InstalledApplication(
+              path: target.installedPath ?? '',
+              version: target.version ?? '',
+              names: [item.name],
+            );
+        try {
+          await widget.manager.installer.uninstallApplication(selected);
+        } on PlatformException catch (error) {
+          if (_platform != 'macOS' ||
+              error.code != 'permission_required' ||
+              error.details is! Map) {
+            rethrow;
+          }
+          final authorizationTarget = Map<String, String>.from(
+            error.details as Map,
+          );
+          if (!mounted || !pageContext.mounted) return;
+          final authorize = await showDialog<bool>(
+            context: pageContext,
+            builder: (context) => AlertDialog(
+              title: const Text('需要管理员授权'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(selected.names.firstOrNull ?? item.name),
+                    const SizedBox(height: 8),
+                    SelectableText(selected.path),
+                    if (selected.bundleIdentifier.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      SelectableText(selected.bundleIdentifier),
+                    ],
+                    if (selected.version.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('本机版本：${selected.version}'),
+                    ],
+                    const SizedBox(height: 16),
+                    const Text(
+                      '当前用户没有权限移走所选应用。继续后 macOS 会显示系统管理员授权窗口，华润赢不会读取或保存密码。\n\n授权仅用于将此应用包移到你的废纸篓，应用外的数据、已下载的安装包和记录会保留。',
+                    ),
+                  ],
+                ),
+              ),
+              scrollable: true,
+              actions: [
+                DialogActionsRow(
+                  confirmLabel: '授权并卸载',
+                  destructive: true,
+                  onCancel: () => Navigator.pop(context, false),
+                  onConfirm: () => Navigator.pop(context, true),
+                ),
+              ],
+            ),
+          );
+          if (authorize != true || !mounted || !pageContext.mounted) return;
+          showStatus('等待系统授权并移到废纸篓…');
+          await widget.manager.installer.uninstallApplication(
+            selected,
+            authorizationTarget: authorizationTarget,
+          );
+        }
+      }
+      if (mounted &&
+          pageContext.mounted &&
+          (_platform == 'Windows' || target.uninstallId != null)) {
+        ScaffoldMessenger.of(pageContext).showSnackBar(
+          const SnackBar(content: Text('已交给系统卸载流程，请按提示完成，再刷新核对本机状态。')),
+        );
+      }
+    } catch (error) {
+      if (mounted && pageContext.mounted) {
+        ScaffoldMessenger.of(pageContext).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is PlatformException
+                  ? error.message ?? '无法发起卸载，请重试。'
+                  : '无法发起卸载，请重试。',
+            ),
+          ),
+        );
+      }
+    } finally {
+      try {
+        if (requested && mounted) {
+          // A resume refresh may still have observed the app before the system
+          // finished. Check again after that request and retain files/history.
+          await _refreshRequest;
+          if (mounted) await _refresh(online: false);
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _uninstalling = false;
+            _uninstallStatus = null;
+          });
+          _detailChanges.value++;
+        }
+      }
+    }
+  }
+
+  Future<void> _openSystemApplicationManagement() async {
+    try {
+      await widget.manager.installer.openApplicationSettings();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请从 Windows 设置进入“应用 → 已安装的应用”完成卸载。')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showUninstallHelp(BuildContext pageContext) => showDialog<void>(
+    context: pageContext,
+    builder: (context) => AlertDialog(
+      title: const Text('卸载指引'),
+      scrollable: true,
+      content: Text(
+        _platform == 'iOS'
+            ? '在主屏幕长按应用图标，选择“移除 App → 删除 App”；也可进入“设置 → 通用 → iPhone／iPad 储存空间”选择应用。\n\n“卸载 App”可保留文稿与数据，“删除 App”会移除相关数据，请先备份。iOS 没有供华润赢卸载其他应用或查询完整安装状态的公开接口。'
+            : '受管理的 AppImage 可在“应用管理”中移到回收站。发行版软件包在确认本机身份后，由系统终端及包管理器继续卸载。\n\nFlatpak、Snap、手动解压或无法确认身份的应用，请在原软件中心或对应包管理器中处理。请核对依赖变更并备份数据，下载文件和记录会保留。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
 
   void _showDownloads(BuildContext? pageContext) {
     if (!mounted || pageContext != null && !pageContext.mounted) return;
@@ -975,6 +1247,17 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                                 (_statusCheckFailed ? _statusError : null),
                             onOpenInstallation: (installed) =>
                                 _openInstallation(installed, context),
+                            onUninstallInstallation: (installed) =>
+                                _uninstallInstallation(
+                                  current,
+                                  installed,
+                                  context,
+                                ),
+                            uninstalling: _uninstalling,
+                            uninstallStatus: _uninstallStatus,
+                            onUninstallHelp: _platform == 'iOS'
+                                ? () => _showUninstallHelp(context)
+                                : null,
                             onCheckUpdates: app == null
                                 ? null
                                 : () => _refresh(),

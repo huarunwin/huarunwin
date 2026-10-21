@@ -38,6 +38,7 @@ class ApkInstaller(
     private val keyDocuments = ApkSigningKeyDocuments(activity, worker)
     private var disposed = false
     private var pendingResult: MethodChannel.Result? = null
+    private var uninstallResult: MethodChannel.Result? = null
     private var installation: Installation? = null
     private val sessions = ApkInstallSessions(activity,
         { stage -> installation?.let { progress(it.file.path, stage) } },
@@ -172,6 +173,7 @@ class ApkInstaller(
                     activity.startActivity(intent)
                     result.success(null)
                 }
+                "uninstallAndroidApp" -> uninstall(call, result)
                 "reveal" -> {
                     val file = managedApk(call.argument<String>("path"))
                     val uri = contentUri(file)
@@ -203,6 +205,7 @@ class ApkInstaller(
     private fun report(result: MethodChannel.Result, error: Exception) {
         android.util.Log.e("HuarunInstaller", "Native installer request failed", error)
         if (pendingResult === result) { installation = null; pendingResult = null }
+        if (uninstallResult === result) uninstallResult = null
         result.error((error as? ApkFailure)?.code ?: "installation", error.message ?: "无法处理安装包，请重试。", (error as? ApkFailure)?.details)
     }
 
@@ -357,8 +360,8 @@ class ApkInstaller(
     }
 
     private fun install(call: MethodCall, result: MethodChannel.Result) {
-        if (pendingResult != null) {
-            result.error("installation_busy", "请先完成当前的系统安装操作。", null)
+        if (pendingResult != null || uninstallResult != null) {
+            result.error("installation_busy", "请先完成当前的系统安装或卸载操作。", null)
             return
         }
         pendingResult = result
@@ -417,8 +420,40 @@ class ApkInstaller(
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun uninstall(call: MethodCall, result: MethodChannel.Result) {
+        if (pendingResult != null || uninstallResult != null) {
+            throw ApkFailure("uninstall_busy", "请先完成当前的系统安装或卸载操作。")
+        }
+        val name = requireNotNull(call.argument<String>("packageName"))
+        require(name.isNotBlank()) { "应用包名无效。" }
+        if (installedInfo(name) == null) throw ApkFailure("not_installed", "应用已不在本机，请刷新后查看。")
+        val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.fromParts("package", name, null))
+            .putExtra(Intent.EXTRA_RETURN_RESULT, true)
+        val manager = activity.packageManager
+        val candidates = manager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .filter { it.activityInfo.packageName != activity.packageName && it.activityInfo.exported &&
+                it.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 }
+        val preferred = manager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
+        val target = candidates.firstOrNull { it.activityInfo.packageName == preferred?.packageName && it.activityInfo.name == preferred?.name }
+            ?: candidates.singleOrNull() ?: throw ApkFailure("uninstaller", "无法打开系统卸载界面，请在系统设置中卸载应用。")
+        intent.component = ComponentName(target.activityInfo.packageName, target.activityInfo.name)
+        uninstallResult = result
+        activity.startActivityForResult(intent, UNINSTALL_PACKAGE)
+    }
+
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (keyDocuments.onActivityResult(requestCode, resultCode, data)) return
+        if (requestCode == UNINSTALL_PACKAGE) {
+            val result = uninstallResult ?: return
+            uninstallResult = null
+            // Returning from system UI (including cancellation) is not proof
+            // of uninstallation. Flutter re-queries the selected package.
+            if (resultCode == Activity.RESULT_FIRST_USER) {
+                result.error("uninstall_failed", "系统未能卸载应用，请在系统设置中查看。", null)
+            } else result.success(null)
+            return
+        }
         if (requestCode != SOURCE_PERMISSION && requestCode != INSTALL_PACKAGE) return
         val pending = installation ?: return
         if (requestCode == SOURCE_PERMISSION) {
@@ -455,11 +490,14 @@ class ApkInstaller(
         keyDocuments.dispose()
         sessions.dispose()
         finishError("installation_interrupted", "安装已中断，安装包已保留，请重试。")
+        uninstallResult?.error("uninstall_interrupted", "卸载结果尚未确认，请刷新应用状态。", null)
+        uninstallResult = null
         worker.shutdownNow()
     }
     companion object {
         private const val APK_TYPE = "application/vnd.android.package-archive"
         private const val SOURCE_PERMISSION = 18513
         private const val INSTALL_PACKAGE = 18514
+        private const val UNINSTALL_PACKAGE = 18515
     }
 }
