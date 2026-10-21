@@ -59,8 +59,6 @@ macOS 安装包目前使用 ad-hoc 签名，尚未接入 Apple Developer ID 签�
    xattr -rd com.apple.quarantine "/Applications/华润赢.app"
    ```
 
-   > 旧版应用名仍为 `HuarunWin.app`（如 v0.2.0）时，请将路径改为 `/Applications/HuarunWin.app`；自行改名或安装到其他位置时，按实际路径调整。仅在提示权限不足时，在命令前加 `sudo`。
-
 2. 或者在“系统设置 → 隐私与安全性”中点击“仍要打开”（如系统提供此按钮），按提示确认。
 
 上述命令仅移除该应用的下载隔离标记，不等于签名或公证，也不能修复安装包损坏、无效签名或架构不兼容。仍无法打开时，请重新下载与设备架构对应的安装包。
