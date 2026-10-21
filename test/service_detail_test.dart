@@ -141,7 +141,7 @@ void main() {
     ('jichang_naixi', '/jichang/naixi'),
   ]) {
     testWidgets(
-      'service details resize, search offers, jump to content and keep headers scrolling: $route',
+      'service details resize, omit search and keep headers scrolling: $route',
       (tester) async {
         final source = html.parse(fixture(name));
         for (final image in source.querySelectorAll('img')) {
@@ -185,6 +185,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(ServiceDetailHero), findsOneWidget);
         expect(find.byType(TextField), findsNothing);
+        expect(find.byTooltip('查找正文'), findsNothing);
         void checkActionColors({required bool compact}) {
           final action = find.descendant(
             of: find.byType(ServiceDetailHero),
@@ -216,17 +217,12 @@ void main() {
         await tester.pumpWidget(app(1, Brightness.light));
         await tester.pumpAndSettle();
         checkActionColors(compact: true);
-        await tester.tap(find.byTooltip('查找正文'));
+        expect(find.byTooltip('查找正文'), findsNothing);
+        await tester.drag(
+          find.byKey(const ValueKey('site-content-scroll')),
+          const Offset(0, -600),
+        );
         await tester.pumpAndSettle();
-        final target = name == 'jichang_naixi'
-            ? 'Smart Access 186天'
-            : 'KR.SEL.INTL.Core';
-        await tester.enterText(find.byType(TextField), target);
-        await tester.pumpAndSettle();
-        expect(find.text('1 处匹配'), findsOneWidget);
-        await tester.tap(find.byType(ListTile));
-        await tester.pumpAndSettle();
-        expect(find.text(target).hitTestable(), findsOneWidget);
         expect(find.byTooltip('刷新内容').hitTestable(), findsNothing);
         expect(tester.takeException(), isNull);
       },
@@ -288,11 +284,11 @@ void main() {
       expect(find.text('打开详情'), findsOneWidget);
       await tester.tap(find.text('打开详情'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('查找正文'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Smart Access 186天');
-      await tester.pumpAndSettle();
-      await tester.tap(find.byType(ListTile));
+      expect(find.byTooltip('查找正文'), findsNothing);
+      await tester.drag(
+        find.byKey(const ValueKey('site-content-scroll')),
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();

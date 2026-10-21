@@ -126,40 +126,49 @@ class PageHeader extends StatelessWidget {
       final visibleActions = PageBarActions.visibleActions(context, actions);
       return Padding(
         padding: EdgeInsets.only(bottom: compact ? 16 : 20),
-        child: Row(
-          children: [
-            if (showBackButton && Navigator.canPop(context)) ...[
-              PageBarButton(
-                child: IconButton(
-                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: Icon(
-                    Directionality.of(context) == TextDirection.rtl
-                        ? Icons.chevron_right_rounded
-                        : Icons.chevron_left_rounded,
+        // Match the action touch target even when this page has no buttons.
+        // A minimum still lets wrapped titles and larger text grow naturally.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: kMinInteractiveDimension,
+          ),
+          child: Row(
+            children: [
+              if (showBackButton && Navigator.canPop(context)) ...[
+                PageBarButton(
+                  child: IconButton(
+                    tooltip: MaterialLocalizations.of(context)
+                        .backButtonTooltip,
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: Icon(
+                      Directionality.of(context) == TextDirection.rtl
+                          ? Icons.chevron_right_rounded
+                          : Icons.chevron_left_rounded,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: Text(
-                title,
-                style: (titleStyle ?? theme.textTheme.headlineSmall)?.copyWith(
-                  fontSize: compact ? 24 : null,
-                  height: usesMobileDesign(context) ? 30 / 24 : null,
-                  letterSpacing: usesMobileDesign(context) ? 0 : null,
-                  fontWeight: FontWeight.w700,
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: (titleStyle ?? theme.textTheme.headlineSmall)
+                      ?.copyWith(
+                        fontSize: compact ? 24 : null,
+                        height: usesMobileDesign(context) ? 30 / 24 : null,
+                        letterSpacing: usesMobileDesign(context) ? 0 : null,
+                        fontWeight: FontWeight.w700,
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            if (visibleActions.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              PageBarActions(actions: visibleActions),
+              if (visibleActions.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                PageBarActions(actions: visibleActions),
+              ],
             ],
-          ],
+          ),
         ),
       );
     },

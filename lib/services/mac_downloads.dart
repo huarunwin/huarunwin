@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html;
 
 import '../data/html_parser.dart';
 import '../data/models.dart';
+import 'github_debug.dart';
+import 'html_client.dart';
 
 bool isAppStoreUrl(String url) {
   final uri = Uri.tryParse(url);
@@ -40,20 +44,7 @@ class MacDownloadOptions {
 
 /// Reads public release HTML, including GitHub's HTML asset fragment. No JSON API.
 class MacDownloadResolver {
-  MacDownloadResolver({Dio? client})
-    : client =
-          client ??
-          Dio(
-            BaseOptions(
-              connectTimeout: const Duration(seconds: 15),
-              receiveTimeout: const Duration(seconds: 25),
-              responseType: ResponseType.plain,
-              headers: {
-                'Accept': 'text/html',
-                'User-Agent': 'HuarunWin/0.1 (+https://huarun.win)',
-              },
-            ),
-          );
+  MacDownloadResolver({Dio? client}) : client = client ?? createHtmlClient();
   final Dio client;
 
   static Uri? releasePage(String url) {
@@ -246,14 +237,34 @@ class MacDownloadResolver {
         uri.userInfo.isNotEmpty) {
       throw const FormatException('GitHub 发布页地址无效。');
     }
-    final response = await client.getUri<String>(
-      uri,
-      options: Options(
-        responseType: ResponseType.plain,
-        maxRedirects: 5,
-        headers: {'Accept': 'text/html', 'Accept-Language': 'en'},
-      ),
-    );
+    final cancellation = CancelToken();
+    // Connection/receive timeouts do not bound redirects or pre-request work.
+    // Each public HTML request also has a total deadline.
+    final response = await client
+        .getUri<String>(
+          uri,
+          cancelToken: cancellation,
+          options: Options(
+            responseType: ResponseType.plain,
+            maxRedirects: 5,
+            headers: {'Accept': 'text/html', 'Accept-Language': 'en'},
+          ),
+        )
+        .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            githubDebugLog(
+              'html.timeout',
+              uri: uri,
+              fields: {'timeoutMs': 30000},
+            );
+            cancellation.cancel('GitHub HTML request timed out');
+            throw TimeoutException(
+              'GitHub HTML request timed out',
+              const Duration(seconds: 30),
+            );
+          },
+        );
     if (response.realUri.host != 'github.com' ||
         response.realUri.scheme != 'https' ||
         response.realUri.userInfo.isNotEmpty ||
@@ -261,6 +272,16 @@ class MacDownloadResolver {
         !(response.headers.value('content-type') ?? '').contains('text/html') ||
         response.data == null ||
         response.data!.length > 8 * 1024 * 1024) {
+      githubDebugLog(
+        'html.rejected',
+        uri: uri,
+        fields: {
+          'status': response.statusCode,
+          'actualUrl': githubDebugUrl(response.realUri),
+          'contentType': response.headers.value('content-type'),
+          'characters': response.data?.length,
+        },
+      );
       throw const FormatException('GitHub 发布页暂时无法读取，请稍后重试。');
     }
     return (response.data!, response.realUri);

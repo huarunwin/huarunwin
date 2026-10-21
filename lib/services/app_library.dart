@@ -48,6 +48,7 @@ Future<LibraryStatusResult> readLibraryStatus({
   required String? platform,
   required bool Function() isCurrent,
   bool refresh = false,
+  Iterable<String> knownAndroidPackages = const [],
 }) async {
   final candidates = apps
       .where(
@@ -64,6 +65,7 @@ Future<LibraryStatusResult> readLibraryStatus({
   final packages = <String, AppDownloadStatus?>{};
   if (platform == 'Android') {
     final names = {
+      ...knownAndroidPackages,
       for (final task in manager.tasks.where(
         (task) => task.platform == platform && !task.isSelfUpdate,
       )) ...[
@@ -137,6 +139,7 @@ class LibraryItem {
     this.app,
     this.status,
     this.androidPackages = const {},
+    this.additionalInstallations = const [],
   });
 
   final String id, name;
@@ -144,6 +147,7 @@ class LibraryItem {
   final CatalogApp? app;
   final LibraryAppStatus? status;
   final Map<String, AppDownloadStatus?> androidPackages;
+  final List<AppDownloadStatus> additionalInstallations;
   final List<DownloadEntry> files = [];
 
   List<DownloadTask> get tasks =>
@@ -196,6 +200,9 @@ class LibraryItem {
       );
     }
     if (status case final current?) add(current.local);
+    for (final current in additionalInstallations) {
+      add(current);
+    }
     return installed.values.toList();
   }
 

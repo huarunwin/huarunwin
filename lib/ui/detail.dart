@@ -39,22 +39,46 @@ class _DetailPageState extends State<DetailPage> {
   late Future<DetailSnapshot> request;
   DetailSnapshot? lastSnapshot;
   bool loading = true;
+  int _generation = 0;
+  late int _sourceRevision;
   @override
   void initState() {
     super.initState();
+    _sourceRevision = widget.controller.sources.revision;
+    widget.controller.sources.addListener(_sourceChanged);
     request = _load();
   }
 
+  void _sourceChanged() {
+    if (!mounted || _sourceRevision == widget.controller.sources.revision) {
+      return;
+    }
+    setState(() {
+      _sourceRevision = widget.controller.sources.revision;
+      lastSnapshot = null;
+      loading = true;
+      request = _load(refresh: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    widget.controller.sources.removeListener(_sourceChanged);
+    super.dispose();
+  }
+
   Future<DetailSnapshot> _load({bool refresh = false}) async {
+    final generation = ++_generation;
     try {
       final result = await widget.controller.repository.detail(
         widget.app,
         refresh: refresh,
       );
-      lastSnapshot = result;
+      if (mounted && generation == _generation) lastSnapshot = result;
       return result;
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && generation == _generation) setState(() => loading = false);
     }
   }
 
@@ -102,6 +126,7 @@ class _DetailPageState extends State<DetailPage> {
   }) => Scaffold(
     backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
     body: FutureBuilder<DetailSnapshot>(
+      key: ValueKey(_sourceRevision),
       future: request,
       builder: (context, state) {
         if (state.connectionState != ConnectionState.done &&

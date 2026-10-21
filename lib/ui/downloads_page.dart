@@ -20,6 +20,12 @@ import 'page_components.dart';
 import 'release_download_dialog.dart';
 import 'theme.dart';
 
+typedef DownloadsOverviewBuilder = Widget Function(
+  BuildContext context,
+  List<DownloadEntry> entries,
+  ValueChanged<DownloadEntry> onInstall,
+);
+
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({
     super.key,
@@ -31,6 +37,8 @@ class DownloadsPage extends StatefulWidget {
     this.appKey,
     this.title = '安装包与资源',
     this.importOnEntry = false,
+    this.overviewBuilder,
+    this.onRefresh,
   });
   final DownloadManager manager;
   final bool showBackButton;
@@ -40,12 +48,16 @@ class DownloadsPage extends StatefulWidget {
   final String? appKey;
   final String title;
   final bool importOnEntry;
+  final DownloadsOverviewBuilder? overviewBuilder;
+  final Future<void> Function(bool online)? onRefresh;
   @override
   State<DownloadsPage> createState() => _DownloadsPageState();
 }
 
 class _DownloadsPageState extends State<DownloadsPage> {
   bool importing = false;
+  Future<void>? _refreshRequest;
+  bool get _refreshing => _refreshRequest != null || widget.manager.refreshing;
   String? get _platform => runningDownloadPlatform;
   List<String> get _importKinds => switch (_platform) {
     'macOS' => ['dmg', 'zip', 'pkg'],
@@ -78,13 +90,28 @@ class _DownloadsPageState extends State<DownloadsPage> {
 
   void _refreshOnEntry() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _refresh();
+      if (mounted) _refresh(online: false);
     });
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool online = true}) {
+    if (_refreshRequest case final pending?) return pending;
+    final request = _refreshState(online: online);
+    setState(() {
+      _refreshRequest = request;
+    });
+    return request.whenComplete(() {
+      if (mounted) setState(() => _refreshRequest = null);
+    });
+  }
+
+  Future<void> _refreshState({required bool online}) async {
     try {
-      await widget.manager.refresh();
+      if (widget.onRefresh case final refresh?) {
+        await refresh(online);
+      } else {
+        await widget.manager.refresh();
+      }
     } catch (_) {
       if (mounted) _message('部分文件状态未能刷新，已保留原有记录，请稍后重试。');
     }
@@ -136,7 +163,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
             final actions = [
               RefreshIconButton(
                 tooltip: '刷新下载状态',
-                loading: widget.manager.refreshing,
+                loading: _refreshing,
                 onPressed: _refresh,
               ),
               if (_importKinds.isNotEmpty && widget.taskIds == null)
@@ -173,6 +200,18 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       ),
                     ),
                   ),
+                  if (widget.overviewBuilder case final builder?)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(inset, 0, inset, 16),
+                      sliver: SliverToBoxAdapter(
+                        child: builder(
+                          context,
+                          entries,
+                          (entry) =>
+                              _install(entry.task, package: entry.package),
+                        ),
+                      ),
+                    ),
                   for (final warning in [
                     widget.manager.historyWarning,
                     widget.manager.downloadWarning,
@@ -185,9 +224,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                           children: [
                             Text(warning),
                             TextButton(
-                              onPressed: widget.manager.refreshing
-                                  ? null
-                                  : _refresh,
+                              onPressed: _refreshing ? null : _refresh,
                               child: const Text('重试'),
                             ),
                           ],
@@ -199,9 +236,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       hasScrollBody: false,
                       child: EmptyState(
                         icon: Icons.download_for_offline_outlined,
-                        title: widget.taskIds != null ? '暂无安装包' : '下载准备就绪',
+                        title: widget.taskIds != null ? '暂无本地安装包' : '下载准备就绪',
                         message: widget.taskIds != null
-                            ? '此应用的文件条目已被删除。'
+                            ? '此应用没有保存在应用库中的安装包。'
                             : _platform == 'macOS'
                             ? '在应用详情页下载，或选择本地 DMG / ZIP / PKG 安装包。'
                             : _platform == 'Android'

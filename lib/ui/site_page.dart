@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +10,7 @@ import '../services/app_controller.dart';
 import '../services/app_library.dart';
 import '../services/downloads.dart';
 import 'airport_catalog.dart';
+import 'content_image.dart';
 import 'components.dart';
 import 'detail.dart';
 import 'detail_components.dart';
@@ -80,6 +80,8 @@ class _SitePageState extends State<SitePage> {
   final expanded = <SiteBlock>{};
   final scroll = ScrollController();
   int generation = 0, collectedPages = 1;
+  late int _sourceRevision;
+  bool _sourcePending = false;
   SiteDocument? get document => snapshot?.document;
   String? catalogUrl;
   // A redirect or refresh updates the document without resetting its controls.
@@ -88,19 +90,44 @@ class _SitePageState extends State<SitePage> {
   String get pageUrl => catalogUrl ?? widget.url;
   bool get _usesInAppBrowser =>
       Platform.isAndroid &&
-      const {'vps', 'jichang'}.contains(
-        Uri.parse(pageUrl).pathSegments.firstOrNull,
-      );
+      const {
+        'vps',
+        'jichang',
+      }.contains(Uri.parse(pageUrl).pathSegments.firstOrNull);
 
   @override
   void initState() {
     super.initState();
+    _sourceRevision = widget.controller.sources.revision;
+    widget.controller.sources.addListener(_sourceChanged);
     final cached = widget.controller.repository.cachedPage(pageUrl);
     if (cached == null) {
       _load();
     } else {
       _applySnapshot(cached);
       loading = false;
+    }
+  }
+
+  void _sourceChanged() {
+    if (!mounted || _sourceRevision == widget.controller.sources.revision) {
+      return;
+    }
+    _sourceRevision = widget.controller.sources.revision;
+    generation++;
+    setState(() {
+      snapshot = null;
+      items = [];
+      next = '';
+      error = loadMessage = null;
+      loading = collecting = allLoaded = false;
+      _sourcePending = true;
+      anchors.clear();
+      expanded.clear();
+    });
+    if (widget.active) {
+      _sourcePending = false;
+      _load(refresh: true);
     }
   }
 
@@ -112,11 +139,16 @@ class _SitePageState extends State<SitePage> {
       collecting = false;
       loadMessage = '已停止加载，保留已载入的内容。';
     }
+    if (widget.active && _sourcePending) {
+      _sourcePending = false;
+      _load(refresh: true);
+    }
   }
 
   @override
   void dispose() {
     generation++;
+    widget.controller.sources.removeListener(_sourceChanged);
     search.dispose();
     shortcutFocus.dispose();
     scroll.dispose();
@@ -392,11 +424,8 @@ class _SitePageState extends State<SitePage> {
     await _visit(url);
   }
 
-  Future<void> _visit(String url) => openLink(
-    context,
-    url,
-    inApp: _usesInAppBrowser,
-  );
+  Future<void> _visit(String url) =>
+      openLink(context, url, inApp: _usesInAppBrowser);
 
   Iterable<SiteBlock> _walk(Iterable<SiteBlock> blocks) sync* {
     for (final block in blocks) {
@@ -553,7 +582,7 @@ class _SitePageState extends State<SitePage> {
     bool service = false,
     bool showMenu = true,
   }) => [
-    if (service && doc != null)
+    if (service && doc != null && doc.service == null)
       IconButton(
         tooltip: '查找正文',
         onPressed: () => setState(() {
@@ -1414,7 +1443,7 @@ class _SitePageState extends State<SitePage> {
                 if (item.image != null) ...[
                   ClipPath.shape(
                     shape: surfaceShape(12),
-                    child: CachedNetworkImage(
+                    child: ContentImage(
                       imageUrl: item.image!,
                       width: 44,
                       height: 44,

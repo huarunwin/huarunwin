@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
+import '../services/html_client.dart';
+import '../services/content_sources.dart';
 import 'html_parser.dart';
 import 'catalog_filters.dart';
 import 'models.dart';
@@ -17,24 +20,72 @@ AppDetails _parseDetail((String, CatalogApp) input) =>
 SiteDocument _parsePage((String, String) input) =>
     PublicSiteParser().parse(input.$1, input.$2);
 
+typedef _ContentResponse = ({
+  String html,
+  Uri logicalUri,
+  ContentOrigin origin,
+  ContentOrigin preferred,
+});
+
 class CatalogRepository {
-  CatalogRepository(this.directory, {Dio? client})
-    : client =
-          client ??
-          Dio(
-            BaseOptions(
-              connectTimeout: const Duration(seconds: 15),
-              receiveTimeout: const Duration(seconds: 25),
-              responseType: ResponseType.plain,
-              headers: {
-                'Accept': 'text/html',
-                'User-Agent': 'HuarunWin/0.1 (+https://huarun.win)',
-              },
-            ),
-          );
+  CatalogRepository(this.directory, {Dio? client, ContentSources? sources})
+    : client = client ?? createHtmlClient(),
+      _ownsSources = sources == null,
+      sources = sources ?? ContentSources() {
+    _sourceRevision = this.sources.revision;
+    this.sources.addListener(_sourceChanged);
+  }
+  final ContentSources sources;
+  final bool _ownsSources;
+  bool _disposed = false;
+  late int _sourceRevision;
+  final _pendingRequests = <CancelToken>{};
+
+  void _cancelPendingRequests(String reason) {
+    for (final request in _pendingRequests) {
+      request.cancel(reason);
+    }
+    _pendingRequests.clear();
+  }
+
+  void _sourceChanged() {
+    if (_sourceRevision == sources.revision) return;
+    _sourceRevision = sources.revision;
+    _cancelPendingRequests('Content source changed');
+    _siteRequests.clear();
+    _siteSnapshots.clear();
+    _failedDetailRefreshes.clear();
+  }
+
+  void _checkRevision(int revision) {
+    if (_disposed || revision != sources.revision) {
+      throw const PageFormatException('内容来源已切换，请重新加载。');
+    }
+  }
+
+  File _cacheFile(ContentOrigin origin, List<String> parts) => File(
+    path.joinAll([
+      directory.path,
+      if (origin == ContentOrigin.github) 'github',
+      ...parts,
+    ]),
+  );
+
+  String _pageKey(Uri uri, ContentOrigin origin) => '${origin.name}|$uri';
+
+  void dispose() {
+    _disposed = true;
+    sources.removeListener(_sourceChanged);
+    _cancelPendingRequests('Repository disposed');
+    client.close(force: true);
+    if (_ownsSources) sources.dispose();
+  }
+
   final Directory directory;
   final Dio client;
   static const maxPageBytes = 8 * 1024 * 1024;
+  static const _contentConnectTimeout = Duration(seconds: 3);
+  static const _contentRequestTimeout = Duration(seconds: 5);
   final Map<String, Future<SiteSnapshot>> _siteRequests = {};
   final Map<String, SiteSnapshot> _siteSnapshots = {};
   final Set<String> _failedDetailRefreshes = {};
@@ -45,7 +96,8 @@ class CatalogRepository {
     if (uri == null || !SiteRoutes.isNative(uri) || url.length > 1500) {
       return null;
     }
-    final value = _siteSnapshots[uri.removeFragment().toString()];
+    final value =
+        _siteSnapshots[_pageKey(uri.removeFragment(), sources.active)];
     if (value == null ||
         DateTime.now().difference(value.at) >= const Duration(minutes: 30)) {
       return null;
@@ -70,26 +122,34 @@ class CatalogRepository {
       final cached = cachedPage(url);
       if (cached != null) return cached;
     }
-    final key = '${uri.toString()}|$refresh';
+    final revision = sources.revision;
+    final key = '$revision|${_pageKey(uri, sources.active)}|$refresh';
     final existing = _siteRequests[key];
     if (existing != null) return existing;
-    final request = _page(uri, refresh: refresh);
-    _siteRequests[key] = request;
-    try {
-      final value = await request;
-      final pageKey = uri.toString();
+    final request = _page(uri, refresh: refresh).then((result) {
+      _checkRevision(revision);
+      final pageKey = _pageKey(uri, result.$2);
       _siteSnapshots.remove(pageKey);
-      _siteSnapshots[pageKey] = value;
+      _siteSnapshots[pageKey] = result.$1;
       if (_siteSnapshots.length > 24) {
         _siteSnapshots.remove(_siteSnapshots.keys.first);
       }
-      return value;
+      return result.$1;
+    });
+    _siteRequests[key] = request;
+    try {
+      return await request;
     } finally {
       _siteRequests.remove(key);
     }
   }
 
-  Future<SiteSnapshot> _page(Uri uri, {required bool refresh}) async {
+  Future<(SiteSnapshot, ContentOrigin)> _page(
+    Uri uri, {
+    required bool refresh,
+  }) async {
+    final revision = sources.revision;
+    final preferred = sources.active;
     // Split the encoded URL into short directory components for filesystem
     // limits, without dropping query parameters or risking hash collisions.
     final encoded = base64Url.encode(utf8.encode(uri.toString()));
@@ -97,15 +157,10 @@ class CatalogRepository {
       for (var i = 0; i < encoded.length; i += 120)
         encoded.substring(i, (i + 120).clamp(0, encoded.length)),
     ];
-    final file = File(
-      path.joinAll([
-        directory.path,
-        'pages',
-        ...components,
-        'document.html-cache',
-      ]),
-    );
+    final cacheParts = ['pages', ...components, 'document.html-cache'];
+    final file = _cacheFile(preferred, cacheParts);
     final cached = await _read(file);
+    _checkRevision(revision);
     final cachedUri = Uri.tryParse(cached?.$3 ?? '');
     final sourceUri = cachedUri != null && SiteRoutes.isNative(cachedUri)
         ? cachedUri
@@ -117,19 +172,20 @@ class CatalogRepository {
         cached.$3 != null &&
         DateTime.now().difference(cached.$2) < const Duration(minutes: 30)) {
       try {
-        return SiteSnapshot(
-          await compute(_parsePage, (cached.$1, sourceUri.toString())),
-          cached.$2,
-          cached: true,
-        );
+        final document = await compute(_parsePage, (
+          cached.$1,
+          sourceUri.toString(),
+        ));
+        _checkRevision(revision);
+        return (SiteSnapshot(document, cached.$2, cached: true), preferred);
       } on PageFormatException {
         /* Retry with current HTML. */
       }
     }
     try {
-      final response = await _getResponse(uri);
-      final source = response.data!;
-      final resolvedUri = response.realUri;
+      final response = await _getResponse(uri, revision: revision);
+      final source = response.html;
+      final resolvedUri = response.logicalUri;
       if (!SiteRoutes.isNative(resolvedUri)) {
         throw const PageFormatException('这个地址需要通过系统浏览器打开。');
       }
@@ -138,15 +194,32 @@ class CatalogRepository {
         resolvedUri.toString(),
       ));
       final now = DateTime.now();
-      await _write(file, source, now, sourceUrl: resolvedUri.toString());
-      return SiteSnapshot(document, now);
+      _checkRevision(revision);
+      await _write(
+        _cacheFile(response.origin, cacheParts),
+        source,
+        now,
+        revision: revision,
+        sourceUrl: resolvedUri.toString(),
+      );
+      await _accept(response, revision);
+      return (SiteSnapshot(document, now), response.origin);
     } catch (_) {
+      _checkRevision(revision);
       if (cached != null) {
-        return SiteSnapshot(
-          await compute(_parsePage, (cached.$1, sourceUri.toString())),
-          cached.$2,
-          cached: true,
-          warning: '暂时无法更新，正在显示上次保存的内容。',
+        final document = await compute(_parsePage, (
+          cached.$1,
+          sourceUri.toString(),
+        ));
+        _checkRevision(revision);
+        return (
+          SiteSnapshot(
+            document,
+            cached.$2,
+            cached: true,
+            warning: '暂时无法更新，正在显示上次保存的内容。',
+          ),
+          preferred,
         );
       }
       rethrow;
@@ -179,31 +252,42 @@ class CatalogRepository {
     String cacheName, {
     required bool refresh,
   }) async {
-    final file = File(path.join(directory.path, cacheName));
+    final revision = sources.revision;
+    final preferred = sources.active;
+    final file = _cacheFile(preferred, [cacheName]);
     final cached = await _read(file);
+    _checkRevision(revision);
     if (!refresh &&
         cached != null &&
         DateTime.now().difference(cached.$2) < const Duration(minutes: 30)) {
       try {
-        return CatalogSnapshot(
-          await compute(_parseCatalog, cached.$1),
-          cached.$2,
-          cached: true,
-        );
+        final apps = await compute(_parseCatalog, cached.$1);
+        _checkRevision(revision);
+        return CatalogSnapshot(apps, cached.$2, cached: true);
       } on PageFormatException {
         /* Fetch again if the cached schema changed. */
       }
     }
     try {
-      final source = await _get(uri);
-      final apps = await compute(_parseCatalog, source);
+      final response = await _getResponse(uri, revision: revision);
+      final apps = await compute(_parseCatalog, response.html);
+      _checkRevision(revision);
       final now = DateTime.now();
-      await _write(file, source, now);
+      await _write(
+        _cacheFile(response.origin, [cacheName]),
+        response.html,
+        now,
+        revision: revision,
+      );
+      await _accept(response, revision);
       return CatalogSnapshot(apps, now);
     } catch (error) {
+      _checkRevision(revision);
       if (cached != null) {
+        final apps = await compute(_parseCatalog, cached.$1);
+        _checkRevision(revision);
         return CatalogSnapshot(
-          await compute(_parseCatalog, cached.$1),
+          apps,
           cached.$2,
           cached: true,
           warning: '暂时无法更新，正在显示上次保存的内容。',
@@ -214,46 +298,60 @@ class CatalogRepository {
   }
 
   Future<DetailSnapshot> detail(CatalogApp app, {bool refresh = false}) async {
+    final revision = sources.revision;
+    final preferred = sources.active;
     final uri = Uri.parse(app.url);
     if (ApplicationType.fromUrl(uri) != app.type ||
         uri.pathSegments.last != app.id) {
       throw const PageFormatException('应用详情地址无效。');
     }
-    final file = File(
-      path.joinAll([
-        directory.path,
-        'details',
-        if (!app.isClient) app.type.value,
-        '${Uri.encodeComponent(app.id)}.html-cache',
-      ]),
-    );
+    final cacheParts = [
+      'details',
+      if (!app.isClient) app.type.value,
+      '${Uri.encodeComponent(app.id)}.html-cache',
+    ];
+    final file = _cacheFile(preferred, cacheParts);
     final cached = await _read(file);
+    _checkRevision(revision);
+    final failureKey = '${preferred.name}|${app.key}';
     if (!refresh &&
         cached != null &&
         DateTime.now().difference(cached.$2) < const Duration(minutes: 30)) {
       try {
+        final detail = await compute(_parseDetail, (cached.$1, app));
+        _checkRevision(revision);
         return DetailSnapshot(
-          await compute(_parseDetail, (cached.$1, app)),
+          detail,
           cached.$2,
           cached: true,
-          refreshFailed: _failedDetailRefreshes.contains(app.key),
+          refreshFailed: _failedDetailRefreshes.contains(failureKey),
         );
       } on PageFormatException {
         /* Fetch a fresh document. */
       }
     }
     try {
-      final source = await _get(uri);
-      final result = await compute(_parseDetail, (source, app));
+      final response = await _getResponse(uri, revision: revision);
+      final result = await compute(_parseDetail, (response.html, app));
+      _checkRevision(revision);
       final now = DateTime.now();
-      await _write(file, source, now);
-      _failedDetailRefreshes.remove(app.key);
+      await _write(
+        _cacheFile(response.origin, cacheParts),
+        response.html,
+        now,
+        revision: revision,
+      );
+      await _accept(response, revision);
+      _failedDetailRefreshes.remove('${response.origin.name}|${app.key}');
       return DetailSnapshot(result, now);
     } catch (_) {
-      _failedDetailRefreshes.add(app.key);
+      _checkRevision(revision);
+      _failedDetailRefreshes.add(failureKey);
       if (cached != null) {
+        final detail = await compute(_parseDetail, (cached.$1, app));
+        _checkRevision(revision);
         return DetailSnapshot(
-          await compute(_parseDetail, (cached.$1, app)),
+          detail,
           cached.$2,
           cached: true,
           refreshFailed: true,
@@ -263,19 +361,107 @@ class CatalogRepository {
     }
   }
 
-  Future<String> _get(Uri uri) async => (await _getResponse(uri)).data!;
-
-  Future<Response<String>> _getResponse(Uri uri) async {
-    final response = await client.getUri<String>(uri);
-    final data = response.data;
-    if (response.realUri.host != 'huarun.win' ||
-        response.realUri.scheme != 'https' ||
-        data == null ||
-        data.length > maxPageBytes ||
-        !(response.headers.value('content-type') ?? '').contains('text/html')) {
-      throw const PageFormatException('网站返回了非预期的页面，请稍后重试。');
+  Future<_ContentResponse> _getResponse(
+    Uri uri, {
+    required int revision,
+  }) async {
+    final preferred = sources.active;
+    final candidates = [
+      preferred,
+      if (sources.mode == ContentSourceMode.automatic) preferred.alternative,
+    ];
+    for (final origin in candidates) {
+      _checkRevision(revision);
+      final transport = sources.pageUri(uri, origin);
+      final cancellation = CancelToken();
+      _pendingRequests.add(cancellation);
+      try {
+        // Bound the whole attempt, including request preparation and redirects.
+        // Its timeout must not cancel other pages or the next content source.
+        final response = await client
+            .getUri<String>(
+              transport,
+              cancelToken: cancellation,
+              options: Options(
+                responseType: ResponseType.plain,
+                connectTimeout: _contentConnectTimeout,
+                sendTimeout: _contentConnectTimeout,
+                receiveTimeout: _contentRequestTimeout,
+              ),
+            )
+            .timeout(
+              _contentRequestTimeout,
+              onTimeout: () {
+                cancellation.cancel('Content source request timed out');
+                throw TimeoutException(
+                  'Content source request timed out',
+                  _contentRequestTimeout,
+                );
+              },
+            );
+        _checkRevision(revision);
+        final data = response.data;
+        final type = response.headers.value('content-type') ?? '';
+        final validLocation = origin == ContentOrigin.website
+            ? SiteRoutes.isNative(response.realUri)
+            : response.realUri.removeFragment() == transport.removeFragment();
+        if (!validLocation ||
+            data == null ||
+            utf8.encode(data).length > maxPageBytes ||
+            !(type.contains('text/html') ||
+                origin == ContentOrigin.github &&
+                    type.contains('text/plain'))) {
+          throw const PageFormatException('内容来源返回了非预期的页面，请稍后重试。');
+        }
+        return (
+          html: data,
+          logicalUri: origin == ContentOrigin.website ? response.realUri : uri,
+          origin: origin,
+          preferred: preferred,
+        );
+      } on TimeoutException {
+        _checkRevision(revision);
+        if (origin == candidates.last) rethrow;
+      } on DioException catch (error) {
+        _checkRevision(revision);
+        final status = error.response?.statusCode;
+        final retryable = switch (error.type) {
+          DioExceptionType.connectionTimeout ||
+          DioExceptionType.sendTimeout ||
+          DioExceptionType.receiveTimeout ||
+          DioExceptionType.transformTimeout ||
+          DioExceptionType.connectionError => true,
+          // Dart reports a peer disconnect during TLS setup as a handshake
+          // error, which Dio wraps as unknown rather than connectionError.
+          // Match that disconnect only; certificate/TLS failures stay fatal.
+          DioExceptionType.unknown => switch (error.error) {
+            HandshakeException(
+              message: 'Connection terminated during handshake',
+              osError: null,
+            ) =>
+              true,
+            _ => false,
+          },
+          DioExceptionType.badResponse =>
+            status == 429 || status != null && status >= 500,
+          _ => false,
+        };
+        if (origin == candidates.last || !retryable) rethrow;
+      } finally {
+        _pendingRequests.remove(cancellation);
+      }
     }
-    return response;
+    throw const PageFormatException('暂时无法读取内容，请稍后重试。');
+  }
+
+  Future<void> _accept(_ContentResponse response, int revision) async {
+    _checkRevision(revision);
+    await sources.succeeded(
+      response.origin,
+      requestRevision: revision,
+      preferred: response.preferred,
+    );
+    _checkRevision(revision);
   }
 
   Future<(String, DateTime, String?)?> _read(File file) async {
@@ -299,11 +485,14 @@ class CatalogRepository {
     File file,
     String html,
     DateTime at, {
+    required int revision,
     String? sourceUrl,
   }) async {
+    Directory? temporary;
     try {
       await file.parent.create(recursive: true);
-      final temp = File('${file.path}.tmp');
+      temporary = await file.parent.createTemp('.content-');
+      final temp = File(path.join(temporary.path, 'document.html-cache'));
       await temp.writeAsString(
         jsonEncode({
           'html': html,
@@ -312,9 +501,18 @@ class CatalogRepository {
         }),
         flush: true,
       );
+      _checkRevision(revision);
       await temp.rename(file.path);
     } on FileSystemException {
       /* Cache is optional; network content remains usable. */
+    } finally {
+      if (temporary != null) {
+        try {
+          await temporary.delete(recursive: true);
+        } on FileSystemException {
+          /* A temporary cache directory may already have been removed. */
+        }
+      }
     }
   }
 }

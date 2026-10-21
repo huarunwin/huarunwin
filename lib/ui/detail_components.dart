@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
+import 'content_image.dart';
 import 'components.dart';
 import 'page_bar.dart';
 import 'theme.dart';
@@ -465,7 +465,7 @@ class _AppScreenshotGalleryState extends State<AppScreenshotGallery> {
                   color: colors.surfaceContainer,
                   child: InkWell(
                     onTap: () => _preview(index),
-                    child: CachedNetworkImage(
+                    child: ContentImage(
                       imageUrl: widget.urls[index],
                       height: height,
                       fit: BoxFit.contain,
@@ -510,7 +510,7 @@ class _AppScreenshotGalleryState extends State<AppScreenshotGallery> {
                 minScale: .8,
                 maxScale: 5,
                 child: Center(
-                  child: CachedNetworkImage(
+                  child: ContentImage(
                     imageUrl: widget.urls[index],
                     fit: BoxFit.contain,
                     placeholder: (_, _) =>

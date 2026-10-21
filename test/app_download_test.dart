@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/services/android_package.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:huarunwin/data/models.dart';
 import 'package:huarunwin/data/repository.dart';
@@ -193,6 +194,13 @@ void main() {
   late TestResolver resolver;
   late TestDownloads downloads;
   setUp(() async {
+    PackageInfo.setMockInitialValues(
+      appName: 'Fixture',
+      packageName: 'win.huarun.fixture',
+      version: '1.2.3',
+      buildNumber: '1',
+      buildSignature: '',
+    );
     directory = await Directory.systemTemp.createTemp('huarun-download-ui');
     resolver = TestResolver();
     downloads = TestDownloads(directory, resolver);

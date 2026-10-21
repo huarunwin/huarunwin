@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/site_models.dart';
 import 'detail_components.dart';
 import 'site_reader.dart';
+import 'content_image.dart';
 import 'theme.dart';
 
 class ServiceDetailHero extends StatelessWidget {
@@ -62,7 +62,7 @@ class ServiceDetailHero extends StatelessWidget {
                   : ColoredBox(
                       // Preserve the contrast of transparent published logos.
                       color: const Color(0xfff5f5f5),
-                      child: CachedNetworkImage(
+                      child: ContentImage(
                         imageUrl: detail.image!,
                         fit: BoxFit.contain,
                         errorWidget: (_, _, _) => Icon(

@@ -6,10 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models.dart';
 import '../data/catalog_filters.dart';
 import '../data/repository.dart';
+import 'content_sources.dart';
 import 'download_platform.dart';
 
 class AppController extends ChangeNotifier {
   AppController(this.repository, this.preferences) {
+    sources.restore(preferences);
+    _sourceRevision = sources.revision;
+    sources.addListener(_sourceChanged);
     _readAppearancePreferences();
     catalogPlatform = _preferredCatalogPlatform;
   }
@@ -27,11 +31,41 @@ class AppController extends ChangeNotifier {
     await preferences.reload();
     if (_disposed) return;
     _readAppearancePreferences();
+    sources.restore(preferences, notify: true);
     notifyListeners();
   }
 
   final CatalogRepository repository;
   final SharedPreferences preferences;
+  ContentSources get sources => repository.sources;
+  late int _sourceRevision;
+  int _catalogRun = 0;
+
+  void _sourceChanged() {
+    if (_disposed) return;
+    if (_sourceRevision == sources.revision) {
+      notifyListeners();
+      return;
+    }
+    _sourceRevision = sources.revision;
+    _catalogRun++;
+    stopDateLoading();
+    snapshot = null;
+    loading = false;
+    error = null;
+    updateDates.clear();
+    updateDateFailures.clear();
+    coreCatalogs.clear();
+    deviceCatalogs.clear();
+    _coreRequests.clear();
+    _deviceRequests.clear();
+    loadingCores.clear();
+    loadingDevices.clear();
+    coreErrors.clear();
+    deviceErrors.clear();
+    unawaited(load(refresh: true));
+  }
+
   CatalogSnapshot? snapshot;
   bool loading = false;
   String? error;
@@ -55,12 +89,15 @@ class AppController extends ChangeNotifier {
   Completer<void>? _dateSlot;
   bool _disposed = false;
   Future<void> load({bool refresh = false}) async {
-    if (loading) return;
+    if (_disposed || loading) return;
+    final run = ++_catalogRun;
     loading = true;
     error = null;
     notifyListeners();
     try {
-      snapshot = await repository.catalog(refresh: refresh);
+      final result = await repository.catalog(refresh: refresh);
+      if (_disposed || run != _catalogRun) return;
+      snapshot = result;
       if (refresh) {
         stopDateLoading();
         updateDates.clear();
@@ -69,10 +106,14 @@ class AppController extends ChangeNotifier {
         deviceCatalogs.clear();
       }
     } catch (_) {
-      error = '暂时无法获取应用目录，请检查网络后重试。';
+      if (!_disposed && run == _catalogRun) {
+        error = '暂时无法获取应用目录，请重试或在设置中切换内容来源。';
+      }
     } finally {
-      loading = false;
-      notifyListeners();
+      if (!_disposed && run == _catalogRun) {
+        loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -86,22 +127,26 @@ class AppController extends ChangeNotifier {
     try {
       await request;
     } finally {
-      _coreRequests.remove(core);
+      if (identical(_coreRequests[core], request)) _coreRequests.remove(core);
     }
   }
 
   Future<void> _fetchCore(String core, {required bool refresh}) async {
+    final revision = sources.revision;
+    bool isCurrent() => !_disposed && revision == sources.revision;
     loadingCores.add(core);
     coreErrors.remove(core);
     notifyListeners();
     try {
       final result = await repository.catalog(core: core, refresh: refresh);
-      if (!_disposed) coreCatalogs[core] = result;
+      if (isCurrent()) coreCatalogs[core] = result;
     } catch (_) {
-      if (!_disposed) coreErrors[core] = '暂时无法加载内核分类，请重试。';
+      if (isCurrent()) coreErrors[core] = '暂时无法加载内核分类，请重试。';
     } finally {
-      loadingCores.remove(core);
-      if (!_disposed) notifyListeners();
+      if (isCurrent()) {
+        loadingCores.remove(core);
+        notifyListeners();
+      }
     }
   }
 
@@ -114,7 +159,9 @@ class AppController extends ChangeNotifier {
     try {
       await request;
     } finally {
-      _deviceRequests.remove(device);
+      if (identical(_deviceRequests[device], request)) {
+        _deviceRequests.remove(device);
+      }
     }
   }
 
@@ -122,17 +169,21 @@ class AppController extends ChangeNotifier {
     CatalogDevice device, {
     required bool refresh,
   }) async {
+    final revision = sources.revision;
+    bool isCurrent() => !_disposed && revision == sources.revision;
     loadingDevices.add(device);
     deviceErrors.remove(device);
     notifyListeners();
     try {
       final result = await repository.deviceCatalog(device, refresh: refresh);
-      if (!_disposed) deviceCatalogs[device] = result;
+      if (isCurrent()) deviceCatalogs[device] = result;
     } catch (_) {
-      if (!_disposed) deviceErrors[device] = '暂时无法加载设备分类，请重试。';
+      if (isCurrent()) deviceErrors[device] = '暂时无法加载设备分类，请重试。';
     } finally {
-      loadingDevices.remove(device);
-      if (!_disposed) notifyListeners();
+      if (isCurrent()) {
+        loadingDevices.remove(device);
+        notifyListeners();
+      }
     }
   }
 
@@ -238,6 +289,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    sources.removeListener(_sourceChanged);
     stopDateLoading();
     super.dispose();
   }

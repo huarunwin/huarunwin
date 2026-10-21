@@ -1,10 +1,46 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html;
 
 import '../data/html_parser.dart';
 import '../data/models.dart';
+import 'github_debug.dart';
 import 'mac_downloads.dart';
+
+String githubReleaseErrorMessage(Object error) {
+  if (error is FormatException) return error.message;
+  if (error is TimeoutException) return '读取 GitHub 超时，请检查网络后重试。';
+  if (error is DioException) {
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.transformTimeout:
+        return '连接或读取 GitHub 超时，请检查网络后重试。';
+      case DioExceptionType.connectionError:
+        return '无法连接 GitHub，请检查网络或代理设置后重试。';
+      case DioExceptionType.badCertificate:
+        return 'GitHub 安全连接校验失败，请检查设备时间和网络设置。';
+      case DioExceptionType.badResponse:
+        final status = error.response?.statusCode;
+        return switch (status) {
+          403 => 'GitHub 拒绝了这次请求（HTTP 403），请稍后重试或使用网站提供的下载入口。',
+          404 => 'GitHub 发布页或资源暂不可访问（HTTP 404），请重试或使用网站提供的下载入口。',
+          429 => 'GitHub 请求过于频繁（HTTP 429），请稍后重试。',
+          final int code when code >= 500 => 'GitHub 暂时无法响应（HTTP $code），请稍后重试。',
+          final int code => 'GitHub 请求失败（HTTP $code），请重试。',
+          _ => 'GitHub 返回了异常响应，请稍后重试。',
+        };
+      case DioExceptionType.cancel:
+        return '已取消 GitHub 内容加载。';
+      case DioExceptionType.unknown:
+        break;
+    }
+  }
+  return '无法读取 GitHub 版本或资源，请重试或使用网站提供的下载入口。';
+}
 
 class GitHubRelease {
   const GitHubRelease({
@@ -159,6 +195,7 @@ class GitHubReleaseResolver {
   }
 
   Future<GitHubReleasePage> loadPage(Uri page) async {
+    githubDebugLog('releases.load', uri: page);
     if (MacDownloadResolver.releasePage(page.toString()) == null &&
         page.path != indexFor(page).path) {
       throw const FormatException('GitHub 版本列表地址无效。');
@@ -168,6 +205,14 @@ class GitHubReleaseResolver {
       throw const FormatException('GitHub 版本列表地址已变化，请打开官方页面。');
     }
     final parsed = releasesFromHtml(body, actual);
+    githubDebugLog(
+      'releases.parsed',
+      uri: actual,
+      fields: {
+        'releases': parsed.releases.length,
+        'hasNextPage': parsed.next != null,
+      },
+    );
     if (parsed.releases.isEmpty) {
       throw const FormatException('暂未读取到公开版本，请重试或使用官方渠道。');
     }
@@ -194,6 +239,7 @@ class GitHubReleaseResolver {
     final latest = index.replace(
       pathSegments: [...index.pathSegments, 'latest'],
     );
+    githubDebugLog('latest.load', uri: latest);
     try {
       final (body, actual) = await source.readGitHubHtml(latest);
       if (!_sameRepository(index, actual) ||
@@ -207,6 +253,11 @@ class GitHubReleaseResolver {
         throw const FormatException('暂未读取到最新稳定版，请重试。');
       }
       final parsed = _release(heading, actual);
+      githubDebugLog(
+        'latest.parsed',
+        uri: actual,
+        fields: {'prerelease': parsed.prerelease},
+      );
       if (parsed.prerelease) return null;
       _releaseHtml[actual] = body;
       return GitHubRelease(
@@ -216,7 +267,10 @@ class GitHubReleaseResolver {
         latest: true,
       );
     } on DioException catch (error) {
-      if (error.response?.statusCode == 404) return null;
+      if (error.response?.statusCode == 404) {
+        githubDebugLog('latest.notFound', uri: latest);
+        return null;
+      }
       rethrow;
     }
   }
@@ -338,8 +392,20 @@ class GitHubReleaseResolver {
 
   Future<List<DownloadLink>> loadResources(GitHubRelease release) async {
     final cached = _resources[release.page];
-    if (cached != null) return cached;
+    if (cached != null) {
+      githubDebugLog(
+        'assets.cacheHit',
+        uri: release.page,
+        fields: {'resources': cached.length},
+      );
+      return cached;
+    }
     var body = _releaseHtml[release.page];
+    githubDebugLog(
+      'assets.load',
+      uri: release.page,
+      fields: {'htmlCached': body != null},
+    );
     if (body == null) {
       final (sourceHtml, actual) = await source.readGitHubHtml(release.page);
       if (!_sameRepository(release.page, actual) ||
@@ -369,6 +435,14 @@ class GitHubReleaseResolver {
         fragments.add(link);
       }
     }
+    githubDebugLog(
+      'assets.fragments',
+      uri: release.page,
+      fields: {
+        'fragments': fragments.length,
+        'inlineResources': resources.length,
+      },
+    );
     for (final fragment in fragments.take(1)) {
       final (assets, actual) = await source.readGitHubHtml(fragment);
       if (!_sameRepository(release.page, actual) ||
@@ -379,6 +453,11 @@ class GitHubReleaseResolver {
         resources[resource.url] = resource;
       }
     }
+    githubDebugLog(
+      'assets.parsed',
+      uri: release.page,
+      fields: {'resources': resources.length},
+    );
     return _resources[release.page] = resources.values.toList();
   }
 }

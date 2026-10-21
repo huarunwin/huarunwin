@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../data/site_models.dart';
 import '../data/site_parser.dart';
 import 'reading_catalog.dart';
+import 'content_image.dart';
 import 'components.dart';
 import 'detail_components.dart';
 import 'page_bar.dart';
@@ -770,7 +770,7 @@ class SiteBlockView extends StatelessWidget {
           shape: surfaceShape(14),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: small ? 72 : 420),
-            child: CachedNetworkImage(
+            child: ContentImage(
               imageUrl: url,
               width: small ? 72 : null,
               height: small ? 72 : null,
@@ -863,7 +863,7 @@ class _ReadingImagePreviewState extends State<_ReadingImagePreview> {
             itemBuilder: (context, page) => InteractiveViewer(
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: CachedNetworkImage(
+                child: ContentImage(
                   imageUrl: widget.images[page].url!,
                   fit: BoxFit.contain,
                   errorWidget: (_, _, _) => Center(

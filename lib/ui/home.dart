@@ -83,16 +83,38 @@ class _HomePageState extends State<HomePage> {
   bool get _usesMobileTabs =>
       usesMobileDesign(context) && MediaQuery.sizeOf(context).width < 900;
   int _filterRun = 0;
+  late int _sourceRevision;
+  bool _sourceNeedsMetadata = false;
   final search = TextEditingController();
   @override
   void initState() {
     super.initState();
+    _sourceRevision = widget.controller.sources.revision;
+    widget.controller.addListener(_contentChanged);
     _sidebarExpanded =
         widget.controller.preferences.getBool('sidebarExpanded') ?? true;
     widget.libraryRequests?.addListener(_showDownloads);
     if (device != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_loadMetadata());
+      });
+    }
+  }
+
+  void _contentChanged() {
+    if (!mounted) return;
+    final controller = widget.controller;
+    if (_sourceRevision != controller.sources.revision) {
+      _sourceRevision = controller.sources.revision;
+      _filterRun++;
+      _sourceNeedsMetadata = true;
+    }
+    if (_sourceNeedsMetadata &&
+        !controller.loading &&
+        controller.snapshot != null) {
+      _sourceNeedsMetadata = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_loadMetadata(refreshScopes: true));
       });
     }
   }
@@ -104,10 +126,16 @@ class _HomePageState extends State<HomePage> {
       oldWidget.libraryRequests?.removeListener(_showDownloads);
       widget.libraryRequests?.addListener(_showDownloads);
     }
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_contentChanged);
+      widget.controller.addListener(_contentChanged);
+      _contentChanged();
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_contentChanged);
     widget.libraryRequests?.removeListener(_showDownloads);
     widget.controller.stopDateLoading();
     search.dispose();
@@ -627,50 +655,15 @@ class _HomePageState extends State<HomePage> {
                 builder: (context) => Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Material(
-                            color: SurfacePanel.raisedColor(context),
-                            shape: surfaceShape(1000),
-                            clipBehavior: Clip.antiAlias,
-                            child: TextField(
-                              controller: search,
-                              onChanged: (value) =>
-                                  _changeFilters(() => query = value),
-                              textInputAction: TextInputAction.search,
-                              decoration: InputDecoration(
-                                hintText: applicationType != null
-                                    ? '搜索${applicationType!.label}'
-                                    : compact
-                                    ? '搜索应用、工具或规则'
-                                    : '搜索客户端、服务端、订阅工具、规则与配置',
-                                hintStyle: const TextStyle(fontSize: 14),
-                                prefixIcon: const Icon(Icons.search_rounded),
-                                suffixIcon: query.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        tooltip: '清空搜索',
-                                        onPressed: () {
-                                          search.clear();
-                                          _changeFilters(() => query = '');
-                                        },
-                                        icon: const Icon(
-                                          Icons.close_rounded,
-                                          size: 18,
-                                        ),
-                                      ),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: compact ? 12 : 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    CatalogSearchField(
+                      controller: search,
+                      compact: compact,
+                      hintText: applicationType != null
+                          ? '搜索${applicationType!.label}'
+                          : compact
+                          ? '搜索应用、工具或规则'
+                          : '搜索客户端、服务端、订阅工具、规则与配置',
+                      onChanged: (value) => _changeFilters(() => query = value),
                     ),
                     const SizedBox(height: 12),
                     if (compact)

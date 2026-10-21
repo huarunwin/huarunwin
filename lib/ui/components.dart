@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/models.dart';
@@ -9,6 +9,7 @@ import '../data/site_parser.dart';
 import '../services/mac_downloads.dart';
 import 'corrections_page.dart';
 import 'page_components.dart';
+import 'content_image.dart';
 import 'theme.dart';
 import 'web_page.dart';
 
@@ -71,7 +72,7 @@ class AppIcon extends StatelessWidget {
       dimension: size,
       child: app.icon == null
           ? _fallback(context)
-          : CachedNetworkImage(
+          : ContentImage(
               imageUrl: app.icon!,
               fit: BoxFit.cover,
               placeholder: (_, _) => _fallback(context),

@@ -59,6 +59,7 @@ class AppDownloadButton extends StatefulWidget {
 class _AppDownloadButtonState extends State<AppDownloadButton>
     with WidgetsBindingObserver {
   bool loading = false;
+  bool _waitingForChoice = false;
   bool updateAvailable = false;
   String? updateDescription;
   AppDownloadStatus? localDownload;
@@ -203,7 +204,7 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
         : updateAvailable
         ? '更新'
         : '打开';
-    final child = busy
+    final child = checkingStatus || loading && !_waitingForChoice
         ? SizedBox.square(
             dimension: 16,
             child: CircularProgressIndicator(
@@ -236,6 +237,15 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
                   ? '打开应用库，继续安装或查看安装包'
                   : label);
     return Tooltip(message: description, child: button);
+  }
+
+  Future<T?> _showChoice<T>(Future<T?> Function() open) async {
+    setState(() => _waitingForChoice = true);
+    try {
+      return await open();
+    } finally {
+      if (mounted) setState(() => _waitingForChoice = false);
+    }
   }
 
   Future<void> _open() async {
@@ -309,75 +319,78 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
     String? description,
   }) {
     var selected = initialValue ?? choices.first.value;
-    return showAdaptiveForm<T>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, updateSelection) {
-          final theme = Theme.of(context);
-          final colors = theme.colorScheme;
-          return AdaptiveDialog(
-            title: title,
-            content: SizedBox(
-              width: 440,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (description != null) ...[
-                    Text(description),
-                    const SizedBox(height: 16),
-                  ],
-                  Material(
-                    color: theme.brightness == Brightness.dark
-                        ? colors.surfaceContainerHighest
-                        : colors.surfaceContainer,
-                    shape: surfaceShape(20),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final choice in choices)
-                          ListTile(
-                            leading: Icon(choice.icon),
-                            title: Text(choice.title),
-                            titleTextStyle: theme.textTheme.bodyLarge,
-                            subtitle: choice.subtitle == null
-                                ? null
-                                : Text(
-                                    choice.subtitle!,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                            textColor: colors.onSurface,
-                            iconColor: colors.onSurfaceVariant,
-                            selectedColor: colors.onSurface,
-                            subtitleTextStyle: theme.textTheme.bodyMedium
-                                ?.copyWith(color: colors.onSurfaceVariant),
-                            selected: choice.value == selected,
-                            trailing: SizedBox.square(
-                              dimension: 24,
-                              child: choice.value == selected
-                                  ? Icon(
-                                      Icons.check_rounded,
-                                      color: colors.primary,
-                                    )
-                                  : null,
+    return _showChoice(
+      () => showAdaptiveForm<T>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, updateSelection) {
+            final theme = Theme.of(context);
+            final colors = theme.colorScheme;
+            return AdaptiveDialog(
+              title: title,
+              content: SizedBox(
+                width: 440,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (description != null) ...[
+                      Text(description),
+                      const SizedBox(height: 16),
+                    ],
+                    Material(
+                      color: theme.brightness == Brightness.dark
+                          ? colors.surfaceContainerHighest
+                          : colors.surfaceContainer,
+                      shape: surfaceShape(20),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final choice in choices)
+                            ListTile(
+                              leading: Icon(choice.icon),
+                              title: Text(choice.title),
+                              titleTextStyle: theme.textTheme.bodyLarge,
+                              subtitle: choice.subtitle == null
+                                  ? null
+                                  : Text(
+                                      choice.subtitle!,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                              textColor: colors.onSurface,
+                              iconColor: colors.onSurfaceVariant,
+                              selectedColor: colors.onSurface,
+                              subtitleTextStyle: theme.textTheme.bodyMedium
+                                  ?.copyWith(color: colors.onSurfaceVariant),
+                              selected: choice.value == selected,
+                              trailing: SizedBox.square(
+                                dimension: 24,
+                                child: choice.value == selected
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        color: colors.primary,
+                                      )
+                                    : null,
+                              ),
+                              onTap: () => updateSelection(
+                                () => selected = choice.value,
+                              ),
                             ),
-                            onTap: () =>
-                                updateSelection(() => selected = choice.value),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            actions: DialogActionsRow(
-              confirmLabel: '确认',
-              onCancel: () => Navigator.pop(context),
-              onConfirm: () => Navigator.pop(context, selected),
-            ),
-          );
-        },
+              actions: DialogActionsRow(
+                confirmLabel: '确认',
+                onCancel: () => Navigator.pop(context),
+                onConfirm: () => Navigator.pop(context, selected),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -499,25 +512,27 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
           appKey: downloadApp.key,
           appName: downloadApp.name,
         );
-        final selection = await showAdaptiveForm<ReleaseDownloadSelection>(
-          context: context,
-          builder: (context) => ReleaseDownloadDialog(
-            appName: downloadApp.name,
-            source: source,
-            resolver: GitHubReleaseResolver(widget.manager.macResolver),
-            installer: widget.manager.installer,
-            suggestedPackageName: signingPreference?.resignedPackageName,
-            suggestedSigningKey: signingPreference?.resignKey,
-            preferences: ReleaseDownloadPreferences(
-              platform: target,
-              running: running,
-              architecture: architecture,
-              linuxPackageKind: linux?.packageKind,
+        final selection = await _showChoice(
+          () => showAdaptiveForm<ReleaseDownloadSelection>(
+            context: context,
+            builder: (context) => ReleaseDownloadDialog(
+              appName: downloadApp.name,
+              source: source,
+              resolver: GitHubReleaseResolver(widget.manager.macResolver),
+              installer: widget.manager.installer,
+              suggestedPackageName: signingPreference?.resignedPackageName,
+              suggestedSigningKey: signingPreference?.resignKey,
+              preferences: ReleaseDownloadPreferences(
+                platform: target,
+                running: running,
+                architecture: architecture,
+                linuxPackageKind: linux?.packageKind,
+              ),
+              deviceDescription: [
+                ?linux?.distribution,
+                ?architecture,
+              ].join(' · '),
             ),
-            deviceDescription: [
-              ?linux?.distribution,
-              ?architecture,
-            ].join(' · '),
           ),
         );
         if (!mounted || selection == null) return;
@@ -607,24 +622,26 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
       if (!mounted) return;
       final fallback =
           detail?.releaseUrl ?? detail?.officialUrl ?? widget.app.url;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('暂时无法开始下载'),
-          content: Text(
-            error is FormatException ? error.message : '无法读取下载信息，请检查网络后重试。',
-          ),
-          actions: [
-            DialogActionsRow(
-              cancelLabel: '关闭',
-              confirmLabel: '打开官方页面',
-              onCancel: () => Navigator.pop(context),
-              onConfirm: () {
-                Navigator.pop(context);
-                openLink(this.context, fallback);
-              },
+      await _showChoice(
+        () => showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('暂时无法开始下载'),
+            content: Text(
+              error is FormatException ? error.message : '无法读取下载信息，请检查网络后重试。',
             ),
-          ],
+            actions: [
+              DialogActionsRow(
+                cancelLabel: '关闭',
+                confirmLabel: '打开官方页面',
+                onCancel: () => Navigator.pop(context),
+                onConfirm: () {
+                  Navigator.pop(context);
+                  openLink(this.context, fallback);
+                },
+              ),
+            ],
+          ),
         ),
       );
     } finally {

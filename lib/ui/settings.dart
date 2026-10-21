@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/site_parser.dart';
 import '../services/app_controller.dart';
+import '../services/content_sources.dart';
 import '../services/download_locations.dart';
 import '../services/downloads.dart';
 import 'adaptive_dialog.dart';
@@ -90,6 +91,20 @@ class SettingsPage extends StatelessWidget {
         PageSection(
           title: '应用目录',
           children: [
+            PageRow(
+              title: '内容来源',
+              subtitle: controller.sources.mode == ContentSourceMode.automatic
+                  ? '自动 · ${controller.sources.active.label}'
+                  : controller.sources.mode.label,
+              icon: Icons.public_rounded,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => _ContentSourcePage(controller: controller),
+                ),
+              ),
+            ),
             PageRow(
               title: '重置为默认值',
               subtitle: '清除记住的平台与设备筛选，恢复当前设备平台。',
@@ -205,6 +220,85 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+class _ContentSourcePage extends StatefulWidget {
+  const _ContentSourcePage({required this.controller});
+  final AppController controller;
+
+  @override
+  State<_ContentSourcePage> createState() => _ContentSourcePageState();
+}
+
+class _ContentSourcePageState extends State<_ContentSourcePage> {
+  bool _saving = false;
+
+  Future<void> _select(ContentSourceMode mode) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await widget.controller.sources.select(mode);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('未能保存内容来源，请重试。')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: PageSafeArea(
+      child: ListenableBuilder(
+        listenable: widget.controller.sources,
+        builder: (context, _) {
+          final sources = widget.controller.sources;
+          return ContentPage(
+            title: '内容来源',
+            showBackButton: true,
+            children: [
+              PageSection(
+                title: '选择来源',
+                footer: '切换后重新加载目录、详情和图片。GitHub 镜像为一次性快照，内容可能晚于网站。',
+                children: [
+                  for (final mode in ContentSourceMode.values)
+                    PageRow(
+                      title: mode.label,
+                      subtitle: switch (mode) {
+                        ContentSourceMode.automatic =>
+                          '网络连接失败时尝试另一来源，优先使用最近成功的来源。',
+                        ContentSourceMode.website => '始终从华润赢网站读取内容。',
+                        ContentSourceMode.github => '始终从 GitHub 镜像读取内容。',
+                      },
+                      trailing: sources.mode == mode
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: Theme.of(context).colorScheme.primary,
+                            )
+                          : null,
+                      onTap: _saving ? null : () => _select(mode),
+                    ),
+                ],
+              ),
+              if (sources.mode == ContentSourceMode.automatic)
+                PageSection(
+                  title: '连接状态',
+                  children: [
+                    PageRow(
+                      title: sources.hasSuccessfulSource ? '最近成功来源' : '优先尝试来源',
+                      subtitle: sources.active.label,
+                      icon: Icons.cloud_done_outlined,
+                    ),
+                  ],
+                ),
+            ],
+          );
+        },
+      ),
     ),
   );
 }

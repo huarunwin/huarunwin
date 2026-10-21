@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/site_models.dart';
 import '../data/site_parser.dart';
 import 'adaptive_dialog.dart';
 import 'catalog_controls.dart';
+import 'content_image.dart';
 import 'components.dart';
 import 'page_components.dart';
 import 'theme.dart';
@@ -801,7 +801,7 @@ class ReadingAvatar extends StatelessWidget {
       ),
       child: url == null
           ? fallback
-          : CachedNetworkImage(
+          : ContentImage(
               imageUrl: url!,
               width: size,
               height: size,

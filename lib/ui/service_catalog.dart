@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/site_models.dart';
 import 'adaptive_dialog.dart';
 import 'catalog_controls.dart';
+import 'content_image.dart';
 import 'components.dart';
 import 'page_components.dart';
 import 'theme.dart';
@@ -1094,7 +1094,7 @@ class _ServiceCard extends StatelessWidget {
                 : ColoredBox(
                     // Some published logos are black with a transparent background.
                     color: const Color(0xfff5f5f5),
-                    child: CachedNetworkImage(
+                    child: ContentImage(
                       imageUrl: item.image!,
                       fit: BoxFit.contain,
                       errorWidget: (_, _, _) =>

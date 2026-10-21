@@ -47,6 +47,52 @@ class CatalogSearchPanel extends StatelessWidget {
   }
 }
 
+class CatalogSearchField extends StatelessWidget {
+  const CatalogSearchField({
+    super.key,
+    required this.controller,
+    required this.hintText,
+    required this.compact,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final bool compact;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: SurfacePanel.raisedColor(context),
+    shape: surfaceShape(1000),
+    clipBehavior: Clip.antiAlias,
+    child: TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: const TextStyle(fontSize: 14),
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: '清空搜索',
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(vertical: compact ? 12 : 16),
+      ),
+    ),
+  );
+}
+
 class CatalogMenu<T> extends StatelessWidget {
   const CatalogMenu({
     super.key,

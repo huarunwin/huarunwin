@@ -10,6 +10,8 @@ import '../services/app_library.dart';
 import '../services/download_platform.dart';
 import '../services/downloads.dart';
 import 'app_download_button.dart';
+import 'app_library_navigation.dart';
+import 'app_library_overview.dart';
 import 'catalog_controls.dart';
 import 'components.dart';
 import 'detail.dart';
@@ -45,17 +47,21 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   final _scroll = ScrollController();
+  final _detailChanges = ValueNotifier(0);
+  final _managedPackageNames = <String>{};
   late LibrarySection _section = widget.initialSection;
   _LibrarySort _sort = _LibrarySort.updates;
   Map<String, LibraryAppStatus> _statuses = {};
   Map<String, AppDownloadStatus?> _androidPackages = {};
   CatalogSnapshot? _catalog;
+  late int _sourceRevision = widget.controller.sources.revision;
   int? _taskSignature;
   int _generation = 0;
   bool _checking = true,
       _refreshing = false,
       _checkAgain = false,
       _online = false,
+      _statusCheckFailed = false,
       _hasSnapshot = false;
   Future<void>? _checks, _refreshRequest;
   String? _refreshError, _statusError;
@@ -107,6 +113,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       widget.manager.addListener(_changed);
       widget.controller.addListener(_changed);
       _statuses = {};
+      _sourceRevision = widget.controller.sources.revision;
       _androidPackages = {};
       _hasSnapshot = false;
       _generation++;
@@ -135,18 +142,33 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     widget.controller.removeListener(_changed);
     _search.dispose();
     _scroll.dispose();
+    _detailChanges.dispose();
     super.dispose();
   }
 
   void _changed() {
     final signature = _signature;
-    if (signature == _taskSignature && _catalog == widget.controller.snapshot) {
+    final sourceChanged = _sourceRevision != widget.controller.sources.revision;
+    if (!sourceChanged &&
+        signature == _taskSignature &&
+        _catalog == widget.controller.snapshot) {
       return;
+    }
+    if (sourceChanged) {
+      _sourceRevision = widget.controller.sources.revision;
+      // Keep local installation facts, but never reuse another source's
+      // release details as the result of the new source's update check.
+      _statuses = {
+        for (final entry in _statuses.entries)
+          entry.key: LibraryAppStatus(entry.value.local),
+      };
+      _statusError = null;
     }
     _taskSignature = signature;
     _catalog = widget.controller.snapshot;
     _generation++;
     _checkAgain = true;
+    _detailChanges.value++;
     if (!_refreshing && !widget.manager.refreshing) unawaited(_check());
   }
 
@@ -163,6 +185,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       _refreshing = true;
       _refreshError = null;
     });
+    _detailChanges.value++;
     _generation++;
     if (_platform == 'macOS') widget.manager.installedApps.invalidate();
     try {
@@ -200,6 +223,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
 
   Future<void> _readStatuses() async {
     setState(() => _checking = true);
+    _detailChanges.value++;
     try {
       do {
         _checkAgain = false;
@@ -219,6 +243,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
             platform: _platform,
             isCurrent: isCurrent,
             refresh: online,
+            knownAndroidPackages: _managedPackageNames,
           );
           if (!isCurrent()) continue;
           setState(() {
@@ -234,6 +259,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                     : entry.value,
             };
             _androidPackages = result.androidPackages;
+            _statusCheckFailed = false;
             _hasSnapshot = true;
             _statusError = result.updateCheckFailed
                 ? '部分应用未能获取最新版本，已保留上次结果，请重试。'
@@ -243,13 +269,17 @@ class _AppLibraryPageState extends State<AppLibraryPage>
           if (isCurrent()) {
             setState(() {
               _hasSnapshot = true;
+              _statusCheckFailed = true;
               _statusError = '应用状态未能检查，已保留上次结果，请重试。';
             });
           }
         }
       } while (mounted && widget.active && !_refreshing && _checkAgain);
     } finally {
-      if (mounted) setState(() => _checking = false);
+      if (mounted) {
+        setState(() => _checking = false);
+        _detailChanges.value++;
+      }
     }
   }
 
@@ -315,7 +345,8 @@ class _AppLibraryPageState extends State<AppLibraryPage>
           constraints: const BoxConstraints(maxWidth: 1040),
           child: LayoutBuilder(
             builder: (context, size) {
-              final inset = size.maxWidth < 600 ? 16.0 : 32.0;
+              final compact = size.maxWidth < 600;
+              final inset = compact ? 16.0 : 32.0;
               return PageRefreshIndicator(
                 onRefresh: _refresh,
                 child: CustomScrollView(
@@ -325,8 +356,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                     SliverPadding(
                       padding: EdgeInsets.fromLTRB(
                         inset,
-                        (size.maxWidth < 600 ? 16 : 28) +
-                            PageSafeArea.topInsetOf(context),
+                        (compact ? 16 : 34) + PageSafeArea.topInsetOf(context),
                         inset,
                         0,
                       ),
@@ -336,6 +366,9 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                           children: [
                             PageHeader(
                               title: '应用库',
+                              titleStyle: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium,
                               showBackButton: widget.showBackButton,
                               actions: [
                                 RefreshIconButton(
@@ -356,70 +389,32 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                                   ),
                               ],
                             ),
-                            TextField(
-                              controller: _search,
-                              decoration: InputDecoration(
-                                hintText: '搜索应用与安装包',
-                                prefixIcon: const Icon(
-                                  Icons.search_rounded,
-                                  size: 21,
-                                ),
-                                suffixIcon: query.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        tooltip: '清空搜索',
-                                        icon: const Icon(
-                                          Icons.close_rounded,
-                                          size: 18,
-                                        ),
-                                        onPressed: () =>
-                                            setState(_search.clear),
-                                      ),
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            const SizedBox(height: 16),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                spacing: 8,
+                            CatalogSearchPanel(
+                              grouped: !compact,
+                              builder: (context) => Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  for (final section in LibrarySection.values)
-                                    ChoiceChip(
-                                      label: Text(
-                                        _hasSnapshot
-                                            ? '${section.label} ${items.where((item) => item.matches(section)).length}'
-                                            : section.label,
-                                      ),
-                                      selected: _section == section,
-                                      onSelected: (_) =>
-                                          setState(() => _section = section),
+                                  CatalogSearchField(
+                                    controller: _search,
+                                    hintText: '搜索应用与安装包',
+                                    compact: compact,
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _sectionMenu(
+                                      items,
+                                      compact: compact,
                                     ),
+                                  ),
+                                  if (!compact) const SizedBox(height: 16),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                CatalogMenu<_LibrarySort>(
-                                  label: _sortLabel(_sort),
-                                  tooltip: '应用库排序',
-                                  selected: _sort,
-                                  values: _LibrarySort.values,
-                                  labelFor: _sortLabel,
-                                  onSelected: (value) =>
-                                      setState(() => _sort = value),
-                                ),
-                                const Spacer(),
-                                if (_hasSnapshot)
-                                  Text(
-                                    '${visible.length} 项',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall,
-                                  ),
-                              ],
-                            ),
+                            if (usesMobileDesign(context))
+                              const SizedBox(height: 12),
+                            _resultToolbar(visible.length, compact: compact),
                             for (final error in notices)
                               Padding(
                                 padding: const EdgeInsets.only(top: 12),
@@ -494,6 +489,83 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       );
     },
   );
+
+  Widget _sectionMenu(List<LibraryItem> items, {required bool compact}) {
+    final label = _section == LibrarySection.all ? '状态' : _section.label;
+    final tooltip = '应用状态：${_section.label}';
+    String optionLabel(LibrarySection section) => _hasSnapshot
+        ? '${section.label} ${items.where((item) => item.matches(section)).length}'
+        : section.label;
+    void select(LibrarySection value) => setState(() => _section = value);
+
+    if (compact) {
+      final width = CompactCatalogMenu.widthOf(context, label);
+      return SizedBox(
+        width: width < 120 ? 120 : width,
+        child: CompactCatalogMenu<LibrarySection>(
+          key: const ValueKey('library-status-menu'),
+          label: label,
+          title: '应用状态',
+          tooltip: tooltip,
+          selected: _section,
+          values: LibrarySection.values,
+          labelFor: optionLabel,
+          optionKey: (value) => ValueKey('library-status-${value.name}'),
+          active: _section != LibrarySection.all,
+          onChanged: select,
+        ),
+      );
+    }
+    return CatalogMenu<LibrarySection>(
+      key: const ValueKey('library-status-menu'),
+      label: label,
+      tooltip: tooltip,
+      selected: _section,
+      values: LibrarySection.values,
+      labelFor: optionLabel,
+      optionKey: (value) => ValueKey('library-status-${value.name}'),
+      active: _section != LibrarySection.all,
+      onSelected: select,
+    );
+  }
+
+  Widget _resultToolbar(int count, {required bool compact}) {
+    final label = _sortLabel(_sort);
+    void select(_LibrarySort value) => setState(() => _sort = value);
+
+    return CatalogToolbar(
+      count: _hasSnapshot ? '$count 款应用' : null,
+      grid: false,
+      showViewSwitch: false,
+      onGridChanged: (_) {},
+      sort: compact
+          ? SizedBox(
+              width: CompactCatalogMenu.widthOf(context, label),
+              child: CompactCatalogMenu<_LibrarySort>(
+                key: const ValueKey('library-sort-menu'),
+                label: label,
+                title: '排序方式',
+                selected: _sort,
+                values: _LibrarySort.values,
+                labelFor: _sortLabel,
+                optionKey: (value) => ValueKey('library-sort-${value.name}'),
+                active: _sort != _LibrarySort.updates,
+                onChanged: select,
+              ),
+            )
+          : CatalogMenu<_LibrarySort>(
+              key: const ValueKey('library-sort-menu'),
+              label: label,
+              tooltip: '排序方式：$label',
+              selected: _sort,
+              values: _LibrarySort.values,
+              labelFor: _sortLabel,
+              optionKey: (value) => ValueKey('library-sort-${value.name}'),
+              active: _sort != _LibrarySort.updates,
+              onSelected: select,
+            ),
+    );
+  }
 
   String _sortLabel(_LibrarySort value) => switch (value) {
     _LibrarySort.updates => '更新优先',
@@ -649,7 +721,12 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     );
   }
 
-  Widget? _action(LibraryItem item) {
+  Widget? _action(
+    LibraryItem item, {
+    BuildContext? pageContext,
+    ValueChanged<DownloadEntry>? onInstall,
+  }) {
+    final managing = pageContext != null;
     final active = item.activeTasks;
     if (active.isNotEmpty) {
       if (active.length != 1 ||
@@ -662,7 +739,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
         child: const Text('取消'),
       );
     }
-    if (_section == LibrarySection.downloads &&
+    if ((_section == LibrarySection.downloads || managing) &&
         item.tasks.length == 1 &&
         [
           DownloadState.failed,
@@ -675,7 +752,13 @@ class _AppLibraryPageState extends State<AppLibraryPage>
             try {
               await widget.manager.retry(task);
             } catch (_) {
-              if (mounted) _message('未能重试，请打开条目查看详情。');
+              if (!mounted) return;
+              final currentContext = pageContext ?? context;
+              if (currentContext.mounted) {
+                ScaffoldMessenger.of(currentContext).showSnackBar(
+                  const SnackBar(content: Text('未能重试，请查看安装包的失败详情。')),
+                );
+              }
             }
           },
           child: const Text('重试'),
@@ -687,13 +770,18 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       final file = pending.singleOrNull;
       final installable =
           file != null &&
+          item.installations.length <= 1 &&
+          !file.task.deleting &&
           (file.package == null
               ? file.task.canInstallOn(_platform)
               : file.task.canInstallPackageOn(_platform, file.package!));
+      // Multiple files/identities keep their individual controls below.
+      if (managing && !installable) return null;
       return FilledButton(
         style: downloadButtonStyle(context),
-        onPressed: () =>
-            _openFiles(item: item, install: installable ? file : null),
+        onPressed: managing && installable
+            ? () => onInstall!(file)
+            : () => _openFiles(item: item, install: installable ? file : null),
         child: Text(installable ? '安装' : '查看'),
       );
     }
@@ -710,24 +798,48 @@ class _AppLibraryPageState extends State<AppLibraryPage>
         details: item.status!.details,
         loadDetails: () async =>
             (await widget.controller.repository.detail(item.app!)).details,
-        onStarted: () => setState(() {
-          _section = LibrarySection.downloads;
-          _resetDownloadSearch();
-        }),
+        onStarted: () => _showDownloads(pageContext),
       );
     }
     if (item.installations.length == 1) {
       return FilledButton(
         style: downloadButtonStyle(context),
-        onPressed: () => _openInstalled(item),
+        onPressed: () => _openInstallation(
+          item.installations.single,
+          pageContext ?? context,
+        ),
         child: const Text('打开'),
+      );
+    }
+    if (item.installations.length > 1 && !managing) {
+      return FilledButton(
+        style: downloadButtonStyle(context),
+        onPressed: () => _openFiles(item: item),
+        child: const Text('查看'),
+      );
+    }
+    if (managing &&
+        item.files.isEmpty &&
+        item.installations.isEmpty &&
+        item.app != null) {
+      final app = item.app!;
+      return AppDownloadButton(
+        app: app,
+        manager: widget.manager,
+        selectedPlatform: _platform ?? '全部',
+        compact: true,
+        loadDetails: () async =>
+            (await widget.controller.repository.detail(app)).details,
+        onStarted: () => _showDownloads(pageContext),
       );
     }
     return null;
   }
 
-  Future<void> _openInstalled(LibraryItem item) async {
-    final installed = item.installations.single;
+  Future<void> _openInstallation(
+    AppDownloadStatus installed,
+    BuildContext pageContext,
+  ) async {
     try {
       if (installed.installedPackage case final package?) {
         await widget.manager.installer.openAndroidApp(package);
@@ -739,11 +851,25 @@ class _AppLibraryPageState extends State<AppLibraryPage>
         }
       }
     } catch (_) {
-      if (mounted) {
-        _message('应用未能打开，请刷新后重试。');
+      if (mounted && pageContext.mounted) {
+        ScaffoldMessenger.of(pageContext)
+            .showSnackBar(const SnackBar(content: Text('应用未能打开，请刷新后重试。')));
         unawaited(_refresh(online: false));
       }
     }
+  }
+
+  void _showDownloads(BuildContext? pageContext) {
+    if (!mounted || pageContext != null && !pageContext.mounted) return;
+    if (pageContext != null &&
+        AppLibraryNavigation.showDownloads(pageContext)) {
+      return;
+    }
+    if (pageContext != null) Navigator.of(pageContext).pop();
+    setState(() {
+      _section = LibrarySection.downloads;
+      _resetDownloadSearch();
+    });
   }
 
   void _resetDownloadSearch() {
@@ -753,22 +879,21 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     });
   }
 
-  Future<void> _openItem(LibraryItem item) async {
-    if (item.files.isNotEmpty) return _openFiles(item: item);
-    if (item.app case final app?) {
-      await Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DetailPage(
-            app: app,
-            controller: widget.controller,
-            downloads: widget.manager,
-            selectedPlatform: _platform ?? '全部',
-          ),
+  Future<void> _openItem(LibraryItem item) => _openFiles(item: item);
+
+  Future<void> _showAppDetails(BuildContext pageContext, CatalogApp app) async {
+    await Navigator.push<void>(
+      pageContext,
+      MaterialPageRoute(
+        builder: (_) => DetailPage(
+          app: app,
+          controller: widget.controller,
+          downloads: widget.manager,
+          selectedPlatform: _platform ?? '全部',
         ),
-      );
-      if (mounted) unawaited(_refresh(online: false));
-    }
+      ),
+    );
+    if (mounted) unawaited(_refresh(online: false));
   }
 
   Future<void> _openFiles({
@@ -776,29 +901,97 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     DownloadEntry? install,
     bool import = false,
   }) async {
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          body: PageSafeArea(
-            child: DownloadsPage(
-              manager: widget.manager,
-              showBackButton: true,
-              title: item?.name ?? '安装包与资源',
-              taskIds: item?.taskIds,
-              appKey: item?.app?.key,
-              initialTask: install?.task,
-              initialPackage: install?.package,
-              importOnEntry: import,
+    final knownPackages = <String>{
+      if (item != null) ...[
+        for (final installed in item.installations) ?installed.installedPackage,
+        for (final task in item.tasks)
+          for (final package in task.androidPackages)
+            ?task.packageName(package),
+      ],
+    };
+    _managedPackageNames.addAll(knownPackages);
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            body: PageSafeArea(
+              child: ListenableBuilder(
+                listenable: _detailChanges,
+                builder: (pageContext, _) => DownloadsPage(
+                  manager: widget.manager,
+                  showBackButton: true,
+                  title: item == null ? '安装包与资源' : '应用管理',
+                  taskIds: item?.taskIds,
+                  appKey: item?.app?.key,
+                  initialTask: install?.task,
+                  initialPackage: install?.package,
+                  importOnEntry: import,
+                  onRefresh: item == null
+                      ? null
+                      : (online) => _refresh(online: online),
+                  overviewBuilder: item == null
+                      ? null
+                      : (context, entries, onInstall) {
+                          // Keep identities observed while this page is open,
+                          // including newly generated copies, for a fresh
+                          // native check after their download records are gone.
+                          for (final entry in entries) {
+                            if (entry.task.platform == 'Android') {
+                              final name = entry.task.packageName(
+                                entry.package ?? entry.task.defaultPackage,
+                              );
+                              if (name != null) knownPackages.add(name);
+                            }
+                          }
+                          _managedPackageNames.addAll(knownPackages);
+                          final app =
+                              _apps
+                                  .where((app) => app.key == item.app?.key)
+                                  .firstOrNull ??
+                              item.app;
+                          final current = LibraryItem(
+                            id: item.id,
+                            name: app?.name ?? item.name,
+                            app: app,
+                            platform: _platform,
+                            status: _statuses[app?.key],
+                            androidPackages: _androidPackages,
+                            additionalInstallations: [
+                              for (final package in knownPackages)
+                                ?_androidPackages[package],
+                            ],
+                          )..files.addAll(entries);
+                          return AppLibraryOverview(
+                            item: current,
+                            action: _action(
+                              current,
+                              pageContext: context,
+                              onInstall: onInstall,
+                            ),
+                            checking: _refreshing || _checking,
+                            warning:
+                                _refreshError ??
+                                (_statusCheckFailed ? _statusError : null),
+                            onOpenInstallation: (installed) =>
+                                _openInstallation(installed, context),
+                            onCheckUpdates: app == null
+                                ? null
+                                : () => _refresh(),
+                            onViewDetails: app == null
+                                ? null
+                                : () => _showAppDetails(context, app),
+                          );
+                        },
+                ),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    if (mounted) unawaited(_refresh(online: false));
+      );
+    } finally {
+      _managedPackageNames.removeAll(knownPackages);
+      if (mounted) unawaited(_refresh(online: false));
+    }
   }
-
-  void _message(String message) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
 }

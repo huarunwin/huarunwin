@@ -15,6 +15,7 @@ import 'services/download_locations.dart';
 import 'services/downloads.dart';
 import 'services/download_foreground.dart';
 import 'ui/home.dart';
+import 'ui/content_image.dart';
 import 'ui/app_updates.dart';
 import 'ui/app_library_navigation.dart';
 import 'ui/android_incoming_apks.dart';
@@ -126,7 +127,12 @@ class _HuarunAppState extends State<HuarunApp> {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => ContentSourceScope(
+    sources: widget.controller.sources,
+    child: _buildApp(context),
+  );
+
+  Widget _buildApp(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) => MaterialApp(

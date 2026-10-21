@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import '../data/models.dart';
 import '../services/android_package.dart';
 import '../services/downloads.dart';
 import '../services/download_platform.dart';
+import '../services/github_debug.dart';
 import '../services/github_releases.dart';
 import 'adaptive_dialog.dart';
 import 'android_resigning_options.dart';
@@ -106,70 +108,105 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
 
   @override
   void dispose() {
+    _request++;
     _signing.dispose();
     super.dispose();
   }
 
   Future<void> _initialize() async {
     final request = ++_request;
+    final trace = GitHubDebugTrace.start(
+      'dialog.initialize',
+      widget.source,
+      fields: {
+        'platform': widget.preferences.platform,
+        'architecture': widget.preferences.architecture,
+      },
+    );
     setState(() {
       _loading = true;
       _error = null;
+      _release = null;
+      _resources = [];
       _selected = null;
       _signing.reset();
     });
     try {
-      final index = GitHubReleaseResolver.indexFor(widget.source);
-      final page = await widget.resolver.loadPage(index);
-      if (!mounted || request != _request) return;
-      setState(() {
-        _releases
-          ..clear()
-          ..addAll(page.releases);
-        _visited.add(index);
-        _next = page.next;
-      });
-      if (!_releases.any((r) => r.latest && !r.prerelease)) {
-        final latest = await widget.resolver.loadLatest(widget.source);
-        if (!mounted || request != _request) return;
-        if (latest != null) {
-          setState(() {
-            _releases.removeWhere((r) => r.page == latest.page);
-            _releases.insert(0, latest);
-          });
-        }
-      }
-      final stable = _releases.where((r) => !r.prerelease);
-      final ordered = [
-        ...stable.where((r) => r.latest),
-        ...stable.where((r) => !r.latest),
-        ..._releases.where((r) => r.prerelease),
-      ];
-      (GitHubRelease, List<DownloadLink>)? fallback;
-      for (final release in ordered.take(10)) {
-        if (!mounted || request != _request) return;
-        // A failed request must not silently recommend an older version.
-        setState(() => _release = release);
-        final resources = await widget.resolver.loadResources(release);
-        if (!mounted || request != _request) return;
-        fallback ??= (release, resources);
-        if (widget.preferences.hasSuitableResource(resources)) {
-          _apply(release, resources);
-          return;
-        }
-        if (widget.preferences.packages(resources).isNotEmpty &&
-            widget.preferences.packages(fallback.$2).isEmpty) {
-          fallback = (release, resources);
-        }
-      }
-      if (fallback != null) _apply(fallback.$1, fallback.$2);
+      await _loadInitialRelease(request).timeout(const Duration(seconds: 45));
+      trace?.log(
+        mounted && request == _request ? 'dialog.ready' : 'dialog.discarded',
+      );
     } catch (error) {
+      trace?.log('dialog.failed', error: error);
       if (!mounted || request != _request) return;
+      // A timed-out operation can finish later; it must not replace this error
+      // or a newer selection. Individual HTTP requests have their own deadline.
+      _request++;
       setState(() {
         _loading = false;
-        _error = error is FormatException ? error.message : '版本或资源加载失败，请重试。';
+        _error = githubReleaseErrorMessage(error);
       });
     }
+  }
+
+  Future<void> _loadInitialRelease(int request) async {
+    final index = GitHubReleaseResolver.indexFor(widget.source);
+    final page = await widget.resolver.loadPage(index);
+    if (!mounted || request != _request) return;
+    setState(() {
+      _releases
+        ..clear()
+        ..addAll(page.releases);
+      _visited.add(index);
+      _next = page.next;
+    });
+    if (!_releases.any((r) => r.latest && !r.prerelease)) {
+      final latest = await widget.resolver.loadLatest(widget.source);
+      if (!mounted || request != _request) return;
+      if (latest != null) {
+        setState(() {
+          _releases.removeWhere((r) => r.page == latest.page);
+          _releases.insert(0, latest);
+        });
+      }
+    }
+    final stable = _releases.where((r) => !r.prerelease);
+    final ordered = [
+      ...stable.where((r) => r.latest),
+      ...stable.where((r) => !r.latest),
+      ..._releases.where((r) => r.prerelease),
+    ];
+    (GitHubRelease, List<DownloadLink>)? fallback;
+    for (final release in ordered.take(10)) {
+      if (!mounted || request != _request) return;
+      // A failed request must not silently recommend an older version.
+      setState(() => _release = release);
+      final resources = await widget.resolver.loadResources(release);
+      if (!mounted || request != _request) return;
+      fallback ??= (release, resources);
+      final suitable = widget.preferences.hasSuitableResource(resources);
+      githubDebugLog(
+        'selection.candidate',
+        uri: release.page,
+        fields: {
+          'resources': resources.length,
+          'platformPackages': widget.preferences.packages(resources).length,
+          'hasSuitableResource': suitable,
+        },
+      );
+      if (suitable) {
+        _apply(release, resources);
+        return;
+      }
+      if (widget.preferences.packages(resources).isNotEmpty &&
+          widget.preferences.packages(fallback.$2).isEmpty) {
+        fallback = (release, resources);
+      }
+    }
+    if (fallback == null) {
+      throw const FormatException('暂未读取到可用版本，请重试或使用网站提供的下载入口。');
+    }
+    if (mounted && request == _request) _apply(fallback.$1, fallback.$2);
   }
 
   void _apply(GitHubRelease release, List<DownloadLink> resources) {
@@ -181,10 +218,21 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
       _loading = false;
       _error = null;
     });
+    githubDebugLog(
+      'selection.applied',
+      uri: release.page,
+      fields: {
+        'resources': resources.length,
+        'selectedUrl': _selected == null
+            ? null
+            : githubDebugUrl(Uri.parse(_selected!.url)),
+      },
+    );
   }
 
   Future<void> _selectRelease(GitHubRelease release) async {
     final request = ++_request;
+    final trace = GitHubDebugTrace.start('dialog.selectRelease', release.page);
     setState(() {
       _release = release;
       _resources = [];
@@ -194,13 +242,22 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
       _error = null;
     });
     try {
-      final resources = await widget.resolver.loadResources(release);
-      if (mounted && request == _request) _apply(release, resources);
+      final resources = await widget.resolver
+          .loadResources(release)
+          .timeout(const Duration(seconds: 45));
+      if (mounted && request == _request) {
+        _apply(release, resources);
+        trace?.log('dialog.ready');
+      } else {
+        trace?.log('dialog.discarded');
+      }
     } catch (error) {
+      trace?.log('dialog.failed', error: error);
       if (!mounted || request != _request) return;
+      _request++;
       setState(() {
         _loading = false;
-        _error = error is FormatException ? error.message : '资源加载失败，请重试。';
+        _error = githubReleaseErrorMessage(error);
       });
     }
   }
@@ -274,7 +331,9 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
                           title: const Text('版本'),
                           subtitle: Text(
                             _release == null
-                                ? '正在读取版本'
+                                ? _loading
+                                      ? '正在读取版本'
+                                      : '版本读取失败'
                                 : '${_release!.tag} · ${_release!.prerelease ? '预发布' : '稳定版'}',
                           ),
                           trailing: const Icon(Icons.unfold_more_rounded),
@@ -312,9 +371,20 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
                   );
                 }
                 if (_loading) {
-                  return const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
+                  return Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          _release == null
+                              ? '正在读取 GitHub 版本列表…'
+                              : '正在读取 ${_release!.tag} 的安装包…',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   );
                 }
                 if (_error != null) {
@@ -466,7 +536,9 @@ class _VersionDialogState extends State<_VersionDialog> {
       _error = null;
     });
     try {
-      final page = await widget.resolver.loadPage(next);
+      final page = await widget.resolver
+          .loadPage(next)
+          .timeout(const Duration(seconds: 30));
       if (!mounted) return;
       widget.visited.add(next);
       final known = _releases.map((r) => r.page).toSet();
@@ -475,8 +547,13 @@ class _VersionDialogState extends State<_VersionDialog> {
         _next = page.next;
       });
       widget.onPage(page);
-    } catch (_) {
-      if (mounted) setState(() => _error = '更多版本加载失败，已载入版本仍可选择。');
+    } catch (error) {
+      githubDebugLog('pagination.failed', uri: next, error: error);
+      if (mounted) {
+        setState(
+          () => _error = '${githubReleaseErrorMessage(error)} 已载入版本仍可选择。',
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
