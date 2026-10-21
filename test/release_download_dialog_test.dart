@@ -597,7 +597,10 @@ void main() {
       resolver.failMore = true;
       await tester.tap(find.text('载入更多版本'));
       await tester.pumpAndSettle();
-      expect(find.text('更多版本加载失败，已载入版本仍可选择。'), findsOneWidget);
+      expect(
+        find.text('无法读取 GitHub 版本或资源，请重试或使用网站提供的下载入口。 已载入版本仍可选择。'),
+        findsOneWidget,
+      );
       resolver.failMore = false;
       await tester.tap(find.text('重试载入更多版本'));
       await tester.pumpAndSettle();
