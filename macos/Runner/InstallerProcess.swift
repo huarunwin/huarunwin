@@ -16,8 +16,15 @@ enum InstallerProcess {
                   outputLimit: Int = 8 * 1024 * 1024,
                   onLine: ((String) -> Void)? = nil) throws -> InstallerProcessResult {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: executable)
-    process.arguments = arguments
+    if getuid() == 0 && geteuid() != 0 {
+      // A privileged worker temporarily reads files as the original user. Its
+      // parser subprocesses must also drop real/saved IDs, not just effective ID.
+      process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+      process.arguments = ["user-tool", String(geteuid()), executable] + arguments
+    } else {
+      process.executableURL = URL(fileURLWithPath: executable)
+      process.arguments = arguments
+    }
     var environment = ProcessInfo.processInfo.environment
     environment["LC_ALL"] = "C"
     process.environment = environment

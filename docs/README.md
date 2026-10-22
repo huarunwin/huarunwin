@@ -8,7 +8,7 @@
 | [运行与构建](development.md) | Flutter 工具链、本地运行、各平台构建与产物 |
 | [数据与结构](architecture.md) | HTML 解析、缓存、筛选排序、模块职责及下载来源 |
 | [内容来源与静态镜像](content-sources.md) | 网站／GitHub 切换、Raw 路径、缓存隔离与一次性快照 |
-| [安装流程](installation.md) | Android 安装与重签、密钥备份、Mac 安装助手及各平台卸载 |
+| [安装流程](installation.md) | Android 安装与重签、密钥备份、Mac 安装与管理员助手及各平台卸载 |
 | [发布与许可](releasing.md) | GitHub Actions、托管 runner、分发、项目与第三方许可、图标生成 |
 | [客户端自身更新](self-updating.md) | Hub 安装包配置、应用内下载、各平台更新安装与恢复限制 |
 | [客户端隐私说明](privacy.md) | 客户端网络请求、本机数据、权限与删除方式 |

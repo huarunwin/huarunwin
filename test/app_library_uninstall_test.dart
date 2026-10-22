@@ -39,6 +39,8 @@ class UninstallInstaller extends NativeInstaller {
   bool requireAuthorization = false;
   bool removeApplication = false;
   Completer<void>? authorization;
+  PlatformException? uninstallError, settingsError;
+  int settingsRequests = 0;
 
   @override
   Future<List<InstalledApplication>> installedApplications() async =>
@@ -60,7 +62,14 @@ class UninstallInstaller extends NativeInstaller {
       );
     }
     if (authorization != null) await authorization!.future;
+    if (uninstallError case final error?) throw error;
     if (removeApplication) applications.clear();
+  }
+
+  @override
+  Future<void> openApplicationSettings() async {
+    settingsRequests++;
+    if (settingsError case final error?) throw error;
   }
 }
 
@@ -226,6 +235,72 @@ void main() {
     expect(find.text('已取消管理员授权。'), findsOneWidget);
     expect(tester.widget<TextButton>(button).onPressed, isNotNull);
     expectPackagePreserved();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('canceling App Management guidance keeps uninstall retryable', (
+    tester,
+  ) async {
+    installer.requireAuthorization = true;
+    installer.uninstallError = PlatformException(
+      code: 'app_management_permission',
+      message: 'macOS 拒绝移动所选应用。',
+    );
+    await openManagement(tester);
+    await confirmUninstall(tester);
+    await tester.tap(find.text('授权并卸载'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('需要 App 管理权限'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(installer.calls, [null, approvalSnapshot]);
+    expect(installer.settingsRequests, 0);
+    expect(
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, '卸载应用'))
+          .onPressed,
+      isNotNull,
+    );
+    expectPackagePreserved();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('opening App Management settings never retries uninstall', (
+    tester,
+  ) async {
+    installer.requireAuthorization = true;
+    installer.uninstallError = PlatformException(
+      code: 'app_management_permission',
+    );
+    await openManagement(tester);
+    await confirmUninstall(tester);
+    await tester.tap(find.text('授权并卸载'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('打开系统设置'));
+    await tester.pumpAndSettle();
+    expect(installer.settingsRequests, 1);
+    expect(installer.calls, [null, approvalSnapshot]);
+    expect(find.text('卸载应用'), findsOneWidget);
+    expectPackagePreserved();
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('settings launch failure explains the manual permissions path', (
+    tester,
+  ) async {
+    installer.uninstallError = PlatformException(
+      code: 'app_management_permission',
+    );
+    installer.settingsError = PlatformException(code: 'settings');
+    await openManagement(tester);
+    await confirmUninstall(tester);
+    await tester.tap(find.text('打开系统设置'));
+    await tester.pumpAndSettle();
+    expect(installer.settingsRequests, 1);
+    expect(find.textContaining('请从系统设置进入'), findsOneWidget);
+    expect(installer.calls, [null]);
+    expectPackagePreserved();
+    expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
   testWidgets(

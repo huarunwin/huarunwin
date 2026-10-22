@@ -68,6 +68,7 @@ jobs:
           python3 -m unittest discover -s tool/ci -p 'test_*.py'
           python3 tool/ci/build.py verify
           python3 tool/check_installer.py
+          python3 tool/check_admin_helper.py
 
   macos:
     needs: build

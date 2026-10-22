@@ -31,6 +31,8 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		C8876A032EC0000400000001 /* AdminServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8876A032EC0000400000002 /* AdminServiceProtocol.swift */; };
+		C8876A032EC0000500000001 /* AdminHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8876A032EC0000500000002 /* AdminHelper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -86,6 +88,8 @@
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		C8876A032EC0000400000002 /* AdminServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminServiceProtocol.swift; sourceTree = "<group>"; };
+		C8876A032EC0000500000002 /* AdminHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -176,6 +180,8 @@
 				C8876A032EC0000100000002 /* InstalledApplications.swift */,
 				C8876A032EC0000200000002 /* RunningApplicationQuitter.swift */,
 				C8876A032EC0000300000002 /* InstallerProcess.swift */,
+				C8876A032EC0000500000002 /* AdminHelper.swift */,
+				C8876A032EC0000400000002 /* AdminServiceProtocol.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
@@ -324,6 +330,8 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/App.framework",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/FlutterMacOS.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -354,7 +362,7 @@
             isa = PBXShellScriptBuildPhase;
             buildActionMask = 2147483647;
             files = ();
-            inputPaths = ("$(PROJECT_DIR)/Installer/main.swift", "$(PROJECT_DIR)/Installer/build.sh", "$(PROJECT_DIR)/Flutter/ephemeral/Flutter-Generated.xcconfig");
+            inputPaths = ("$(PROJECT_DIR)/Installer/main.swift", "$(PROJECT_DIR)/Installer/build.sh", "$(PROJECT_DIR)/Installer/AdminService.swift", "$(PROJECT_DIR)/Installer/InstallerOperations.swift", "$(PROJECT_DIR)/Runner/AdminServiceProtocol.swift", "$(PROJECT_DIR)/Runner/InstallerProcess.swift", "$(PROJECT_DIR)/Flutter/ephemeral/Flutter-Generated.xcconfig");
             name = "Installer Helper";
             outputPaths = ("$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/HuarunInstaller", "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/huarunwin-build.plist");
             runOnlyForDeploymentPostprocessing = 0;
@@ -381,6 +389,8 @@
 				C8876A032EC0000100000001 /* InstalledApplications.swift in Sources */,
 				C8876A032EC0000200000001 /* RunningApplicationQuitter.swift in Sources */,
 				C8876A032EC0000300000001 /* InstallerProcess.swift in Sources */,
+				C8876A032EC0000500000001 /* AdminHelper.swift in Sources */,
+				C8876A032EC0000400000001 /* AdminServiceProtocol.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

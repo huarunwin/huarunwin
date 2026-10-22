@@ -6,13 +6,13 @@ helper_output="$helper_dir/HuarunInstaller"
 helper_intermediates="${DERIVED_FILE_DIR}/HuarunInstaller"
 mkdir -p "$helper_intermediates"
 for helper_arch in $ARCHS; do
-  xcrun swiftc -O -target "${helper_arch}-apple-macosx13.0" "${PROJECT_DIR}/Installer/main.swift" "${PROJECT_DIR}/Runner/InstallerProcess.swift" -o "$helper_intermediates/$helper_arch"
+  xcrun swiftc -O -target "${helper_arch}-apple-macosx13.0" "${PROJECT_DIR}/Installer/main.swift" "${PROJECT_DIR}/Installer/InstallerOperations.swift" "${PROJECT_DIR}/Installer/AdminService.swift" "${PROJECT_DIR}/Runner/AdminServiceProtocol.swift" "${PROJECT_DIR}/Runner/InstallerProcess.swift" -o "$helper_intermediates/$helper_arch"
 done
 # Preserve paths containing spaces when passing each architecture to lipo.
 set --
 for helper_arch in $ARCHS; do set -- "$@" "$helper_intermediates/$helper_arch"; done
 xcrun lipo -create "$@" -output "$helper_output"
-/usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime "$helper_output"
+/usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --identifier win.huarun.huarunwin.installer --options runtime "$helper_output"
 
 # This resource is sealed by the app's subsequent code-signing step. macOS's
 # numeric bundle version cannot preserve a prerelease's full identity.

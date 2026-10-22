@@ -27,6 +27,9 @@ with tempfile.TemporaryDirectory(prefix='huarun-installer-tests-') as work:
     work = pathlib.Path(work)
     helper = work / 'helper'
     run('xcrun', 'swiftc', str(ROOT / 'macos/Installer/main.swift'),
+        str(ROOT / 'macos/Installer/InstallerOperations.swift'),
+        str(ROOT / 'macos/Installer/AdminService.swift'),
+        str(ROOT / 'macos/Runner/AdminServiceProtocol.swift'),
         str(ROOT / 'macos/Runner/InstallerProcess.swift'), '-o', str(helper))
     payload = work / 'payload'
     app = payload / 'Fixture.app'

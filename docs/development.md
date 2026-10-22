@@ -39,7 +39,9 @@ Windows 纠错页通过 [`webview_flutter_windows`](https://pub.dev/packages/web
 
 Windows 应用显示名称为“华润赢”，覆盖原生窗口标题、程序描述、安装器、快捷方式和卸载列表；主程序仍为 `huarunwin.exe`。名称变更从重新构建／打包后生效，既有 Release 附件保持原样。
 
-macOS 产物：`build/macos/Build/Products/Release/华润赢.app`，应用名称统一为“华润赢”。最低 macOS 13，本机构建默认包含 arm64 和 x86_64，CI 按架构分别构建。构建自动编译并嵌入 Swift 安装助手。
+macOS 产物：`build/macos/Build/Products/Release/华润赢.app`，应用名称统一为“华润赢”。最低 macOS 13，本机构建默认包含 arm64 和 x86_64，CI 按架构分别构建。构建自动编译并嵌入 Swift 安装助手。`macos/Installer/main.swift` 为命令入口，`InstallerOperations.swift` 复用安装／卸载／自身更新检查，`AdminService.swift` 提供首次授权后的受限常驻服务；Runner 的 `AdminHelper.swift` 和 `AdminServiceProtocol.swift` 负责客户端与双向 XPC 身份校验。按需授权及当前本地签名限制见[安装流程](installation.md#mac-管理员助手)。
+
+Flutter 框架嵌入阶段显式声明应用包内的框架输出，使仅改动 Dart 的增量构建也重新签署外层应用，避免助手严格核对客户端时拒绝旧的嵌套代码签名。
 
 macOS 窗口在 Flutter 首帧完成绘制后显示，避免冷启动初始化期间露出黑色空窗；目录网络请求异步进行，不作为显示窗口的条件。
 

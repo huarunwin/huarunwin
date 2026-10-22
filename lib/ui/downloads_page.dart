@@ -1151,7 +1151,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
             builder: (context) => AlertDialog(
               title: const Text('需要管理员授权'),
               content: const Text(
-                '当前用户无法写入“应用程序”文件夹。继续后 macOS 会显示系统授权窗口，华润赢不会保存你的密码。',
+                '当前用户无法写入“应用程序”文件夹。继续后由 macOS 申请管理员权限，授权一次后，后续安装、卸载和客户端更新会持续复用，重启后仍有效。华润赢不会读取或保存密码。',
               ),
               actions: [
                 DialogActionsRow(
@@ -1211,6 +1211,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     'quarantine' => '正在处理本次应用的隔离属性…',
     'replacing' => '正在完成安装替换…',
     'authorizing' => '等待系统授权并完成安装…',
+    'privileged' => '正在通过管理员助手完成安装…',
     'quitting' => '正在等待目标应用退出…',
     'opening_system' => '正在打开系统安装窗口…',
     'installing' => 'Android 正在安装应用…',

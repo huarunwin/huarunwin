@@ -40,7 +40,10 @@ def main():
         work = Path(temporary).resolve()
         helper = work / "updater"
         run("xcrun", "swiftc", ROOT / "macos/Installer/main.swift",
-            ROOT / "macos/Runner/InstallerProcess.swift", "-o", helper)
+            ROOT / "macos/Runner/InstallerProcess.swift",
+            ROOT / "macos/Installer/AdminService.swift",
+            ROOT / "macos/Installer/InstallerOperations.swift",
+            ROOT / "macos/Runner/AdminServiceProtocol.swift", "-o", helper)
         source = work / "main.swift"
         source.write_text('''import AppKit
 final class Delegate: NSObject, NSApplicationDelegate {

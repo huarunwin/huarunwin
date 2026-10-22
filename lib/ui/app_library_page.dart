@@ -1037,7 +1037,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                     ],
                     const SizedBox(height: 16),
                     const Text(
-                      '当前用户没有权限移走所选应用。继续后 macOS 会显示系统管理员授权窗口，华润赢不会读取或保存密码。\n\n授权仅用于将此应用包移到你的废纸篓，应用外的数据、已下载的安装包和记录会保留。',
+                      '当前用户没有权限移走所选应用。继续后由 macOS 申请管理员权限，授权一次后，后续安装、卸载和客户端更新会持续复用，重启后仍有效。华润赢不会读取或保存密码。\n\n本次仅将此应用包移到你的废纸篓，应用外的数据、已下载的安装包和记录会保留。',
                     ),
                   ],
                 ),
@@ -1070,15 +1070,44 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       }
     } catch (error) {
       if (mounted && pageContext.mounted) {
-        ScaffoldMessenger.of(pageContext).showSnackBar(
-          SnackBar(
-            content: Text(
-              error is PlatformException
-                  ? error.message ?? '无法发起卸载，请重试。'
-                  : '无法发起卸载，请重试。',
+        if (_platform == 'macOS' &&
+            error is PlatformException &&
+            error.code == 'app_management_permission') {
+          showStatus('等待设置 App 管理权限…');
+          final openSettings = await showDialog<bool>(
+            context: pageContext,
+            builder: (context) => AlertDialog(
+              title: const Text('需要 App 管理权限'),
+              scrollable: true,
+              content: SizedBox(
+                width: 420,
+                child: Text(
+                  '${error.message ?? '请在系统设置“隐私与安全性 → App 管理”中允许华润赢。'}\n\n管理员授权与 App 管理权限是两项独立授权。完成设置后，请返回此页重新确认卸载。安装包和下载记录会保留。',
+                ),
+              ),
+              actions: [
+                DialogActionsRow(
+                  confirmLabel: '打开系统设置',
+                  onCancel: () => Navigator.pop(context, false),
+                  onConfirm: () => Navigator.pop(context, true),
+                ),
+              ],
             ),
-          ),
-        );
+          );
+          if (openSettings == true && mounted && pageContext.mounted) {
+            await _openSystemApplicationManagement();
+          }
+        } else {
+          ScaffoldMessenger.of(pageContext).showSnackBar(
+            SnackBar(
+              content: Text(
+                error is PlatformException
+                    ? error.message ?? '无法发起卸载，请重试。'
+                    : '无法发起卸载，请重试。',
+              ),
+            ),
+          );
+        }
       }
     } finally {
       try {
@@ -1106,7 +1135,13 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请从 Windows 设置进入“应用 → 已安装的应用”完成卸载。')),
+          SnackBar(
+            content: Text(
+              _platform == 'macOS'
+                  ? '请从系统设置进入“隐私与安全性 → App 管理”，允许华润赢后重试卸载。'
+                  : '请从 Windows 设置进入“应用 → 已安装的应用”完成卸载。',
+            ),
+          ),
         );
       }
     }

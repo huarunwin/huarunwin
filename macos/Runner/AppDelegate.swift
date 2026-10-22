@@ -13,6 +13,7 @@ final class InstallerChannel {
   private let channel: FlutterMethodChannel
   private let queue = DispatchQueue(label: "win.huarun.installer", qos: .userInitiated)
   private var working = false
+  private let adminHelper = AdminHelper()
 
   init(messenger: FlutterBinaryMessenger) {
     channel = FlutterMethodChannel(name: "win.huarun/installer", binaryMessenger: messenger)
@@ -50,6 +51,15 @@ final class InstallerChannel {
       }
       return
     }
+    if call.method == "openApplicationSettings" {
+      let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
+      if NSWorkspace.shared.open(url) {
+        result(nil)
+      } else {
+        result(FlutterError(code: "settings", message: "请从系统设置进入“隐私与安全性 → App 管理”，允许华润赢后重试卸载。", details: nil))
+      }
+      return
+    }
     if call.method == "uninstallApplication" {
       guard let path = args["path"] as? String,
             let identifier = args["bundleIdentifier"] as? String,
@@ -66,13 +76,15 @@ final class InstallerChannel {
             guard authorizationTarget == snapshot else {
               throw self.failure("changed", "卸载目标已变化，请刷新后重新选择。")
             }
-            // Resolve/create the original user's Trash before elevation. The
-            // helper independently constrains and opens this directory.
-            let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask,
-                                                    appropriateFor: target, create: true)
-            let data = try JSONSerialization.data(withJSONObject: snapshot.merging(["trash": trash.path]) { _, new in new })
-            _ = try self.authorized(["trash", String(decoding: data, as: UTF8.self), String(getuid()), String(getpid())],
-                                    progress: { _ in }, operation: "卸载")
+            try self.trashUsingAdmin(target, snapshot: snapshot, allowAuthorization: true)
+            DispatchQueue.main.async { self.working = false; result(nil) }
+            return
+          }
+          if self.adminHelper.status()["status"] == "enabled" {
+            // The selected application was already confirmed in Flutter. Reuse
+            // the approved service directly, avoiding Trash UI that could start
+            // a second per-operation administrator authorization of its own.
+            try self.trashUsingAdmin(target, snapshot: snapshot, allowAuthorization: false)
             DispatchQueue.main.async { self.working = false; result(nil) }
             return
           }
@@ -88,15 +100,28 @@ final class InstallerChannel {
             // a bound snapshot for a separate, explicitly confirmed retry.
             NSWorkspace.shared.recycle([target]) { _, error in
               DispatchQueue.main.async {
-                self.working = false
                 if let error {
                   if self.requiresTrashAuthorization(error as NSError) {
-                    result(FlutterError(code: "permission_required", message: "移到废纸篓需要系统管理员授权。", details: snapshot))
+                    self.queue.async {
+                      let response: Any?
+                      if self.adminHelper.status()["status"] == "enabled" {
+                        do { try self.trashUsingAdmin(target, snapshot: snapshot, allowAuthorization: false); response = nil }
+                        catch let failure as NSError {
+                          response = FlutterError(code: failure.userInfo["installerCode"] as? String ?? "uninstall", message: failure.localizedDescription, details: failure.userInfo["installerDetails"])
+                        }
+                      } else {
+                        response = FlutterError(code: "permission_required", message: "需要系统管理员授权，授权后可持续复用。", details: snapshot)
+                      }
+                      DispatchQueue.main.async { self.working = false; result(response) }
+                    }
+                    return
                   } else {
+                    self.working = false
                     NSWorkspace.shared.activateFileViewerSelecting([target])
                     result(FlutterError(code: "trash", message: "未能移到废纸篓。已在 Finder 中定位应用，请重试或手动处理。\n" + error.localizedDescription, details: nil))
                   }
                 } else {
+                  self.working = false
                   result(nil)
                 }
               }
@@ -106,7 +131,7 @@ final class InstallerChannel {
           DispatchQueue.main.async {
             self.working = false
             let code = error.userInfo["installerCode"] as? String ?? "uninstall"
-            if authorizationTarget != nil && !["cancelled", "changed", "running", "caller"].contains(code) {
+            if authorizationTarget != nil && !["cancelled", "changed", "running", "caller", "app_management_permission"].contains(code) {
               NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
             }
             result(FlutterError(code: code, message: error.localizedDescription, details: error.userInfo["installerDetails"]))
@@ -181,9 +206,17 @@ final class InstallerChannel {
         func commit() throws -> [String: String] {
           if authorize {
             progress(["stage": "authorizing"])
-            return try self.authorized(arguments, progress: progress)
+            try self.adminHelper.ensureEnabled(allowAuthorization: true)
+            return try self.adminHelper.request { $0.install(source: source, quarantine: quarantine, approval: signerApproval ?? [:], reply: $1) }
           }
-          return try self.invoke(arguments, progress: progress)
+          do { return try self.invoke(arguments, progress: progress) }
+          catch let error as NSError {
+            guard error.userInfo["installerCode"] as? String == "permission_required",
+                  self.adminHelper.status()["status"] == "enabled" else { throw error }
+            progress(["stage": "privileged"])
+            try self.adminHelper.ensureEnabled(allowAuthorization: false)
+            return try self.adminHelper.request { $0.install(source: source, quarantine: quarantine, approval: signerApproval ?? [:], reply: $1) }
+          }
         }
         let installed: [String: String]
         do {
@@ -208,6 +241,26 @@ final class InstallerChannel {
   }
 
   private var helper: String { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/HuarunInstaller").path }
+  private func trashUsingAdmin(_ target: URL, snapshot: [String: String], allowAuthorization: Bool) throws {
+    do { try adminHelper.ensureEnabled(allowAuthorization: allowAuthorization) }
+    catch let error as NSError {
+      if error.userInfo["installerCode"] as? String == "permission_required" {
+        throw failure("permission_required", error.localizedDescription, details: snapshot)
+      }
+      throw error
+    }
+    let checked = try uninstallTarget(path: target.path, identifier: snapshot["bundleIdentifier"]!, version: snapshot["version"]!)
+    guard try uninstallSnapshot(checked, identifier: snapshot["bundleIdentifier"]!, version: snapshot["version"]!) == snapshot else {
+      throw failure("changed", "卸载目标已变化，请刷新后重新选择。")
+    }
+    guard !NSWorkspace.shared.runningApplications.contains(where: {
+      !$0.isTerminated && $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == checked
+    }) else { throw failure("running", "请先保存内容并退出所选应用，再重试卸载。") }
+    // The ordinary user resolves/creates their own Trash before the root service
+    // checks it independently; the XPC service obtains UID/PID from the connection.
+    let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: checked, create: true)
+    _ = try adminHelper.request { $0.trash(approval: snapshot.merging(["trash": trash.path]) { _, new in new }, reply: $1) }
+  }
   private func uninstallTarget(path: String, identifier: String, version: String) throws -> URL {
     let target = URL(fileURLWithPath: path).standardizedFileURL
     let roots = [
@@ -279,7 +332,10 @@ final class InstallerChannel {
     let arguments = ["self-update", source, destination.path, String(getpid()), version, stage.path, String(getuid()), channel]
     let log = stage.appendingPathComponent("updater.log")
     FileManager.default.createFile(atPath: log.path, contents: nil)
-    if FileManager.default.isWritableFile(atPath: destination.deletingLastPathComponent().path) {
+    if (destination.deletingLastPathComponent().path == "/Applications" && adminHelper.status()["status"] == "enabled") || !FileManager.default.isWritableFile(atPath: destination.deletingLastPathComponent().path) {
+      try adminHelper.ensureEnabled(allowAuthorization: true)
+      _ = try adminHelper.request { $0.update(source: source, version: version, channel: channel, reply: $1) }
+    } else {
       let process = Process()
       process.executableURL = updater
       process.arguments = arguments
@@ -289,13 +345,6 @@ final class InstallerChannel {
       process.standardInput = FileHandle.nullDevice
       try process.run()
       try? output.close()
-    } else {
-      func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-      let command = "/usr/bin/nohup " + ([updater.path] + arguments).map(quote).joined(separator: " ") +
-          " > " + quote(log.path) + " 2>&1 < /dev/null &"
-      let literal = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-      let authorization = try InstallerProcess.run("/usr/bin/osascript", ["-e", "do shell script \"\(literal)\" with administrator privileges"])
-      guard authorization.status == 0 else { throw failure("authorization", "管理员授权未完成，安装包已保留。") }
     }
     let deadline = ProcessInfo.processInfo.systemUptime + 180
     while ProcessInfo.processInfo.systemUptime < deadline {
@@ -326,29 +375,16 @@ final class InstallerChannel {
       return (try? JSONSerialization.jsonObject(with: data)) as? [String: String]
     }
   }
-  private func response(_ result: InstallerProcessResult, authorized: Bool = false, operation: String = "安装") throws -> [String: String] {
+  private func response(_ result: InstallerProcessResult) throws -> [String: String] {
     let messages = jsonLines(result.stdout) + jsonLines(result.stderr)
     if let error = messages.last(where: { $0["code"] != nil }) { throw failure(error) }
     if result.status == 0, let value = messages.last(where: { $0["path"] != nil && $0["event"] == nil }) { return value }
-    if authorized && result.stderr.contains("(-128)") { throw failure("cancelled", "你已取消管理员授权。") }
-    let message = authorized ? "管理员授权未完成，请重试或手动\(operation)。" : "助手未返回有效结果，请重试或手动\(operation)。"
-    throw failure(authorized ? "authorization" : "installation", message + (result.stderr.isEmpty ? "" : "\n" + String(result.stderr.suffix(1500))))
+    throw failure("installation", "助手未返回有效结果，请重试或手动安装。" + (result.stderr.isEmpty ? "" : "\n" + String(result.stderr.suffix(1500))))
   }
   private func invoke(_ args: [String], progress: @escaping ([String: String]) -> Void) throws -> [String: String] {
     let result = try InstallerProcess.run(helper, args, onLine: { line in
       if let event = self.jsonLines(line).first, event["event"] == "progress" { progress(event) }
     })
     return try response(result)
-  }
-  private func authorized(_ args: [String], progress: @escaping ([String: String]) -> Void, operation: String = "安装") throws -> [String: String] {
-    func shellQuote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-    let command = ([helper] + args).map(shellQuote).joined(separator: " ")
-    let literal = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-    // osascript runs on the worker queue; its system authorization UI does not
-    // hold Flutter's main thread. Do not time out a possibly committing root helper.
-    let result = try InstallerProcess.run("/usr/bin/osascript", ["-e", "do shell script \"\(literal)\" with administrator privileges"], onLine: { line in
-      if let event = self.jsonLines(line).first, event["event"] == "progress" { progress(event) }
-    })
-    return try response(result, authorized: true, operation: operation)
   }
 }
