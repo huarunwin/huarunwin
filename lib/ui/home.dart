@@ -426,7 +426,7 @@ class _HomePageState extends State<HomePage> {
     entries: [
       _navGroup(
         id: 'applications',
-        title: '应用',
+        title: '发现',
         icon: Icons.grid_view_rounded,
         active: section == 0,
         onSelectFirst: () => _selectApplicationType(null),

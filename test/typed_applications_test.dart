@@ -607,7 +607,7 @@ void main() {
       expect(tester.getSize(sidebar).width, 80);
       expect(find.byKey(const ValueKey('nav-type-rule-config')), findsNothing);
       expect(selected('nav-group-applications'), isTrue);
-      expect(find.byTooltip('应用'), findsOneWidget);
+      expect(find.byTooltip('发现'), findsOneWidget);
       expect(controller.preferences.getBool('sidebarExpanded'), isFalse);
       expect(find.text('1 款应用'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('nav-group-applications')));
