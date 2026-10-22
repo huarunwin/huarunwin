@@ -1,7 +1,7 @@
 name: huarunwin
 description: 华润赢多端应用目录与 macOS 安装助手。
 publish_to: none
-version: 0.5.0+5
+version: 0.5.1+6
 environment:
   sdk: '>=3.13.0 <4.0.0'
 dependencies:
