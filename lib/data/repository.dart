@@ -24,7 +24,7 @@ typedef _ContentResponse = ({
   String html,
   Uri logicalUri,
   ContentOrigin origin,
-  ContentOrigin preferred,
+  ContentSourceRequest request,
 });
 
 class CatalogRepository {
@@ -66,7 +66,7 @@ class CatalogRepository {
   File _cacheFile(ContentOrigin origin, List<String> parts) => File(
     path.joinAll([
       directory.path,
-      if (origin == ContentOrigin.github) 'github',
+      if (origin != ContentOrigin.website) origin.name,
       ...parts,
     ]),
   );
@@ -365,11 +365,8 @@ class CatalogRepository {
     Uri uri, {
     required int revision,
   }) async {
-    final preferred = sources.active;
-    final candidates = [
-      preferred,
-      if (sources.mode == ContentSourceMode.automatic) preferred.alternative,
-    ];
+    final request = sources.beginRequest();
+    final candidates = request.candidates;
     for (final origin in candidates) {
       _checkRevision(revision);
       final transport = sources.pageUri(uri, origin);
@@ -409,7 +406,7 @@ class CatalogRepository {
             data == null ||
             utf8.encode(data).length > maxPageBytes ||
             !(type.contains('text/html') ||
-                origin == ContentOrigin.github &&
+                origin != ContentOrigin.website &&
                     type.contains('text/plain'))) {
           throw const PageFormatException('内容来源返回了非预期的页面，请稍后重试。');
         }
@@ -417,7 +414,7 @@ class CatalogRepository {
           html: data,
           logicalUri: origin == ContentOrigin.website ? response.realUri : uri,
           origin: origin,
-          preferred: preferred,
+          request: request,
         );
       } on TimeoutException {
         _checkRevision(revision);
@@ -456,11 +453,7 @@ class CatalogRepository {
 
   Future<void> _accept(_ContentResponse response, int revision) async {
     _checkRevision(revision);
-    await sources.succeeded(
-      response.origin,
-      requestRevision: revision,
-      preferred: response.preferred,
-    );
+    await sources.succeeded(response.origin, request: response.request);
     _checkRevision(revision);
   }
 

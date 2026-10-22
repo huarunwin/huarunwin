@@ -28,10 +28,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshPreferences() async {
-    await preferences.reload();
+    await sources.reload();
     if (_disposed) return;
     _readAppearancePreferences();
-    sources.restore(preferences, notify: true);
     notifyListeners();
   }
 
@@ -63,7 +62,7 @@ class AppController extends ChangeNotifier {
     loadingDevices.clear();
     coreErrors.clear();
     deviceErrors.clear();
-    unawaited(load(refresh: true));
+    unawaited(load(refresh: true, retrySources: false));
   }
 
   CatalogSnapshot? snapshot;
@@ -88,8 +87,10 @@ class AppController extends ChangeNotifier {
   int _activeDateRequests = 0;
   Completer<void>? _dateSlot;
   bool _disposed = false;
-  Future<void> load({bool refresh = false}) async {
-    if (_disposed || loading) return;
+  Future<void> load({bool refresh = false, bool retrySources = true}) async {
+    // A manual refresh may supersede an in-flight catalog read from another tab.
+    if (_disposed || loading && !refresh) return;
+    if (refresh && retrySources) sources.retryPrimary();
     final run = ++_catalogRun;
     loading = true;
     error = null;

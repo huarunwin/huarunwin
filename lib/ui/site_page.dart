@@ -127,7 +127,7 @@ class _SitePageState extends State<SitePage> {
     });
     if (widget.active) {
       _sourcePending = false;
-      _load(refresh: true);
+      _load(refresh: true, retrySources: false);
     }
   }
 
@@ -141,7 +141,7 @@ class _SitePageState extends State<SitePage> {
     }
     if (widget.active && _sourcePending) {
       _sourcePending = false;
-      _load(refresh: true);
+      _load(refresh: true, retrySources: false);
     }
   }
 
@@ -155,8 +155,9 @@ class _SitePageState extends State<SitePage> {
     super.dispose();
   }
 
-  Future<void> _load({bool refresh = false}) async {
+  Future<void> _load({bool refresh = false, bool retrySources = true}) async {
     if (refresh && loading) return;
+    if (refresh && retrySources) widget.controller.sources.retryPrimary();
     final token = ++generation;
     setState(() {
       loading = true;

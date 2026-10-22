@@ -5,14 +5,16 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-bool _isGitHub(Uri uri) =>
-    uri.host == 'github.com' || uri.host == 'raw.githubusercontent.com';
+bool _isGitHubTransport(Uri uri) =>
+    uri.host == 'github.com' ||
+    uri.host == 'raw.githubusercontent.com' ||
+    uri.host == 'cdn.jsdelivr.net';
 
 /// Public paths are useful for diagnosis; credentials, queries, fragments and
-/// non-GitHub redirect destinations must not appear in the debug output.
-String githubDebugUrl(Uri uri) => _isGitHub(uri)
+/// non-mirror redirect destinations must not appear in the debug output.
+String githubDebugUrl(Uri uri) => _isGitHubTransport(uri)
     ? Uri(scheme: uri.scheme, host: uri.host, path: uri.path).toString()
-    : '<non-GitHub URL>';
+    : '<non-mirror URL>';
 
 Map<String, Object?> _errorDetails(Object error) {
   final details = <String, Object?>{'type': error.runtimeType.toString()};
@@ -57,7 +59,7 @@ void githubDebugLog(
   Map<String, Object?> fields = const {},
   Object? error,
 }) {
-  if (!kDebugMode || !_isGitHub(uri)) return;
+  if (!kDebugMode || !_isGitHubTransport(uri)) return;
   debugPrint(
     '[GitHub] ${jsonEncode({'time': DateTime.now().toUtc().toIso8601String(), 'event': event, 'url': githubDebugUrl(uri), ...fields, if (error != null) 'error': _errorDetails(error)})}',
   );
@@ -76,7 +78,7 @@ class GitHubDebugTrace {
     Uri uri, {
     Map<String, Object?> fields = const {},
   }) {
-    if (!kDebugMode || !_isGitHub(uri)) return null;
+    if (!kDebugMode || !_isGitHubTransport(uri)) return null;
     final trace = GitHubDebugTrace._(++_nextId, uri);
     trace.log(event, fields: fields);
     return trace;

@@ -38,29 +38,30 @@ class ContentImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sources = ContentSourceScope.maybeOf(context);
-    final preferred = sources?.active;
-    final primary = sources?.imageUrl(imageUrl) ?? imageUrl;
-    final alternative = sources?.mode == ContentSourceMode.automatic
-        ? sources?.imageUrl(imageUrl, origin: preferred?.alternative)
-        : null;
+    final urls = sources == null
+        ? [imageUrl]
+        : {
+            for (final origin in sources.candidates)
+              sources.imageUrl(imageUrl, origin: origin),
+          }.toList();
 
-    Widget render(String url, {bool fallback = false}) => CachedNetworkImage(
-      key: ValueKey('${sources?.revision}|$url'),
-      imageUrl: url,
+    Widget render(int index) => CachedNetworkImage(
+      key: ValueKey('${sources?.revision}|${urls[index]}'),
+      imageUrl: urls[index],
       width: width,
       height: height,
       fit: fit,
       placeholder: placeholder,
       imageBuilder: imageBuilder,
       errorWidget: (context, _, error) {
-        if (!fallback && alternative != null && alternative != primary) {
-          return render(alternative, fallback: true);
+        if (index + 1 < urls.length) {
+          return render(index + 1);
         }
         return errorWidget?.call(context, imageUrl, error) ??
             const Icon(Icons.broken_image_outlined);
       },
     );
 
-    return render(primary);
+    return render(0);
   }
 }

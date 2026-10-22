@@ -84,6 +84,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> refresh() async {
     if (!loading) {
+      widget.controller.sources.retryPrimary();
       setState(() {
         loading = true;
         request = _load(refresh: true);

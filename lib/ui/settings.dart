@@ -263,16 +263,18 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
             children: [
               PageSection(
                 title: '选择来源',
-                footer: '切换后重新加载目录、详情和图片。GitHub 镜像为一次性快照，内容可能晚于网站。',
+                footer: '切换后重新加载目录、详情和图片。两个镜像使用同一份静态快照，内容可能晚于网站。',
                 children: [
                   for (final mode in ContentSourceMode.values)
                     PageRow(
                       title: mode.label,
                       subtitle: switch (mode) {
                         ContentSourceMode.automatic =>
-                          '网络连接失败时尝试另一来源，优先使用最近成功的来源。',
+                          '连接失败时顺延切换，回退后保持 2 小时；手动刷新优先重试网站。',
                         ContentSourceMode.website => '始终从华润赢网站读取内容。',
                         ContentSourceMode.github => '始终从 GitHub 镜像读取内容。',
+                        ContentSourceMode.jsdelivr =>
+                          '通过 jsDelivr 读取同一份 GitHub 镜像。',
                       },
                       trailing: sources.mode == mode
                           ? Icon(

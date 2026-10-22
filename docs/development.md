@@ -27,7 +27,7 @@ GitHub Actions 的 Android 任务编译 Debug 应用与 instrumentation APK，PR
 
 Dart 检查同样使用 `fvm dart ...`，例如 `fvm dart analyze lib test`。Android 构建所需的 JDK、Android SDK 和目标设备分别通过 `JAVA_HOME`、`ANDROID_HOME`、`ANDROID_SERIAL` 等标准环境变量配置；具体值由开发者在本地设置，不写入仓库。文档命令使用仓库相对路径或占位符，不包含个人用户目录、机器标识、代理配置及参考项目的个人检出位置。
 
-Debug 模式下，共用 HTML 客户端对 `github.com` 和 `raw.githubusercontent.com` 输出以 `[GitHub]` 开头的诊断日志，可在 `fvm flutter run` 控制台或 Android logcat 中筛选。日志包含请求编号、耗时、当前版本 User-Agent、HTTP 状态、重定向、响应类型与长度，以及版本列表、附件解析数量、推荐选择和失败阶段；`http.start` 在读取包信息之前输出，`http.send` 表示已准备好发送请求。连接失败记录 Dio 类型、底层错误类别及可用的系统错误码，不输出凭据、查询参数、完整请求头、HTML 正文、连接 IP／端口或本机路径，也不上传日志。Profile／Release 模式不输出这些诊断。新增拦截器后，在已有 Flutter 调试会话中按大写 `R` 热重启以重新创建客户端，再手动复现；仅热重载可能仍沿用原有拦截器。
+Debug 模式下，共用 HTML 客户端对 `github.com`、`raw.githubusercontent.com` 和镜像使用的 `cdn.jsdelivr.net` 输出以 `[GitHub]` 开头的诊断日志，可在 `fvm flutter run` 控制台或 Android logcat 中筛选。日志包含请求编号、耗时、当前版本 User-Agent、HTTP 状态、重定向、响应类型与长度，以及版本列表、附件解析数量、推荐选择和失败阶段；`http.start` 在读取包信息之前输出，`http.send` 表示已准备好发送请求。连接失败记录 Dio 类型、底层错误类别及可用的系统错误码，不输出凭据、查询参数、完整请求头、HTML 正文、连接 IP／端口或本机路径，也不上传日志。Profile／Release 模式不输出这些诊断。新增拦截器后，在已有 Flutter 调试会话中按大写 `R` 热重启以重新创建客户端，再手动复现；仅热重载可能仍沿用原有拦截器。
 
 客户端自身更新的本地 debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。`HUARUNWIN_UPDATE_CHANNEL` 只选择更新渠道，不自动更换本地签名文件；需要经过 release 优化且沿用 Debug 身份的测试包时，使用 CI 的 dev 预发布流程，由工作流明确选择 Debug Secrets。两类渠道的日志与下载地址均配置在公开仓库 `huarunwin-hub/api/updates.json`；详情见[发布与许可](releasing.md)。
 

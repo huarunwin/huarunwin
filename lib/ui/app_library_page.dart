@@ -207,7 +207,8 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       return;
     }
     if (online || widget.controller.snapshot == null) {
-      await widget.controller.load(refresh: online);
+      if (online) widget.controller.sources.retryPrimary();
+      await widget.controller.load(refresh: online, retrySources: false);
     }
     if (!mounted) return;
     setState(() => _refreshing = false);
