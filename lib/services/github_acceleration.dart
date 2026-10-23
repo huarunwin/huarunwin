@@ -59,6 +59,7 @@ class GitHubAcceleration extends ChangeNotifier {
   SharedPreferences? _preferences;
   Future<void> _writes = Future.value();
   GitHubAccessMode mode = GitHubAccessMode.automatic;
+  GitHubAccessMode? _configuredMode;
   int _revision = 0;
   bool _disposed = false;
 
@@ -75,6 +76,7 @@ class GitHubAcceleration extends ChangeNotifier {
       // Invalid preferences do not prevent direct access.
     }
     mode =
+        _configuredMode ??
         GitHubAccessMode.values
             .where((value) => value.name == data['mode'])
             .firstOrNull ??
@@ -95,6 +97,23 @@ class GitHubAcceleration extends ChangeNotifier {
       state.generation++;
     }
     _revision++;
+  }
+
+  /// Content-source selection is authoritative; route history is best effort.
+  void configure(GitHubAccessMode value, {bool reset = false}) {
+    if (_disposed) return;
+    _configuredMode = value;
+    if (!reset && mode == value) return;
+    mode = value;
+    _revision++;
+    for (final state in _states.values) {
+      state.last = null;
+      state.since = null;
+      state.generation++;
+    }
+    // Restoration must not overwrite legacy preferences before migration.
+    if (reset) unawaited(_persist());
+    notifyListeners();
   }
 
   Future<void> reload() async {

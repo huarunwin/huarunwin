@@ -10,6 +10,9 @@ import 'package:huarunwin/services/github_acceleration.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MirrorAdapter implements HttpClientAdapter {
+  MirrorAdapter({this.successHost = 'cdn.jsdelivr.net'});
+
+  final String successHost;
   final hosts = <String>[];
 
   @override
@@ -19,7 +22,7 @@ class MirrorAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     hosts.add(options.uri.host);
-    final mirror = options.uri.host == 'cdn.jsdelivr.net';
+    final mirror = options.uri.host == successHost;
     return ResponseBody.fromString(
       mirror ? File('test/fixtures/catalog.html').readAsStringSync() : '',
       mirror ? 200 : 503,
@@ -90,34 +93,34 @@ void main() {
     ]);
   });
 
-  test(
-    'fixed content sources still respect the selected GitHub route',
-    () async {
-      final github = GitHubAcceleration()..restore(preferences);
-      addTearDown(github.dispose);
-      const original = 'https://huarun.win/app-icons/example.webp';
-      final raw = sources.imageUrl(original, origin: ContentOrigin.github);
-      await sources.select(ContentSourceMode.github);
-      await github.select(GitHubAccessMode.proxy);
-      expect(sources.imageUrls(original, github: github), [
-        '${GitHubAcceleration.proxyBase}$raw',
-      ]);
-      await github.select(GitHubAccessMode.direct);
-      expect(sources.imageUrls(original, github: github), [raw]);
-      await github.select(GitHubAccessMode.automatic);
-      expect(sources.imageUrls(original, github: github), [
-        raw,
-        '${GitHubAcceleration.proxyBase}$raw',
-      ]);
-      await github.select(GitHubAccessMode.proxy);
-      await sources.select(ContentSourceMode.website);
-      expect(sources.imageUrls(original, github: github), [original]);
-      await sources.select(ContentSourceMode.jsdelivr);
-      expect(sources.imageUrls(original, github: github), [
-        sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
-      ]);
-    },
-  );
+  test('one content source selects the matching image route', () async {
+    final github = GitHubAcceleration()..restore(preferences);
+    addTearDown(github.dispose);
+    const original = 'https://huarun.win/app-icons/example.webp';
+    final raw = sources.imageUrl(original, origin: ContentOrigin.github);
+    await sources.select(ContentSourceMode.ghproxy);
+    expect(sources.imageUrls(original, github: github), [
+      '${GitHubAcceleration.proxyBase}$raw',
+    ]);
+    expect(sources.imageUrls(original), [
+      '${GitHubAcceleration.proxyBase}$raw',
+    ]);
+    await sources.select(ContentSourceMode.github);
+    expect(sources.imageUrls(original, github: github), [raw]);
+    await sources.select(ContentSourceMode.automatic);
+    expect(sources.imageUrls(original, github: github), [
+      original,
+      raw,
+      '${GitHubAcceleration.proxyBase}$raw',
+      sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+    ]);
+    await sources.select(ContentSourceMode.website);
+    expect(sources.imageUrls(original, github: github), [original]);
+    await sources.select(ContentSourceMode.jsdelivr);
+    expect(sources.imageUrls(original, github: github), [
+      sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+    ]);
+  });
 
   test(
     'images follow Raw recovery without changing either hold period',
@@ -163,8 +166,7 @@ void main() {
   test('external and non-image URLs never use the image proxy', () async {
     final github = GitHubAcceleration()..restore(preferences);
     addTearDown(github.dispose);
-    await sources.select(ContentSourceMode.github);
-    await github.select(GitHubAccessMode.proxy);
+    await sources.select(ContentSourceMode.ghproxy);
     for (final original in [
       'https://images.example.test/icon.webp',
       'https://raw.githubusercontent.com/example/app/main/icon.webp',
@@ -268,6 +270,85 @@ void main() {
     expect(sources.active, ContentOrigin.github);
     expect(sources.beginRequest().candidates, ContentOrigin.values);
   });
+
+  for (final (legacy, expected) in [
+    ('automatic', ContentSourceMode.ghproxy),
+    ('github', ContentSourceMode.ghproxy),
+    ('website', ContentSourceMode.website),
+    ('jsdelivr', ContentSourceMode.jsdelivr),
+  ]) {
+    test('legacy $legacy plus proxy restores one source choice', () async {
+      await preferences.setString('contentSource', legacy);
+      await preferences.setString(
+        'githubAcceleration',
+        jsonEncode({'mode': 'proxy'}),
+      );
+      sources.restore(preferences);
+      expect(sources.mode, expected);
+
+      await sources.select(ContentSourceMode.github);
+      final restarted = ContentSources()..restore(preferences);
+      addTearDown(restarted.dispose);
+      expect(restarted.mode, ContentSourceMode.github);
+    });
+  }
+
+  test(
+    'unified source controls HTML, downloads and restored routing',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'huarun-source-qa',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final github = GitHubAcceleration()..restore(preferences);
+      addTearDown(github.dispose);
+      final client = Dio();
+      final repository = CatalogRepository(
+        directory,
+        sources: sources,
+        github: github,
+        client: client,
+      );
+      addTearDown(repository.dispose);
+      final asset = Uri.parse(
+        'https://github.com/example/app/releases/download/v1.0/app.apk',
+      );
+
+      await sources.select(ContentSourceMode.ghproxy);
+      final proxy = MirrorAdapter(successHost: 'gh-proxy.com');
+      client.httpClientAdapter = proxy;
+      final catalog = await repository.catalog(refresh: true);
+      expect(catalog.apps, isNotEmpty);
+      expect(proxy.hosts, ['gh-proxy.com']);
+      final previousDownload = github.begin(GitHubTraffic.download, asset);
+      expect(previousDownload.routes, [GitHubRoute.proxy]);
+
+      await sources.select(ContentSourceMode.github);
+      final direct = MirrorAdapter(successHost: 'raw.githubusercontent.com');
+      client.httpClientAdapter = direct;
+      await repository.catalog(refresh: true);
+      expect(direct.hosts, ['raw.githubusercontent.com']);
+      await github.succeeded(previousDownload, GitHubRoute.proxy);
+      expect(github.lastSuccessful(GitHubTraffic.download), isNull);
+      expect(previousDownload.routes, [GitHubRoute.proxy]);
+      await preferences.setString(
+        'githubAcceleration',
+        jsonEncode({'mode': 'proxy'}),
+      );
+      await github.reload();
+      await sources.reload();
+      expect(sources.mode, ContentSourceMode.github);
+      expect(github.begin(GitHubTraffic.download, asset).routes, [
+        GitHubRoute.direct,
+      ]);
+
+      await sources.select(ContentSourceMode.website);
+      expect(github.begin(GitHubTraffic.download, asset).routes, [
+        GitHubRoute.direct,
+        GitHubRoute.proxy,
+      ]);
+    },
+  );
 
   test(
     'repository falls back to jsDelivr and keeps original content URLs',

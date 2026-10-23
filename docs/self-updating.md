@@ -2,7 +2,7 @@
 
 在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，日志展示、tag 前置校验及 Release 说明也只读取该 Hub 文件。更新提醒和忽略规则见 [发布与许可](releasing.md)。
 
-客户端获取该 Raw 文件及 GitHub 安装包时遵循独立的“GitHub 加速”设置，可通过 GH-Proxy 转发同一原始地址；Raw 与下载分别记录回退状态。此设置不改变 Hub 数据格式、渠道、发布指针和附件解析规则，版本详情 HTML 仍直连 GitHub。手动检查更新或刷新日志优先重试 Raw 直连；详情见[GitHub 加速](content-sources.md#github-加速)。
+客户端获取该 Raw 文件及 GitHub 安装包时遵循统一的“内容来源”选择：GitHub 镜像使用直连，GH-Proxy 转发同一原始地址，其他来源下自动在直连和代理之间回退；Raw 与下载分别记录回退状态。此设置不改变 Hub 数据格式、渠道、发布指针和附件解析规则，版本详情 HTML 仍直连 GitHub。手动检查更新或刷新日志优先重试 Raw 直连；详情见[GitHub 加速](content-sources.md#github-加速)。
 
 ## 安装包配置
 

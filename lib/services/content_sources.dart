@@ -10,6 +10,7 @@ enum ContentSourceMode {
   automatic('自动'),
   website('华润赢网站'),
   github('GitHub 镜像'),
+  ghproxy('GH-Proxy'),
   jsdelivr('jsDelivr 镜像');
 
   const ContentSourceMode(this.label);
@@ -36,6 +37,7 @@ class ContentSources extends ChangeNotifier {
   static const mirrorRepository = 'huarunwin/huarunwin-static';
   static const mirrorBranch = 'main';
   static const fallbackDuration = Duration(hours: 2);
+  static const _modeKey = 'contentSourceMode';
   SharedPreferences? _preferences;
   ContentSourceMode mode = ContentSourceMode.automatic;
   ContentOrigin _lastSuccessful = ContentOrigin.website;
@@ -45,11 +47,19 @@ class ContentSources extends ChangeNotifier {
   bool hasSuccessfulSource = false;
   int revision = 0;
   VoidCallback? onRetryPrimary;
+  ValueChanged<bool>? onSelectionChanged;
+
+  GitHubAccessMode get githubMode => switch (mode) {
+    ContentSourceMode.github => GitHubAccessMode.direct,
+    ContentSourceMode.ghproxy => GitHubAccessMode.proxy,
+    _ => GitHubAccessMode.automatic,
+  };
 
   ContentOrigin get active => switch (mode) {
     ContentSourceMode.automatic => _lastSuccessful,
     ContentSourceMode.website => ContentOrigin.website,
-    ContentSourceMode.github => ContentOrigin.github,
+    ContentSourceMode.github ||
+    ContentSourceMode.ghproxy => ContentOrigin.github,
     ContentSourceMode.jsdelivr => ContentOrigin.jsdelivr,
   };
 
@@ -111,13 +121,30 @@ class ContentSources extends ChangeNotifier {
 
   void restore(SharedPreferences preferences, {bool notify = false}) {
     _preferences = preferences;
-    final nextMode =
+    final savedMode = preferences.getString(_modeKey);
+    var nextMode =
         ContentSourceMode.values
             .where(
-              (value) => value.name == preferences.getString('contentSource'),
+              (value) =>
+                  value.name ==
+                  (savedMode ?? preferences.getString('contentSource')),
             )
             .firstOrNull ??
         ContentSourceMode.automatic;
+    // The unified choice takes precedence over both legacy preferences.
+    if (savedMode == null &&
+        (nextMode == ContentSourceMode.automatic ||
+            nextMode == ContentSourceMode.github)) {
+      try {
+        final stored = preferences.get('githubAcceleration');
+        final legacy = stored is String ? jsonDecode(stored) : null;
+        if (legacy is Map && legacy['mode'] == 'proxy') {
+          nextMode = ContentSourceMode.ghproxy;
+        }
+      } on FormatException {
+        // Invalid legacy routing does not prevent selecting a content source.
+      }
+    }
     var previous = preferences.getString('lastContentOrigin');
     DateTime? fallbackStartedAt;
     final stored = preferences.get('contentSourceState');
@@ -150,6 +177,7 @@ class ContentSources extends ChangeNotifier {
     _fallbackStartedAt = fallbackStartedAt;
     hasSuccessfulSource = nextOrigin != null;
     if (changed) _selection++;
+    onSelectionChanged?.call(false);
     if (notify && changed) {
       revision++;
       notifyListeners();
@@ -160,13 +188,14 @@ class ContentSources extends ChangeNotifier {
     if (mode == value) return;
     final preferences = _preferences;
     if (preferences != null &&
-        !await preferences.setString('contentSource', value.name)) {
+        !await preferences.setString(_modeKey, value.name)) {
       throw StateError('Unable to save the content source');
     }
     mode = value;
     _fallbackStartedAt = null;
     _selection++;
     revision++;
+    onSelectionChanged?.call(true);
     unawaited(_persistState());
     notifyListeners();
   }
@@ -281,7 +310,14 @@ class ContentSources extends ChangeNotifier {
     if (uri == null || !isSiteImage(uri)) return [original];
     return [
       for (final origin in candidates)
-        if (origin == ContentOrigin.github && github != null)
+        if (origin == ContentOrigin.github && mode == ContentSourceMode.ghproxy)
+          GitHubAcceleration.transport(
+            Uri.parse(imageUrl(original, origin: origin)),
+            GitHubRoute.proxy,
+          ).toString()
+        else if (origin == ContentOrigin.github &&
+            mode == ContentSourceMode.automatic &&
+            github != null)
           ...github
               .imageUris(Uri.parse(imageUrl(original, origin: origin)))
               .map((uri) => uri.toString())

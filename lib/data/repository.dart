@@ -40,6 +40,9 @@ class CatalogRepository {
     _sourceRevision = this.sources.revision;
     this.sources.addListener(_sourceChanged);
     this.sources.onRetryPrimary = () => github?.retryPrimary();
+    this.sources.onSelectionChanged = (reset) =>
+        github?.configure(this.sources.githubMode, reset: reset);
+    github?.configure(this.sources.githubMode);
   }
   final ContentSources sources;
   final GitHubAcceleration? github;
@@ -84,6 +87,7 @@ class CatalogRepository {
     _disposed = true;
     sources.removeListener(_sourceChanged);
     sources.onRetryPrimary = null;
+    sources.onSelectionChanged = null;
     _cancelPendingRequests('Repository disposed');
     client.close(force: true);
     if (_ownsSources) sources.dispose();

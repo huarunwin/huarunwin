@@ -103,7 +103,7 @@ Windows、macOS、Linux 的新安装默认将安装包保存到系统下载目�
 
 GitHub 来源会打开版本与资源选择弹窗。默认优先选有适合当前平台／架构资源的稳定版，Mac 优先当前架构的 DMG、Windows 优先 EXE，Linux 优先发行版包再 AppImage；未知兼容性明确保留。用户可以切换历史或预发布版本，并选择该版本的资源，确认后才下载。App Store 链接使用 `macappstores` 打开系统商店；同时提供商店与 GitHub 安装包时先选择来源。下载完成后由用户点击安装。
 
-设置另有“GitHub 加速”，支持公开 Raw 文件和应用内 GitHub 附件下载的直连／GH-Proxy 回退，两个请求类别分别保持 2 小时。GitHub 内容镜像的站内图片跟随最近成功 Raw 线路，单张图片可按当前设置回退，但不改变任何全局保持期；`ContentSourceScope` 同时监听内容来源和加速设置，图片按实际传输 URL 分开缓存。内容来源入口及详情页组合显示来源与线路。原始链接及摘要保留；跨线路续传须有同一预期摘要，否则重新下载。GitHub 版本列表及附件 HTML 暂不经过代理，实际支持范围、超时和手动重试规则见[GitHub 加速](content-sources.md#github-加速)。
+设置仅保留“内容来源”的五项统一选择，`ContentSources.githubMode` 派生 GitHub 传输方式：GitHub 镜像为直连、GH-Proxy 为代理、其余为自动回退；选择持久化成功后，`CatalogRepository` 同步配置共用的 `GitHubAcceleration` 并使旧请求结果失效。公开 Raw 文件和应用内 GitHub 附件下载分别保持回退状态 2 小时。GitHub 内容镜像的站内图片跟随最近成功 Raw 线路，单张图片可按当前设置回退，但不改变任何全局保持期；`ContentSourceScope` 同时监听内容来源和内部 GitHub 线路状态，图片按实际传输 URL 分开缓存。内容来源入口与状态行直接显示统一来源名称，代理成功时为 GH-Proxy。原始链接及摘要保留；跨线路续传须有同一预期摘要，否则重新下载。GitHub 版本列表及附件 HTML 暂不经过代理，实际支持范围、超时和手动重试规则见[GitHub 加速](content-sources.md#github-加速)。
 
 版本列表只读取公开 Release HTML，历史分页沿真实下一页链接载入，资源按需读取。默认考察首批至多 10 个发布，最新稳定版未在首批出现时读取 GitHub 的公开 latest 页面；不预取全部历史资源。预发布版明确标注，加载失败支持重试，不静默退到旧版。也可使用网站已提供的下载入口。
 

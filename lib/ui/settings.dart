@@ -13,12 +13,14 @@ import 'app_updates.dart';
 import 'components.dart';
 import 'client_privacy_page.dart';
 import 'licenses_page.dart';
-import 'github_acceleration_page.dart';
 import 'page_components.dart';
 import 'site_page.dart';
 import 'theme.dart';
 
 String _contentSourceStatus(AppController controller) {
+  if (controller.sources.mode != ContentSourceMode.automatic) {
+    return controller.sources.mode.label;
+  }
   final source = controller.sources.active;
   final github = controller.repository.github;
   if (source != ContentOrigin.github || github == null) return source.label;
@@ -27,11 +29,9 @@ String _contentSourceStatus(AppController controller) {
     GitHubAccessMode.direct => GitHubRoute.direct,
     GitHubAccessMode.proxy => GitHubRoute.proxy,
   };
-  return '${source.label} · ${switch (route) {
-    GitHubRoute.direct => '直连',
-    GitHubRoute.proxy => '经 GH-Proxy',
-    null => '优先直连',
-  }}';
+  return route == GitHubRoute.proxy
+      ? ContentSourceMode.ghproxy.label
+      : source.label;
 }
 
 class SettingsPage extends StatelessWidget {
@@ -143,25 +143,6 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
-        if (downloads.github case final github?)
-          PageSection(
-            title: '网络',
-            children: [
-              PageRow(
-                title: 'GitHub 加速',
-                subtitle: github.mode.label,
-                icon: Icons.speed_rounded,
-                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        GitHubAccelerationPage(acceleration: github),
-                  ),
-                ),
-              ),
-            ],
-          ),
         PageSection(
           title: '网站与社区',
           footer: '纠错在应用内打开，社区链接在系统浏览器中打开。',
@@ -293,6 +274,22 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
     }
   }
 
+  Future<void> _refresh() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await widget.controller.sources.reload();
+      await widget.controller.repository.github?.reload();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('暂时无法读取内容来源，请重试。')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: PageSafeArea(
@@ -306,20 +303,22 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
           return ContentPage(
             title: '内容来源',
             showBackButton: true,
+            onRefresh: _refresh,
             children: [
               PageSection(
                 title: '选择来源',
-                footer: '切换后重新加载目录、详情和图片。GitHub 镜像的内容与图片遵循“GitHub 加速”设置。两个镜像使用同一份静态快照，内容可能晚于网站。',
+                footer: '切换后重新加载目录、详情和图片。镜像内容可能晚于网站；GitHub 版本列表始终直连。',
                 children: [
                   for (final mode in ContentSourceMode.values)
                     PageRow(
                       title: mode.label,
                       subtitle: switch (mode) {
-                        ContentSourceMode.automatic =>
-                          '连接失败时顺延切换，回退后保持 2 小时；手动刷新优先重试网站。',
+                        ContentSourceMode.automatic => '优先访问网站，失败后依次尝试 GitHub 镜像、GH-Proxy 和 jsDelivr；回退成功保持 2 小时。',
                         ContentSourceMode.website => '始终从华润赢网站读取内容。',
                         ContentSourceMode.github =>
-                          '固定使用 GitHub 镜像，连接方式由“GitHub 加速”决定。',
+                          '直连 GitHub 获取镜像内容、图片和应用内文件。',
+                        ContentSourceMode.ghproxy =>
+                          '通过 gh-proxy.com 获取镜像内容、图片和应用内 GitHub 文件。',
                         ContentSourceMode.jsdelivr =>
                           '通过 jsDelivr 读取同一份 GitHub 镜像。',
                       },
@@ -340,7 +339,7 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
                     title:
                         sources.mode != ContentSourceMode.automatic ||
                             sources.hasSuccessfulSource
-                        ? '当前来源与线路'
+                        ? '当前来源'
                         : '优先尝试来源',
                     subtitle: _contentSourceStatus(widget.controller),
                     icon: Icons.cloud_done_outlined,
