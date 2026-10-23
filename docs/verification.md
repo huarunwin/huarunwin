@@ -831,3 +831,26 @@ macOS 以唯一 Bundle ID、路径及标记的临时应用做实际界面测试�
 宽屏侧栏的“应用”分组更名为“发现”，与窄屏底部导航一致；共用标题同步用于折叠提示及无障碍名称。分组展开、分类入口和选中状态逻辑保持原有行为，既有图标栏提示断言及相关产品文档已同步更新。
 
 `fvm dart format lib/ui/home.dart test/typed_applications_test.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，本轮未构建或进行设备界面验证。
+
+## 2026-10-23 macOS 与 Android 编译及回归
+
+按用户明确要求，基于同步后的 `main`（`ab19eb2`，版本 `0.5.2+8`）执行完整检查，发现并修复两处问题：
+
+- 设置页下拉刷新的既有 Widget 测试稳定出现 `pumpAndSettle timed out`，与正式 tag 工作流失败原因一致。内容来源写入队列原先在构造时预建空 Future，跨测试异步环境等待导致刷新无法结束；现仅保存实际待完成的写入，完成后清理引用，同时保留写入串行化和刷新等待。既有刷新用例通过，并新增 9 项检查覆盖来源顺序、jsDelivr 实际仓库回退、原始内容 URL、两小时保持及重启恢复、到期或时钟回拨、手动重试、显式切源、迟到结果、并发写入和旧偏好兼容。
+- Android 原生的无效签名用例在构造 APK 夹具时，流式 ZIP 读取将填充内容视为重复的空名称条目，提前抛出 `ZipException`。改为从 ZIP 中央目录复制真实条目，并先验证夹具签名确实无效，再检查客户端拒绝更新且不申请安装权限。
+
+本轮实际通过的检查：
+
+- `fvm flutter pub get --enforce-lockfile`、`fvm flutter analyze --no-pub`；完整 `fvm flutter test --no-pub --reporter expanded` 共 **532 项通过**。
+- `python3 -m unittest discover -s tool/ci -p 'test_*.py'` 共 **32 项通过**。
+- `python3 tool/check_installer_process.py` 的 5 项进程检查、`python3 tool/check_installed_apps.py` 的 4 项本机应用识别检查，以及 `python3 tool/check_admin_helper.py` 的普通用户 XPC 身份及路径检查通过。
+- `python3 tool/check_installer.py --install-fixture` 的 **18 项检查通过**：包含 ZIP／DMG 准备、签名分类、路径防护、普通权限安装、原子替换、失败保留旧应用、拒绝退出和正常退出后替换。仅使用唯一命名的临时应用，结束后已清理。
+- `python3 tool/check_self_update.py` 的 **9 项检查通过**：临时应用升级及重新启动、预发布版本、身份／渠道／签名检查、降级拒绝、退出前取消和多实例保护。
+- 修复后重新执行 `fvm flutter build macos --release --no-pub` 和 `fvm flutter build apk --release --no-pub`，均成功；Android Debug 构建也通过。在 Android 13 arm64 模拟器运行 `./gradlew :app:connectedDebugAndroidTest -Ptarget-platform=android-arm64`，**35 项通过，0 失败、0 跳过**。
+- macOS 产物包含 arm64 和 x86_64，`codesign --verify --deep --strict` 通过；最终 APK 的 `apksigner verify --verbose` 通过，包身份、版本及三种 ABI 与构建配置一致。签名完整性检查不代表 Developer ID 公证或第三方安全认证。
+
+macOS 在 Apple Silicon 上实际启动 Release，检查宽屏及折叠侧栏的“发现”、搜索与详情返回、jsDelivr 来源切换与内容加载、自动模式恢复、机场目录和应用库刷新；最终构建重启后仍可正常加载。Android 最终 Release APK 在模拟器安装成功，冷启动完成，主 Activity 保持前台运行，所采集的应用日志未发现崩溃或未处理的 Flutter 异常。
+
+本轮没有连接 Android 真机；Android 页面行为由 Flutter Widget 测试覆盖，原生安装／重签／改包等由模拟器 instrumentation 覆盖，未将其写成真机逐页验收。Intel Mac 仅验证编译架构，未在 Intel 硬件运行；未重复进行真实管理员认证或替换用户已安装应用。构建中的第三方弃用／SDK 工具版本提示不影响本轮检查通过。两小时策略使用受控的持久化时间验证，没有实际等待两小时。
+
+日志和安装包保留在忽略的 `build/qa-2026-10-23/`、`build/app/outputs/flutter-apk/` 与 `build/macos/Build/Products/Release/`；所改 Dart 文件格式及 `git diff --check` 通过。未修改 Hub 发布信息，本轮结果为本地验证，不代表旧 tag 的远端工作流已重新通过。

@@ -39,7 +39,7 @@ class ContentSources extends ChangeNotifier {
   ContentOrigin _lastSuccessful = ContentOrigin.website;
   DateTime? _fallbackStartedAt;
   int _selection = 0;
-  Future<void> _stateWrite = Future.value();
+  Future<void>? _stateWrite;
   bool hasSuccessfulSource = false;
   int revision = 0;
 
@@ -200,12 +200,16 @@ class ContentSources extends ChangeNotifier {
       'origin': hasSuccessfulSource ? _lastSuccessful.name : null,
       'fallbackStartedAt': _fallbackStartedAt?.toIso8601String(),
     });
-    return _stateWrite = _stateWrite.then((_) async {
+    final write = (_stateWrite ?? Future<void>.value()).then((_) async {
       try {
         await preferences?.setString('contentSourceState', state);
       } catch (_) {
         // A preference write failure must not hide successfully read content.
       }
+    });
+    _stateWrite = write;
+    return write.whenComplete(() {
+      if (identical(_stateWrite, write)) _stateWrite = null;
     });
   }
 

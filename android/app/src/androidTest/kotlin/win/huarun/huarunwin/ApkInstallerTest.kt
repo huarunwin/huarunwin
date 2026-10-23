@@ -28,7 +28,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import javax.security.auth.x500.X500Principal
 
@@ -138,12 +138,13 @@ class ApkInstallerTest {
     @Test fun selfUpdateRejectsInvalidApkSignatures() {
         val version = ownApk()
         val changed = File(folder, "unsigned.apk")
-        ZipInputStream(apk.inputStream()).use { source ->
+        // The central directory excludes APK alignment padding that a streaming
+        // ZIP reader can mistake for extra, empty-name entries.
+        ZipFile(apk).use { source ->
             ZipOutputStream(changed.outputStream()).use { output ->
-                while (true) {
-                    val entry = source.nextEntry ?: break
+                for (entry in source.entries().asSequence()) {
                     output.putNextEntry(ZipEntry(entry.name))
-                    source.copyTo(output)
+                    source.getInputStream(entry).use { it.copyTo(output) }
                     output.closeEntry()
                 }
                 output.putNextEntry(ZipEntry("assets/changed-after-signing.txt"))
@@ -151,6 +152,7 @@ class ApkInstallerTest {
                 output.closeEntry()
             }
         }
+        assertFalse(ApkVerifier.Builder(changed).build().verify().isVerified)
         changed.copyTo(apk, overwrite = true)
         // Android can reject missing signing blocks while reading PackageInfo,
         // before the client's independent signature verification is reached.
