@@ -151,16 +151,16 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
 
   Future<void> _loadInitialRelease(int request) async {
     final index = GitHubReleaseResolver.indexFor(widget.source);
-    final page = await widget.resolver.loadPage(index);
+    final page = await widget.resolver.loadInitialPage(widget.source);
     if (!mounted || request != _request) return;
     setState(() {
       _releases
         ..clear()
         ..addAll(page.releases);
-      _visited.add(index);
+      if (!page.fromCatalog) _visited.add(index);
       _next = page.next;
     });
-    if (!_releases.any((r) => r.latest && !r.prerelease)) {
+    if (!page.fromCatalog && !_releases.any((r) => r.latest && !r.prerelease)) {
       final latest = await widget.resolver.loadLatest(widget.source);
       if (!mounted || request != _request) return;
       if (latest != null) {

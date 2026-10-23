@@ -75,6 +75,7 @@ Future<void> main() async {
     legacyDownloads,
     locations: downloadLocations,
     github: github,
+    loadCatalogReleases: controller.repository.releases,
     foreground: Platform.isAndroid ? AndroidDownloadForeground() : null,
   );
   await downloads.restore();

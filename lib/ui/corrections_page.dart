@@ -10,5 +10,5 @@ class CorrectionsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      WebPage(uri: uri, title: '纠错', syncCorrectionTheme: true);
+      WebPage(uri: uri, title: '反馈', syncCorrectionTheme: true);
 }

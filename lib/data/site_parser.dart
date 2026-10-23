@@ -30,7 +30,7 @@ class SiteRoutes {
   };
 
   static const onlineLinks = <String, String>{
-    '/corrections': '纠错',
+    '/corrections': '反馈',
     'https://t.me/hunrunwin': 'Telegram 群组',
     'https://t.me/huarunying': 'Telegram 频道',
   };

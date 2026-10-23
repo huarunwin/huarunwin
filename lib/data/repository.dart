@@ -18,6 +18,8 @@ import 'site_parser.dart';
 List<CatalogApp> _parseCatalog(String html) => SiteHtmlParser().catalog(html);
 AppDetails _parseDetail((String, CatalogApp) input) =>
     SiteHtmlParser().detail(input.$1, input.$2);
+List<CatalogRelease> _parseReleases((String, CatalogApp) input) =>
+    SiteHtmlParser().releases(input.$1, input.$2);
 SiteDocument _parsePage((String, String) input) =>
     PublicSiteParser().parse(input.$1, input.$2);
 
@@ -368,6 +370,65 @@ class CatalogRepository {
           cached: true,
           refreshFailed: true,
         );
+      }
+      rethrow;
+    }
+  }
+
+  /// Version documents are fetched only when the user opens download choices.
+  Future<List<CatalogRelease>> releases(
+    CatalogApp app, {
+    bool refresh = false,
+  }) async {
+    if (!app.isClient || app.withdrawn) return const [];
+    final uri = Uri.parse(app.url);
+    if (uri.scheme != 'https' ||
+        uri.host != 'huarun.win' ||
+        uri.hasPort ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        uri.pathSegments.length != 2 ||
+        uri.pathSegments.first != 'apps' ||
+        uri.pathSegments.last != app.id) {
+      throw const PageFormatException('应用版本地址无效。');
+    }
+    final revision = sources.revision;
+    final parts = ['releases', '${Uri.encodeComponent(app.id)}.html-cache'];
+    final cached = await _read(_cacheFile(sources.active, parts));
+    _checkRevision(revision);
+    if (!refresh &&
+        cached != null &&
+        DateTime.now().difference(cached.$2) < const Duration(minutes: 30)) {
+      try {
+        final releases = await compute(_parseReleases, (cached.$1, app));
+        _checkRevision(revision);
+        return releases;
+      } on PageFormatException {
+        // A changed document format must be read again.
+      }
+    }
+    try {
+      final response = await _getResponse(
+        uri.replace(path: '${uri.path}/releases'),
+        revision: revision,
+      );
+      final releases = await compute(_parseReleases, (response.html, app));
+      _checkRevision(revision);
+      await _write(
+        _cacheFile(response.origin, parts),
+        response.html,
+        DateTime.now(),
+        revision: revision,
+      );
+      await _accept(response, revision);
+      return releases;
+    } catch (_) {
+      _checkRevision(revision);
+      if (cached != null) {
+        final releases = await compute(_parseReleases, (cached.$1, app));
+        _checkRevision(revision);
+        return releases;
       }
       rethrow;
     }

@@ -634,7 +634,7 @@ class _SitePageState extends State<SitePage> {
             ),
           PopupMenuItem(
             value: () => openLink(context, '${SiteRoutes.origin}/corrections'),
-            child: const Text('纠错'),
+            child: const Text('反馈'),
           ),
         ],
       ),

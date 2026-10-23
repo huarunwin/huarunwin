@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/data/models.dart';
+import 'package:huarunwin/data/html_parser.dart';
 import 'package:huarunwin/services/download_platform.dart';
 import 'package:huarunwin/services/github_releases.dart';
 import 'package:huarunwin/services/mac_downloads.dart';
@@ -35,6 +36,53 @@ void main() {
     tag: 'v1/stable',
     name: 'Version 1',
   );
+
+  test('catalog versions and assets need no GitHub requests, including missing checksums', () async {
+    const app = CatalogApp(
+      id: 'example',
+      name: 'Example',
+      url: 'https://huarun.win/apps/example',
+    );
+    final versions = SiteHtmlParser().releases(
+      File('test/fixtures/catalog-releases.html').readAsStringSync(),
+      app,
+    );
+    final source = LatestHtmlSource(
+      Uri.parse('https://github.com/owner/repo'),
+      error: StateError('GitHub unavailable'),
+    );
+    addTearDown(() => source.client.close(force: true));
+    final resolver = GitHubReleaseResolver(
+      source,
+      loadCatalog: () async => versions,
+    );
+    final page = await resolver.loadInitialPage(
+      Uri.parse('https://github.com/owner/repo'),
+    );
+    expect(page.fromCatalog, isTrue);
+    expect(page.next.toString(), 'https://github.com/owner/repo/releases');
+    final stable = page.releases.singleWhere((release) => release.latest);
+    final resources = await resolver.loadResources(stable);
+    expect(resources, hasLength(4));
+    expect(resources.first.platform, 'Android');
+    expect(resources.first.architecture, 'arm64');
+    expect(resources[1].architecture, 'x64');
+    expect(resources.first.sha256, 'a' * 64);
+    expect(resources[1].sha256, isNull);
+    expect(resources[2].platform, 'macOS');
+    expect(resources.last.kind, 'resource');
+    expect(source.requests, isEmpty);
+    final older = await resolver.loadResources(page.releases.last);
+    expect(older.single.version, 'v1');
+    expect(source.requests, isEmpty);
+    await expectLater(resolver.loadPage(page.next!), throwsStateError);
+    expect(source.requests, hasLength(1));
+    final unrelated = GitHubReleaseResolver(source, catalog: versions);
+    await expectLater(
+      unrelated.loadInitialPage(Uri.parse('https://github.com/other/repo')),
+      throwsStateError,
+    );
+  });
 
   test('architecture markers recognize underscore-separated assets without matching unrelated words', () {
     for (final name in [

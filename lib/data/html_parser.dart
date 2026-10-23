@@ -446,6 +446,106 @@ class SiteHtmlParser {
     return {};
   }
 
+  List<CatalogRelease> releases(String source, CatalogApp app) {
+    if (app.withdrawn || !app.isClient) return const [];
+    final document = html.parse(source);
+    final root = document.querySelector('[data-client-releases="1"]');
+    if (root == null || root.attributes['data-app-slug'] != app.id) {
+      throw const PageFormatException('版本信息页面无效，请稍后重试。');
+    }
+    final base = Uri.parse('${app.url}/releases');
+    final releases = <Uri, CatalogRelease>{};
+    for (final row
+        in root.children
+            .where(
+              (element) => element.attributes.containsKey('data-release-url'),
+            )
+            .take(10)) {
+      final page = Uri.tryParse(row.attributes['data-release-url'] ?? '');
+      final tag = row.attributes['data-release-tag'];
+      final published = DateTime.tryParse(
+        row.attributes['data-published-at'] ?? '',
+      );
+      final collected = DateTime.tryParse(
+        row.attributes['data-collected-at'] ?? '',
+      );
+      if (page == null ||
+          page.scheme != 'https' ||
+          page.host != 'github.com' ||
+          page.userInfo.isNotEmpty ||
+          page.hasQuery ||
+          page.hasFragment ||
+          page.pathSegments.length != 5 ||
+          page.pathSegments[2] != 'releases' ||
+          page.pathSegments[3] != 'tag' ||
+          tag == null ||
+          tag.isEmpty ||
+          page.pathSegments[4] != tag ||
+          published == null ||
+          collected == null ||
+          !['true', 'false'].contains(row.attributes['data-prerelease']) ||
+          !['true', 'false'].contains(row.attributes['data-recommended'])) {
+        continue;
+      }
+      final assets = <String, DownloadLink>{};
+      for (final anchor
+          in row
+              .querySelectorAll('a[data-release-asset="true"][href]')
+              .take(1000)) {
+        final url = Uri.tryParse(anchor.attributes['href'] ?? '');
+        final name = anchor.attributes['data-asset-name'];
+        final size = int.tryParse(anchor.attributes['data-asset-size'] ?? '');
+        if (url == null ||
+            url.scheme != 'https' ||
+            url.host != page.host ||
+            url.userInfo.isNotEmpty ||
+            url.hasQuery ||
+            url.hasFragment ||
+            url.pathSegments.length != 6 ||
+            url.pathSegments.take(2).join('/').toLowerCase() !=
+                page.pathSegments.take(2).join('/').toLowerCase() ||
+            url.pathSegments[2] != 'releases' ||
+            url.pathSegments[3] != 'download' ||
+            url.pathSegments[4] != tag ||
+            name == null ||
+            name.isEmpty ||
+            url.pathSegments[5] != name ||
+            size == null ||
+            size < 0) {
+          continue;
+        }
+        final digest = normalizeSha256(anchor.attributes['data-sha256']);
+        assets[url.toString()] = DownloadLink(
+          url: url.toString(),
+          label: name,
+          kind: 'resource',
+          version: tag,
+          releaseUrl: page.toString(),
+          sha256: digest,
+          checksumSource: digest == null ? null : base.toString(),
+          sizeLabel: size < 1024
+              ? '$size B'
+              : size < 1024 * 1024
+              ? '${(size / 1024).toStringAsFixed(1)} KB'
+              : '${(size / (1024 * 1024)).toStringAsFixed(1)} MB',
+        );
+      }
+      releases[page] = CatalogRelease(
+        page: page,
+        tag: tag,
+        name: row.attributes['data-release-name']?.trim().isNotEmpty == true
+            ? row.attributes['data-release-name']!.trim()
+            : tag,
+        publishedAt: published,
+        collectedAt: collected,
+        prerelease: row.attributes['data-prerelease'] == 'true',
+        recommended: row.attributes['data-recommended'] == 'true',
+        assets: assets.values.toList(),
+      );
+    }
+    return releases.values.toList();
+  }
+
   String? _kind(String url, String? declared) {
     final path = Uri.parse(url).path.toLowerCase();
     const kinds = [

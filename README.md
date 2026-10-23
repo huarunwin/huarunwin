@@ -73,6 +73,6 @@ macOS 安装包目前使用 ad-hoc 签名，尚未接入 Apple Developer ID 签�
 
 本项目采用[华润赢源码查看与审计许可 1.0](LICENSE)，属于源码公开（Source Available）项目。允许查看、安全审计、原样本地编译验证与个人使用；未经书面授权不得修改、制作衍生版本或再分发源码及安装包，具体范围与例外以许可正文为准。名称与 Logo 的品牌权利保留。公开源码不构成安全认证，也不证明安装包与源码一致。
 
-第三方依赖遵循各自许可证，其权利不受项目许可缩减。项目许可与第三方许可可在“设置 → 软件许可”查看，随附的原生依赖声明位于 [assets/licenses](assets/licenses/)。
+第三方依赖遵循各自许可证，其权利不受项目许可缩减。项目许可与第三方许可可在“设置 → 关于华润赢 → 软件许可”查看，随附的原生依赖声明位于 [assets/licenses](assets/licenses/)。
 
 感谢 [Flutter](https://flutter.dev/)、[FlClash](https://github.com/chen08209/FlClash)、[Komi Store](https://github.com/komi-store/komi-store) 和 [AppManager](https://github.com/MuntashirAkon/AppManager) 提供的工具与设计参考。界面与流程独立实现；Android APK 修改使用 [ARSCLib](https://github.com/REAndroid/ARSCLib)（Apache-2.0），并参考 [APKEditor](https://github.com/REAndroid/APKEditor) 与 [Apktool](https://github.com/iBotPeaches/Apktool)。

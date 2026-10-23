@@ -8,6 +8,7 @@ import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/ui/downloads_page.dart';
 import 'package:huarunwin/ui/settings.dart';
+import 'package:huarunwin/ui/about_page.dart';
 import 'package:huarunwin/ui/licenses_page.dart';
 import 'package:huarunwin/ui/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,6 +74,11 @@ void main() {
     }
     expect(find.text('处理下载隔离标记'), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
+    await tester.scrollUntilVisible(find.text('关于华润赢'), 300);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('关于华润赢'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AboutPage), findsOneWidget);
     await tester.scrollUntilVisible(find.text('软件许可'), 300);
     await tester.pumpAndSettle();
     await tester.tap(find.text('软件许可'));

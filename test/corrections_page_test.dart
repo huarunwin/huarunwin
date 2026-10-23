@@ -222,12 +222,12 @@ void main() {
         ),
       ),
     );
-    await tester.scrollUntilVisible(find.text('纠错').hitTestable(), 400);
-    expect(find.text('纠错'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('反馈').hitTestable(), 400);
+    expect(find.text('反馈'), findsOneWidget);
     for (final removed in ['账号中心', '信息纠错', '机场信息纠错', '机场纠错']) {
       expect(find.text(removed), findsNothing);
     }
-    await tester.tap(find.text('纠错'));
+    await tester.tap(find.text('反馈'));
     await tester.pumpAndSettle();
     expect(find.byType(WebViewWidget), findsOneWidget);
     expect(web.controller.requests, [correctionUri]);
@@ -240,7 +240,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(CorrectionsPage), findsNothing);
-    expect(find.text('纠错'), findsOneWidget);
+    expect(find.text('反馈'), findsOneWidget);
   });
 
   testWidgets('reader menu uses the same in-app correction page', (
@@ -258,7 +258,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('页面操作'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('纠错'));
+    await tester.tap(find.text('反馈'));
     await tester.pumpAndSettle();
     expect(find.byType(WebViewWidget), findsOneWidget);
     expect(web.controller.requests, [correctionUri]);
@@ -270,7 +270,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CorrectionsPage()));
       await tester.pumpAndSettle();
       expect(find.byType(WebViewWidget), findsOneWidget);
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       expect(web.controller.requests, [correctionUri]);
       expect(
         web.controller.scripts.singleWhere(
@@ -282,12 +282,12 @@ void main() {
         const JavaScriptMessage(message: '500'),
       );
       await tester.pump();
-      expect(find.byTooltip('刷新纠错页面').hitTestable(), findsNothing);
+      expect(find.byTooltip('刷新反馈页面').hitTestable(), findsNothing);
       web.controller.channel!.onMessageReceived(
         const JavaScriptMessage(message: '0'),
       );
       await tester.pump();
-      expect(find.byTooltip('刷新纠错页面').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('刷新反馈页面').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
@@ -302,7 +302,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(const MaterialApp(home: CorrectionsPage()));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('刷新纠错页面'), findsNothing);
+      expect(find.byTooltip('刷新反馈页面'), findsNothing);
       Future<void> drag(Offset offset) async {
         await tester.drag(find.byType(WebViewWidget), offset);
         await tester.pump();
@@ -350,11 +350,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('无法打开纠错页面'), findsOneWidget);
+      expect(find.text('无法打开反馈页面'), findsOneWidget);
       await tester.dragFrom(const Offset(180, 250), const Offset(0, 400));
       await tester.pumpAndSettle();
       expect(web.controller.requests, [correctionUri, correctionUri]);
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
@@ -411,10 +411,10 @@ void main() {
       expect(web.controller.requests, [correctionUri]);
       web.controller.onScroll!(const ScrollPositionChange(0, 500));
       await tester.pump();
-      expect(find.byTooltip('刷新纠错页面').hitTestable(), findsNothing);
+      expect(find.byTooltip('刷新反馈页面').hitTestable(), findsNothing);
       web.controller.onScroll!(const ScrollPositionChange(0, 0));
       await tester.pump();
-      expect(find.byTooltip('刷新纠错页面').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('刷新反馈页面').hitTestable(), findsOneWidget);
 
       final button = find.descendant(
         of: find.byType(RefreshIconButton),
@@ -434,7 +434,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       web.navigation.resourceError(
         const WebResourceError(
           errorCode: -1,
@@ -443,11 +443,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('无法打开纠错页面'), findsOneWidget);
+      expect(find.text('无法打开反馈页面'), findsOneWidget);
       await tester.tap(find.text('重试'));
       await tester.pumpAndSettle();
       expect(web.controller.requests, [correctionUri, correctionUri]);
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       web.navigation.httpError(
         HttpResponseError(
           request: WebResourceRequest(
@@ -456,15 +456,15 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       web.navigation.httpError(
         HttpResponseError(request: WebResourceRequest(uri: correctionUri)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('无法打开纠错页面'), findsOneWidget);
+      expect(find.text('无法打开反馈页面'), findsOneWidget);
       await tester.tap(find.text('重试'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('刷新纠错页面'));
+      await tester.tap(find.byTooltip('刷新反馈页面'));
       await tester.pump();
       expect(web.controller.reloads, 1);
 

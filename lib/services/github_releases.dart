@@ -59,18 +59,93 @@ class GitHubRelease {
 }
 
 class GitHubReleasePage {
-  const GitHubReleasePage(this.releases, {this.next});
+  const GitHubReleasePage(this.releases, {this.next, this.fromCatalog = false});
   final List<GitHubRelease> releases;
   final Uri? next;
+  final bool fromCatalog;
 }
 
 /// Version and asset URLs come from public HTML. Only the repository's release
 /// index and latest routes are derived from a published repository/release URL.
 class GitHubReleaseResolver {
-  GitHubReleaseResolver(this.source);
+  GitHubReleaseResolver(
+    this.source, {
+    this.catalog = const [],
+    this.loadCatalog,
+    this.platforms = const ['macOS', 'Android', 'Windows', 'Linux'],
+  });
   final MacDownloadResolver source;
+  final List<CatalogRelease> catalog;
+  final Future<List<CatalogRelease>> Function()? loadCatalog;
+  final List<String> platforms;
   final _releaseHtml = <Uri, String>{};
   final _resources = <Uri, List<DownloadLink>>{};
+
+  Future<GitHubReleasePage> loadInitialPage(Uri repository) async {
+    var entries = catalog;
+    if (loadCatalog != null) {
+      try {
+        entries = await loadCatalog!();
+      } catch (error) {
+        githubDebugLog(
+          'releases.catalog.failed',
+          uri: repository,
+          error: error,
+        );
+        // Older deployments and mirrors can lack the separate version page.
+      }
+    }
+    final releases = <GitHubRelease>[];
+    for (final entry in entries) {
+      if (!_sameRepository(repository, entry.page)) continue;
+      final release = GitHubRelease(
+        page: entry.page,
+        tag: entry.tag,
+        name: entry.name,
+        prerelease: entry.prerelease,
+        latest: entry.recommended && !entry.prerelease,
+        publishedAt: entry.publishedAt,
+      );
+      releases.add(release);
+      _resources[entry.page] = entry.assets.map((asset) {
+        String? platform, kind;
+        if (!RegExp(r'(^|[._ -])(symbols|debug)([._ -]|$)')
+            .hasMatch(asset.label.toLowerCase())) {
+          for (final candidate in platforms) {
+            kind = MacDownloadResolver.packageKind(asset.label, candidate);
+            if (kind != null) {
+              platform = candidate;
+              break;
+            }
+          }
+        }
+        return DownloadLink(
+          url: asset.url,
+          label: asset.label,
+          platform: platform,
+          kind: kind ?? 'resource',
+          architecture: MacDownloadResolver.architecture(asset.label),
+          sha256: asset.sha256,
+          checksumSource: asset.checksumSource,
+          version: entry.tag,
+          releaseUrl: entry.page.toString(),
+          sizeLabel: asset.sizeLabel,
+        );
+      }).toList();
+    }
+    if (releases.isEmpty) return loadPage(indexFor(repository));
+    githubDebugLog(
+      'releases.catalog',
+      uri: repository,
+      fields: {'releases': releases.length},
+    );
+    // Only the user's explicit request for more versions accesses GitHub HTML.
+    return GitHubReleasePage(
+      releases,
+      next: indexFor(repository),
+      fromCatalog: true,
+    );
+  }
 
   static Uri? sourceFor(AppDetails detail, String platform) {
     if (detail.app.withdrawn ||

@@ -510,7 +510,8 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
             return;
           }
         }
-        final downloadApp = detail.app;
+        final downloadDetails = detail;
+        final downloadApp = downloadDetails.app;
         final signingPreference = widget.manager.resigningPreferenceFor(
           appKey: downloadApp.key,
           appName: downloadApp.name,
@@ -521,7 +522,13 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
             builder: (context) => ReleaseDownloadDialog(
               appName: downloadApp.name,
               source: source,
-              resolver: GitHubReleaseResolver(widget.manager.macResolver),
+              resolver: GitHubReleaseResolver(
+                widget.manager.macResolver,
+                loadCatalog: widget.manager.loadCatalogReleases == null
+                    ? null
+                    : () => widget.manager.loadCatalogReleases!(downloadApp),
+                platforms: downloadApp.platforms,
+              ),
               installer: widget.manager.installer,
               suggestedPackageName: signingPreference?.resignedPackageName,
               suggestedSigningKey: signingPreference?.resignKey,

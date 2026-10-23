@@ -8,13 +8,11 @@ import '../services/content_sources.dart';
 import '../services/download_locations.dart';
 import '../services/downloads.dart';
 import '../services/github_acceleration.dart';
+import 'about_page.dart';
 import 'adaptive_dialog.dart';
 import 'app_updates.dart';
 import 'components.dart';
-import 'client_privacy_page.dart';
-import 'licenses_page.dart';
 import 'page_components.dart';
-import 'site_page.dart';
 import 'theme.dart';
 
 String _contentSourceStatus(AppController controller) {
@@ -73,6 +71,7 @@ class SettingsPage extends StatelessWidget {
         if (downloads.locations case final locations?)
           PageSection(
             title: '下载与安装',
+            bottomSpacing: 16,
             children: [
               PageRow(
                 title: '下载目录',
@@ -91,6 +90,7 @@ class SettingsPage extends StatelessWidget {
           ),
         PageSection(
           title: '外观',
+          bottomSpacing: 16,
           children: [
             Padding(
               padding: const EdgeInsets.all(14),
@@ -114,21 +114,8 @@ class SettingsPage extends StatelessWidget {
         ),
         PageSection(
           title: '应用目录',
+          bottomSpacing: 16,
           children: [
-            PageRow(
-              title: '内容来源',
-              subtitle: controller.sources.mode == ContentSourceMode.automatic
-                  ? '自动 · ${_contentSourceStatus(controller)}'
-                  : _contentSourceStatus(controller),
-              icon: Icons.public_rounded,
-              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => _ContentSourcePage(controller: controller),
-                ),
-              ),
-            ),
             PageRow(
               title: '重置为默认值',
               subtitle: '清除记住的平台与设备筛选，恢复当前设备平台。',
@@ -144,92 +131,48 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         PageSection(
-          title: '网站与社区',
-          footer: '纠错在应用内打开，社区链接在系统浏览器中打开。',
+          bottomSpacing: 16,
           children: [
-            for (final entry in SiteRoutes.onlineLinks.entries)
-              PageRow(
-                title: entry.value,
-                icon: switch (entry.key) {
-                  '/corrections' => Icons.edit_note_rounded,
-                  _ => Icons.send_outlined,
-                },
-                trailing: Icon(
-                  entry.key == '/corrections'
-                      ? Icons.chevron_right_rounded
-                      : Icons.open_in_new_rounded,
-                  size: 18,
-                ),
-                onTap: () => openLink(
-                  context,
-                  entry.key.startsWith('/')
-                      ? '${SiteRoutes.origin}${entry.key}'
-                      : entry.key,
-                ),
-              ),
+            PageRow(
+              title: SiteRoutes.onlineLinks['/corrections']!,
+              icon: Icons.feedback_outlined,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () =>
+                  openLink(context, '${SiteRoutes.origin}/corrections'),
+            ),
           ],
         ),
         PageSection(
-          title: '关于华润赢',
+          title: '版本信息',
+          bottomSpacing: 16,
+          children: [AppVersionRows(manager: downloads)],
+        ),
+        PageSection(
+          bottomSpacing: 16,
           children: [
-            AppVersionRows(manager: downloads),
             PageRow(
-              title: '访问网站',
-              icon: Icons.language_rounded,
-              trailing: const Icon(Icons.open_in_new_rounded, size: 16),
-              onTap: () => openLink(context, SiteRoutes.origin),
-            ),
-            PageRow(
-              title: '客户端隐私',
-              icon: Icons.privacy_tip_outlined,
+              title: '关于华润赢',
+              icon: Icons.info_outline_rounded,
               trailing: const Icon(Icons.chevron_right_rounded, size: 18),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => const ClientPrivacyPage(),
+                  builder: (_) =>
+                      AboutPage(controller: controller, downloads: downloads),
                 ),
               ),
             ),
             PageRow(
-              title: '软件许可',
-              icon: Icons.code_rounded,
+              title: '高级设置',
+              icon: Icons.tune_rounded,
               trailing: const Icon(Icons.chevron_right_rounded, size: 18),
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute<void>(builder: (_) => const LicensesPage()),
-              ),
-            ),
-          ],
-        ),
-        PageSection(
-          title: '网站说明',
-          children: [
-            for (final path in const [
-              '/about',
-              '/editorial-policy',
-              '/privacy',
-              '/terms',
-            ])
-              PageRow(
-                title: SiteRoutes.sections[path]!,
-                icon: switch (path) {
-                  '/editorial-policy' => Icons.fact_check_outlined,
-                  '/privacy' => Icons.privacy_tip_outlined,
-                  '/terms' => Icons.description_outlined,
-                  _ => Icons.info_outline_rounded,
-                },
-                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => SitePage(
-                      url: '${SiteRoutes.origin}$path',
-                      controller: controller,
-                      downloads: downloads,
-                    ),
-                  ),
+                MaterialPageRoute<void>(
+                  builder: (_) => _AdvancedSettingsPage(controller: controller),
                 ),
               ),
+            ),
           ],
         ),
         Padding(
@@ -244,6 +187,62 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+class _AdvancedSettingsPage extends StatelessWidget {
+  const _AdvancedSettingsPage({required this.controller});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: PageSafeArea(
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
+          controller.sources,
+          controller.repository.github,
+        ]),
+        builder: (context, _) => ContentPage(
+          title: '高级设置',
+          showBackButton: true,
+          onRefresh: () async {
+            try {
+              await controller.sources.reload();
+              await controller.repository.github?.reload();
+            } catch (_) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('暂时无法读取本机偏好，请稍后重试。')),
+                );
+              }
+            }
+          },
+          children: [
+            PageSection(
+              title: '网络',
+              children: [
+                PageRow(
+                  title: '内容来源',
+                  subtitle:
+                      controller.sources.mode == ContentSourceMode.automatic
+                      ? '自动 · ${_contentSourceStatus(controller)}'
+                      : _contentSourceStatus(controller),
+                  icon: Icons.public_rounded,
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          _ContentSourcePage(controller: controller),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -307,7 +306,7 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
             children: [
               PageSection(
                 title: '选择来源',
-                footer: '切换后重新加载目录、详情和图片。镜像内容可能晚于网站；GitHub 版本列表始终直连。',
+                footer: '切换后重新加载目录、详情和图片。镜像内容可能晚于网站；更多历史版本仍需直连 GitHub。',
                 children: [
                   for (final mode in ContentSourceMode.values)
                     PageRow(

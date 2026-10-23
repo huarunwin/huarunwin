@@ -89,7 +89,7 @@ void main() {
     await event(tester, 'loadingStateChanged', 2);
     await tester.pumpAndSettle();
     expect(find.byType(windows.Webview), findsOneWidget);
-    expect(find.text('无法打开纠错页面'), findsNothing);
+    expect(find.text('无法打开反馈页面'), findsNothing);
     expect(
       calls.singleWhere((c) => c.method == 'loadUrl').arguments,
       'https://huarun.win/corrections/app?theme=light',
@@ -112,20 +112,20 @@ void main() {
         'onLoadError',
         windows.WebErrorStatus.operationCanceled.index,
       );
-      expect(find.text('无法打开纠错页面'), findsNothing);
+      expect(find.text('无法打开反馈页面'), findsNothing);
       await event(
         tester,
         'onLoadError',
         windows.WebErrorStatus.disconnected.index,
       );
       await tester.pumpAndSettle();
-      expect(find.text('无法打开纠错页面'), findsOneWidget);
+      expect(find.text('无法打开反馈页面'), findsOneWidget);
       await tester.tap(find.text('重试'));
       await tester.pump();
       await event(tester, 'loadingStateChanged', 2);
       await tester.pumpAndSettle();
       expect(calls.where((c) => c.method == 'loadUrl'), hasLength(2));
-      await tester.tap(find.byTooltip('刷新纠错页面'));
+      await tester.tap(find.byTooltip('刷新反馈页面'));
       await tester.pump();
       expect(calls.where((c) => c.method == 'reload'), hasLength(1));
       await event(tester, 'loadingStateChanged', 2);
@@ -149,12 +149,12 @@ void main() {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const CorrectionsPage()),
             ),
-            child: const Text('打开纠错'),
+            child: const Text('打开反馈'),
           ),
         ),
       ),
     );
-    await tester.tap(find.text('打开纠错'));
+    await tester.tap(find.text('打开反馈'));
     await tester.pump();
     await event(tester, 'loadingStateChanged', 2);
     await tester.pumpAndSettle();
@@ -167,7 +167,7 @@ void main() {
     await event(tester, 'webMessageReceived', '{"type":"huarun-page-back"}');
     await tester.pumpAndSettle();
     expect(find.byType(CorrectionsPage), findsNothing);
-    expect(find.text('打开纠错'), findsOneWidget);
+    expect(find.text('打开反馈'), findsOneWidget);
     await tester.runAsync(
       () => disposed.future.timeout(const Duration(seconds: 5)),
     );

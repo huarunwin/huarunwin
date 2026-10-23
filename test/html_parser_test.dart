@@ -96,6 +96,56 @@ void main() {
       throwsA(isA<PageFormatException>()),
     );
   });
+  test('separate version HTML preserves bound assets and rejects a different application', () {
+    const app = CatalogApp(
+      id: 'example',
+      name: 'Example',
+      url: 'https://huarun.win/apps/example',
+    );
+    final releases = parser.releases(fixture('catalog-releases'), app);
+    expect(releases.map((release) => release.tag), ['v3-beta', 'v2', 'v1']);
+    expect(releases.first.prerelease, isTrue);
+    final stable = releases[1];
+    expect(stable.recommended, isTrue);
+    expect(stable.publishedAt, DateTime.utc(2026, 10, 23));
+    expect(stable.assets, hasLength(4));
+    expect(stable.assets.first.sha256, 'a' * 64);
+    expect(
+      stable.assets.first.checksumSource,
+      'https://huarun.win/apps/example/releases',
+    );
+    expect(stable.assets.first.sizeLabel, '1.0 MB');
+    final malformed = fixture('catalog-releases')
+        .replaceAll('/download/v2/', '/download/other-version/')
+        .replaceAll('data-release-tag="v1"', 'data-release-tag="wrong"');
+    final filtered = parser.releases(malformed, app);
+    expect(filtered.map((release) => release.tag), ['v3-beta', 'v2']);
+    expect(filtered.last.assets, isEmpty);
+    expect(
+      () => parser.releases(
+        fixture('catalog-releases')
+            .replaceAll('data-app-slug="example"', 'data-app-slug="other"'),
+        app,
+      ),
+      throwsA(isA<PageFormatException>()),
+    );
+    expect(
+      () => parser.releases('<h1>Not found</h1>', app),
+      throwsA(isA<PageFormatException>()),
+    );
+    expect(
+      parser.releases(
+        fixture('catalog-releases'),
+        const CatalogApp(
+          id: 'example',
+          name: 'Example',
+          url: 'https://huarun.win/apps/example',
+          withdrawn: true,
+        ),
+      ),
+      isEmpty,
+    );
+  });
   test('unknown fields stay unknown and relative URLs resolve correctly', () {
     final list = parser.catalog(
       '<article class="app-card"><a class="app-card-detail" href="/apps/minimal"><h2>Minimal</h2></a></article>',

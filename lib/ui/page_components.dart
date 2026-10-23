@@ -234,36 +234,39 @@ class _ContentPageState extends State<ContentPage> {
 class PageSection extends StatelessWidget {
   const PageSection({
     super.key,
-    required this.title,
+    this.title,
     required this.children,
     this.footer,
     this.dividerIndent = 60,
+    this.bottomSpacing = 22,
   });
 
-  final String title;
+  final String? title;
   final List<Widget> children;
   final String? footer;
   final double dividerIndent;
+  final double bottomSpacing;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
+      padding: EdgeInsets.only(bottom: bottomSpacing),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-            child: Text(
-              title,
-              style: TextStyle(
-                color: colors.onSurfaceVariant,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: Text(
+                title!,
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
           SurfacePanel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

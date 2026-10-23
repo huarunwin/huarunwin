@@ -668,6 +668,7 @@ class DownloadManager extends ChangeNotifier {
     this.locations,
     this.foreground,
     this.github,
+    this.loadCatalogReleases,
     bool? readAndroidMetadata,
   }) : assert(maxConcurrentDownloads > 0),
        readAndroidMetadata = readAndroidMetadata ?? Platform.isAndroid,
@@ -696,6 +697,8 @@ class DownloadManager extends ChangeNotifier {
   final DownloadLocations? locations;
   final AndroidDownloadForeground? foreground;
   final GitHubAcceleration? github;
+  final Future<List<CatalogRelease>> Function(CatalogApp app)?
+  loadCatalogReleases;
   String? downloadWarning;
   Map<String, Object> get _foregroundProgress {
     final active = tasks

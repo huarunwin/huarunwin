@@ -184,6 +184,25 @@ String? normalizeSha256(String? value) {
       : null;
 }
 
+/// Public release and asset metadata embedded in the site's initial HTML.
+class CatalogRelease {
+  const CatalogRelease({
+    required this.page,
+    required this.tag,
+    required this.name,
+    required this.publishedAt,
+    required this.collectedAt,
+    required this.assets,
+    this.prerelease = false,
+    this.recommended = false,
+  });
+  final Uri page;
+  final String tag, name;
+  final DateTime publishedAt, collectedAt;
+  final bool prerelease, recommended;
+  final List<DownloadLink> assets;
+}
+
 class AppDetails {
   const AppDetails({
     required this.app,

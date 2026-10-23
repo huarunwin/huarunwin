@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/data/models.dart';
+import 'package:huarunwin/data/html_parser.dart';
 import 'package:huarunwin/services/download_platform.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/services/github_releases.dart';
@@ -81,6 +83,15 @@ class FixtureReleases extends GitHubReleaseResolver {
   }
 }
 
+class OfflineHtmlSource extends MacDownloadResolver {
+  final requests = <Uri>[];
+  @override
+  Future<(String, Uri)> readGitHubHtml(Uri uri) async {
+    requests.add(uri);
+    throw StateError('GitHub unavailable');
+  }
+}
+
 void main() {
   late FixtureReleases resolver;
   final selections = <ReleaseDownloadSelection?>[];
@@ -98,6 +109,7 @@ void main() {
     WidgetTester tester, {
     Brightness brightness = Brightness.light,
     double scale = 1,
+    GitHubReleaseResolver? pickerResolver,
     ReleaseDownloadPreferences preferences = const ReleaseDownloadPreferences(
       platform: 'macOS',
       running: 'macOS',
@@ -121,7 +133,7 @@ void main() {
                   builder: (context) => ReleaseDownloadDialog(
                     appName: 'Example',
                     source: Uri.parse('https://github.com/owner/repo'),
-                    resolver: resolver,
+                    resolver: pickerResolver ?? resolver,
                     preferences: preferences,
                   ),
                 ),
@@ -156,6 +168,40 @@ void main() {
     platform: 'Android',
     running: 'Android',
     architecture: 'arm64',
+  );
+
+  testWidgets(
+    'Android selects and downloads a catalog version while GitHub HTML is unavailable',
+    (tester) async {
+      const app = CatalogApp(
+        id: 'example',
+        name: 'Example',
+        url: 'https://huarun.win/apps/example',
+      );
+      final versions = SiteHtmlParser().releases(
+        File('test/fixtures/catalog-releases.html').readAsStringSync(),
+        app,
+      );
+      final source = OfflineHtmlSource();
+      addTearDown(() => source.client.close(force: true));
+      final catalogResolver = GitHubReleaseResolver(source, catalog: versions);
+      await showPicker(
+        tester,
+        preferences: androidPreferences,
+        pickerResolver: catalogResolver,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('版本读取失败'), findsNothing);
+      expect(source.requests, isEmpty);
+      await pickVersion(tester, 'v1');
+      await tester.pumpAndSettle();
+      expect(source.requests, isEmpty);
+      await tester.tap(find.text('确认下载'));
+      await tester.pumpAndSettle();
+      expect(selections.single!.resource!.version, 'v1');
+      expect(selections.single!.resource!.platform, 'Android');
+      expect(source.requests, isEmpty);
+    },
   );
   void androidResources() {
     resolver.resources['v2'] = [

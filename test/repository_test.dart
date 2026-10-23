@@ -34,6 +34,51 @@ class HtmlAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test(
+    'version HTML is fetched separately, cached, refreshed and validated',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'huarun-release-pages',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final body = File('test/fixtures/catalog-releases.html')
+          .readAsStringSync();
+      final adapter = HtmlAdapter(body);
+      final repository = CatalogRepository(
+        directory,
+        client: Dio()..httpClientAdapter = adapter,
+      );
+      addTearDown(repository.dispose);
+      const app = CatalogApp(
+        id: 'example',
+        name: 'Example',
+        url: 'https://huarun.win/apps/example',
+      );
+      final first = await repository.releases(app);
+      expect(first, hasLength(3));
+      expect(adapter.paths, ['/apps/example/releases']);
+      expect(await repository.releases(app), hasLength(3));
+      expect(adapter.calls, 1);
+      adapter.body = body.replaceAll(
+        'data-release-tag="v1"',
+        'data-release-tag="wrong"',
+      );
+      expect(await repository.releases(app, refresh: true), hasLength(2));
+      adapter.body = '<h1>Unavailable</h1>';
+      expect(await repository.releases(app, refresh: true), hasLength(2));
+      expect(adapter.calls, 3);
+      await expectLater(
+        repository.releases(
+          const CatalogApp(
+            id: 'other',
+            name: 'Other',
+            url: 'https://huarun.win/apps/example',
+          ),
+        ),
+        throwsA(isA<Exception>()),
+      );
+    },
+  );
   test('failed detail refresh retains content but is not a successful update check', () async {
     final directory = await Directory.systemTemp.createTemp(
       'huarun-detail-fallback',

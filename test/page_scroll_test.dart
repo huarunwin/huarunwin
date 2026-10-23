@@ -254,7 +254,8 @@ void main() {
   }
 
   testWidgets('settings title scrolls with its content', (tester) async {
-    viewport(tester, const Size(390, 844));
+    const size = Size(390, 600);
+    viewport(tester, size);
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme(Brightness.light),
@@ -265,7 +266,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('设置').hitTestable(), findsOneWidget);
-    await scrollDown(tester, const Size(390, 844));
+    await scrollDown(tester, size);
     expect(find.text('设置').hitTestable(), findsNothing);
     expect(tester.takeException(), isNull);
   });
