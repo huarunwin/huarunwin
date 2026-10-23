@@ -4,16 +4,20 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import 'github_acceleration.dart';
+
 /// A partial is reusable only with a matching digest or an HTTP validator.
 /// The sidecar is written before bytes, so a crash never adopts unknown bytes.
 class ResumableDownload {
   ResumableDownload(
     this.client, {
     this.retryDelay = const Duration(seconds: 1),
+    this.github,
   });
 
   final Dio client;
   final Duration retryDelay;
+  final GitHubAcceleration? github;
 
   static Future<void> discard(File partial) async {
     for (final file in [
@@ -38,11 +42,19 @@ class ResumableDownload {
     required bool resource,
     required void Function(int received, int total) onProgress,
     String? sha256,
+    Future<void> Function()? verify,
   }) async {
+    final original = Uri.parse(url);
+    final routing =
+        GitHubAcceleration.supports(original, GitHubTraffic.download)
+        ? github?.begin(GitHubTraffic.download, original)
+        : null;
+    final routes = routing?.routes ?? [GitHubRoute.direct];
+    var routeIndex = 0;
     for (var attempt = 0; ; attempt++) {
       _checkCancelled(cancelToken);
       try {
-        await _receive(
+        final connected = await _receive(
           url,
           partial,
           cancelToken,
@@ -50,14 +62,30 @@ class ResumableDownload {
           resource,
           onProgress,
           sha256,
+          GitHubAcceleration.transport(original, routes[routeIndex]).toString(),
         );
+        _checkCancelled(cancelToken);
+        await verify?.call();
+        _checkCancelled(cancelToken);
+        if (routing != null && connected) {
+          await github!.succeeded(routing, routes[routeIndex]);
+        }
+        _checkCancelled(cancelToken);
         return;
-      } on FormatException {
-        await discard(partial);
-        rethrow;
       } catch (error) {
-        if (cancelToken.isCancelled || attempt >= 2 || !_transient(error)) {
+        if (error is FormatException) {
+          await discard(partial);
+          if (error is! GitHubTransportException) rethrow;
+        }
+        if (cancelToken.isCancelled ||
+            attempt >= 2 ||
+            !(_transient(error) ||
+                routing != null && GitHubAcceleration.retryable(error))) {
           rethrow;
+        }
+        if (routeIndex + 1 < routes.length) {
+          routeIndex++;
+          continue;
         }
         await Future.any([
           Future<void>.delayed(retryDelay * (1 << attempt)),
@@ -92,7 +120,7 @@ class ResumableDownload {
                 504,
               ].contains(error.response?.statusCode));
 
-  Future<void> _receive(
+  Future<bool> _receive(
     String url,
     File partial,
     CancelToken token,
@@ -100,6 +128,7 @@ class ResumableDownload {
     bool resource,
     void Function(int, int) progress,
     String? digest,
+    String transportUrl,
   ) async {
     final sidecar = File('${partial.path}.json');
     Map<String, dynamic>? saved;
@@ -117,6 +146,8 @@ class ResumableDownload {
         if (value is Map<String, dynamic> &&
             value['url'] == url &&
             value['sha256'] == digest &&
+            (digest != null ||
+                (value['transportUrl'] ?? url) == transportUrl) &&
             (digest != null || _validator(value) != null)) {
           final length = await partial.length();
           final total = value['total'];
@@ -138,11 +169,11 @@ class ResumableDownload {
     }
     if (saved == null) await discard(partial);
     progress(offset, saved?['total'] as int? ?? 0);
-    if (digest != null && offset > 0 && offset == saved?['total']) return;
+    if (digest != null && offset > 0 && offset == saved?['total']) return false;
     for (var restart = 0; restart < 2; restart++) {
       _checkCancelled(token);
       final response = await client.get<ResponseBody>(
-        url,
+        transportUrl,
         cancelToken: token,
         options: Options(
           responseType: ResponseType.stream,
@@ -164,11 +195,17 @@ class ResumableDownload {
       final encoding = response.headers.value('content-encoding');
       if (response.realUri.scheme != 'https' ||
           encoding != null && encoding.toLowerCase() != 'identity' ||
+          transportUrl != url &&
+              contentType.contains('text/html') &&
+              !RegExp(
+                r'\.html?$',
+                caseSensitive: false,
+              ).hasMatch(Uri.parse(url).path) ||
           !resource &&
               (contentType.contains('text/html') ||
                   contentType.contains('application/json'))) {
         await closeResponse();
-        throw const FormatException('下载地址返回了网页或非安装文件，请打开官方入口。');
+        throw const GitHubTransportException('下载地址返回了网页或非安装文件，请打开官方入口。');
       }
       final length = int.tryParse(
         response.headers.value('content-length') ?? '',
@@ -218,6 +255,7 @@ class ResumableDownload {
       final modified = response.headers.value('last-modified');
       final metadata = {
         'url': url,
+        'transportUrl': transportUrl,
         'sha256': digest,
         'total': total,
         'etag': etag != null && etag.startsWith('"') && etag.endsWith('"')
@@ -256,7 +294,7 @@ class ResumableDownload {
         }
         completed = true;
         progress(received, total == 0 ? received : total);
-        return;
+        return true;
       } finally {
         if (!listening) await closeResponse();
         if (output != null) {

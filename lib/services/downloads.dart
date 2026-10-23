@@ -12,6 +12,7 @@ import 'android_package.dart';
 import 'download_locations.dart';
 import 'download_foreground.dart';
 import 'download_platform.dart';
+import 'github_acceleration.dart';
 import 'installed_apps.dart';
 import 'linux_installer.dart';
 import 'mac_downloads.dart';
@@ -666,6 +667,7 @@ class DownloadManager extends ChangeNotifier {
     this.writeHistory,
     this.locations,
     this.foreground,
+    this.github,
     bool? readAndroidMetadata,
   }) : assert(maxConcurrentDownloads > 0),
        readAndroidMetadata = readAndroidMetadata ?? Platform.isAndroid,
@@ -693,6 +695,7 @@ class DownloadManager extends ChangeNotifier {
   final Directory directory;
   final DownloadLocations? locations;
   final AndroidDownloadForeground? foreground;
+  final GitHubAcceleration? github;
   String? downloadWarning;
   Map<String, Object> get _foregroundProgress {
     final active = tasks
@@ -1471,6 +1474,12 @@ class DownloadManager extends ChangeNotifier {
       task.received = 0;
       task.total = 0;
       task.verifiedSha256 = null;
+      if (GitHubAcceleration.supports(
+        Uri.parse(task.url),
+        GitHubTraffic.download,
+      )) {
+        github?.retryPrimary(GitHubTraffic.download);
+      }
     }
     task.resignedSha256 = null;
     task._androidInspectionSha256 = null;
@@ -1899,13 +1908,26 @@ class DownloadManager extends ChangeNotifier {
       await foreground?.start(_foregroundProgress);
       downloadWarning = null;
       if (!resumeResign) {
-        await ResumableDownload(client).receive(
+        await ResumableDownload(client, github: github).receive(
           url: task.url,
           partial: partial,
           cancelToken: cancelToken,
           maxBytes: maxBytes,
           resource: task.kind == 'resource',
           sha256: task.sha256,
+          verify: () async {
+            if (task.sha256 == null) return;
+            task.state = DownloadState.verifying;
+            _emit();
+            final digest = await compute(packageSha256, partial.path);
+            if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+            if (digest != task.sha256) {
+              task.verifiedSha256 = null;
+              task.packageAvailable = false;
+              throw const FormatException('SHA-256 校验不一致，安装包已丢弃，请重新下载。');
+            }
+            task.verifiedSha256 = digest;
+          },
           onProgress: (received, total) {
             task.received = received;
             task.total = total;
@@ -1916,19 +1938,6 @@ class DownloadManager extends ChangeNotifier {
             }
           },
         );
-        if (task.sha256 != null) {
-          task.state = DownloadState.verifying;
-          _emit();
-          final digest = await compute(packageSha256, partial.path);
-          if (cancelToken.isCancelled) throw const FormatException('下载已取消。');
-          if (digest != task.sha256) {
-            task.verifiedSha256 = null;
-            task.packageAvailable = false;
-            await ResumableDownload.discard(partial);
-            throw const FormatException('SHA-256 校验不一致，安装包已丢弃，请重新下载。');
-          }
-          task.verifiedSha256 = digest;
-        }
         await partial.rename(task.filePath);
         await ResumableDownload.discard(partial);
         task.packageAvailable = true;

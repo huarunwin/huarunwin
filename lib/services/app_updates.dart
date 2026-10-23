@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/app_changelog.dart';
 import 'installed_apps.dart';
+import 'github_acceleration.dart';
 
 class AppUpdateResult {
   const AppUpdateResult({required this.currentVersion, required this.feed});
@@ -29,6 +30,7 @@ class AppUpdates {
     Future<String> Function()? readVersion,
     AppUpdateChannel? channel,
     SharedPreferences? preferences,
+    this.github,
   }) : channel = channel ?? buildChannel,
        _preferences = preferences == null ? null : Future.value(preferences),
        _client =
@@ -46,7 +48,7 @@ class AppUpdates {
            ),
        _readVersion = readVersion ?? _packageVersion;
 
-  static final instance = AppUpdates();
+  static final instance = AppUpdates(github: GitHubAcceleration.instance);
   static const metadataUrl =
       'https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json';
 
@@ -61,6 +63,7 @@ class AppUpdates {
   }
 
   final AppUpdateChannel channel;
+  final GitHubAcceleration? github;
   final Dio _client;
   final Future<String> Function() _readVersion;
   Future<String>? _version;
@@ -134,8 +137,9 @@ class AppUpdates {
     }
   }
 
-  Future<AppUpdateResult> check() async {
+  Future<AppUpdateResult> check({bool refresh = false}) async {
     if (_pending case final pending?) return pending;
+    if (refresh) github?.retryPrimary(GitHubTraffic.raw);
     final request = _check();
     _pending = request;
     try {
@@ -150,7 +154,17 @@ class AppUpdates {
     return AppUpdateResult(currentVersion: version, feed: await loadFeed());
   }
 
-  Future<AppUpdateFeed> loadFeed() async {
+  Future<AppUpdateFeed> loadFeed({bool refresh = false}) async {
+    if (refresh) github?.retryPrimary(GitHubTraffic.raw);
+    if (github case final acceleration?) {
+      return acceleration.readRaw(
+        _client,
+        Uri.parse(metadataUrl),
+        maxBytes: 1024 * 1024,
+        decode: (response) =>
+            AppUpdateFeed.decode(response.data!, channel: channel),
+      );
+    }
     final response = await _client.get<String>(metadataUrl);
     final body = response.data;
     if (body == null || body.length > 1024 * 1024) {

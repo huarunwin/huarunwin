@@ -7,7 +7,7 @@
 | [功能与界面](features.md) | 应用目录、公开栏目、响应式布局与交互说明 |
 | [运行与构建](development.md) | Flutter 工具链、本地运行、各平台构建与产物 |
 | [数据与结构](architecture.md) | HTML 解析、缓存、筛选排序、模块职责及下载来源 |
-| [内容来源与静态镜像](content-sources.md) | 网站／GitHub Raw／jsDelivr 切换、镜像路径、缓存隔离与一次性快照 |
+| [内容来源与静态镜像](content-sources.md) | 网站／GitHub Raw／jsDelivr 切换、GH-Proxy 内容图片与文件加速、缓存隔离与一次性快照 |
 | [安装流程](installation.md) | Android 安装与重签、密钥备份、Mac 安装与管理员助手及各平台卸载 |
 | [发布与许可](releasing.md) | GitHub Actions、托管 runner、分发、项目与第三方许可、图标生成 |
 | [客户端自身更新](self-updating.md) | Hub 安装包配置、应用内下载、各平台更新安装与恢复限制 |

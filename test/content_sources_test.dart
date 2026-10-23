@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/data/repository.dart';
 import 'package:huarunwin/services/content_sources.dart';
+import 'package:huarunwin/services/github_acceleration.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MirrorAdapter implements HttpClientAdapter {
@@ -69,6 +70,110 @@ void main() {
       'https://cdn.jsdelivr.net/gh/huarunwin/huarunwin-static@main/apps/flclash.html?view=all',
     );
     expect(sources.pageUri(page, ContentOrigin.website), page);
+  });
+
+  test('image fallback tries both GitHub routes before jsDelivr', () {
+    final github = GitHubAcceleration()..restore(preferences);
+    addTearDown(github.dispose);
+    const original = 'https://huarun.win/app-icons/example.webp?v=2';
+    final raw = sources.imageUrl(original, origin: ContentOrigin.github);
+    expect(sources.imageUrls(original, github: github), [
+      original,
+      raw,
+      '${GitHubAcceleration.proxyBase}$raw',
+      sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+    ]);
+    expect(sources.imageUrls(original), [
+      original,
+      raw,
+      sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+    ]);
+  });
+
+  test(
+    'fixed content sources still respect the selected GitHub route',
+    () async {
+      final github = GitHubAcceleration()..restore(preferences);
+      addTearDown(github.dispose);
+      const original = 'https://huarun.win/app-icons/example.webp';
+      final raw = sources.imageUrl(original, origin: ContentOrigin.github);
+      await sources.select(ContentSourceMode.github);
+      await github.select(GitHubAccessMode.proxy);
+      expect(sources.imageUrls(original, github: github), [
+        '${GitHubAcceleration.proxyBase}$raw',
+      ]);
+      await github.select(GitHubAccessMode.direct);
+      expect(sources.imageUrls(original, github: github), [raw]);
+      await github.select(GitHubAccessMode.automatic);
+      expect(sources.imageUrls(original, github: github), [
+        raw,
+        '${GitHubAcceleration.proxyBase}$raw',
+      ]);
+      await github.select(GitHubAccessMode.proxy);
+      await sources.select(ContentSourceMode.website);
+      expect(sources.imageUrls(original, github: github), [original]);
+      await sources.select(ContentSourceMode.jsdelivr);
+      expect(sources.imageUrls(original, github: github), [
+        sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+      ]);
+    },
+  );
+
+  test(
+    'images follow Raw recovery without changing either hold period',
+    () async {
+      var now = DateTime.utc(2026, 10, 23, 12);
+      final github = GitHubAcceleration(clock: () => now)..restore(preferences);
+      addTearDown(github.dispose);
+      const original = 'https://huarun.win/app-icons/example.webp';
+      final raw = sources.imageUrl(original, origin: ContentOrigin.github);
+      final page = sources.pageUri(
+        Uri.parse('https://huarun.win/'),
+        ContentOrigin.github,
+      );
+      await sources.succeeded(
+        ContentOrigin.github,
+        request: sources.beginRequest(),
+      );
+      await github.succeeded(
+        github.begin(GitHubTraffic.raw, page),
+        GitHubRoute.proxy,
+      );
+      final sourceState = preferences.getString('contentSourceState');
+      final routeState = preferences.getString('githubAcceleration');
+      now = now.add(const Duration(hours: 3));
+      expect(sources.imageUrls(original, github: github), [
+        '${GitHubAcceleration.proxyBase}$raw',
+        raw,
+        original,
+        sources.imageUrl(original, origin: ContentOrigin.jsdelivr),
+      ]);
+      expect(preferences.getString('contentSourceState'), sourceState);
+      expect(preferences.getString('githubAcceleration'), routeState);
+
+      final retry = github.begin(GitHubTraffic.raw, page);
+      expect(retry.routes.first, GitHubRoute.direct);
+      await github.succeeded(retry, GitHubRoute.direct);
+      expect(sources.imageUrls(original, github: github).first, raw);
+      expect(preferences.getString('contentSourceState'), sourceState);
+      expect(github.lastSuccessful(GitHubTraffic.download), isNull);
+    },
+  );
+
+  test('external and non-image URLs never use the image proxy', () async {
+    final github = GitHubAcceleration()..restore(preferences);
+    addTearDown(github.dispose);
+    await sources.select(ContentSourceMode.github);
+    await github.select(GitHubAccessMode.proxy);
+    for (final original in [
+      'https://images.example.test/icon.webp',
+      'https://raw.githubusercontent.com/example/app/main/icon.webp',
+      'https://huarun.win/apps/example',
+      'https://user:secret@huarun.win/icon.webp',
+      'http://huarun.win/icon.webp',
+    ]) {
+      expect(sources.imageUrls(original, github: github), [original]);
+    }
   });
 
   test('a fallback persists its two-hour hold without extending it', () async {

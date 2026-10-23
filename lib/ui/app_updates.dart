@@ -17,7 +17,7 @@ Future<void> checkAppUpdate(
 }) async {
   try {
     final updates = AppUpdates.instance;
-    final result = await updates.check();
+    final result = await updates.check(refresh: !silent);
     if (!context.mounted) return;
     final update = result.update;
     if (update == null) {
@@ -164,7 +164,7 @@ class _ChangelogPageState extends State<_ChangelogPage> {
   late Future<AppUpdateFeed> _changelog = AppUpdates.instance.loadFeed();
 
   Future<void> _refresh() async {
-    final request = AppUpdates.instance.loadFeed();
+    final request = AppUpdates.instance.loadFeed(refresh: true);
     setState(() => _changelog = request);
     try {
       await request;

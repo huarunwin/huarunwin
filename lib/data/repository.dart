@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 
 import '../services/html_client.dart';
 import '../services/content_sources.dart';
+import '../services/github_acceleration.dart';
 import 'html_parser.dart';
 import 'catalog_filters.dart';
 import 'models.dart';
@@ -28,14 +29,20 @@ typedef _ContentResponse = ({
 });
 
 class CatalogRepository {
-  CatalogRepository(this.directory, {Dio? client, ContentSources? sources})
-    : client = client ?? createHtmlClient(),
-      _ownsSources = sources == null,
-      sources = sources ?? ContentSources() {
+  CatalogRepository(
+    this.directory, {
+    Dio? client,
+    ContentSources? sources,
+    this.github,
+  }) : client = client ?? createHtmlClient(),
+       _ownsSources = sources == null,
+       sources = sources ?? ContentSources() {
     _sourceRevision = this.sources.revision;
     this.sources.addListener(_sourceChanged);
+    this.sources.onRetryPrimary = () => github?.retryPrimary();
   }
   final ContentSources sources;
+  final GitHubAcceleration? github;
   final bool _ownsSources;
   bool _disposed = false;
   late int _sourceRevision;
@@ -76,6 +83,7 @@ class CatalogRepository {
   void dispose() {
     _disposed = true;
     sources.removeListener(_sourceChanged);
+    sources.onRetryPrimary = null;
     _cancelPendingRequests('Repository disposed');
     client.close(force: true);
     if (_ownsSources) sources.dispose();
@@ -375,33 +383,47 @@ class CatalogRepository {
       try {
         // Bound the whole attempt, including request preparation and redirects.
         // Its timeout must not cancel other pages or the next content source.
-        final response = await client
-            .getUri<String>(
-              transport,
-              cancelToken: cancellation,
-              options: Options(
-                responseType: ResponseType.plain,
-                connectTimeout: _contentConnectTimeout,
-                sendTimeout: _contentConnectTimeout,
-                receiveTimeout: _contentRequestTimeout,
-              ),
-            )
-            .timeout(
-              _contentRequestTimeout,
-              onTimeout: () {
-                cancellation.cancel('Content source request timed out');
-                throw TimeoutException(
-                  'Content source request timed out',
+        final response =
+            await (origin == ContentOrigin.github && github != null
+                    ? github!.readRaw<Response<String>>(
+                        client,
+                        transport,
+                        cancelToken: cancellation,
+                        maxBytes: maxPageBytes,
+                        timeout: _contentRequestTimeout,
+                        connectTimeout: _contentConnectTimeout,
+                        decode: (response) => response,
+                      )
+                    : client.getUri<String>(
+                        transport,
+                        cancelToken: cancellation,
+                        options: Options(
+                          responseType: ResponseType.plain,
+                          connectTimeout: _contentConnectTimeout,
+                          sendTimeout: _contentConnectTimeout,
+                          receiveTimeout: _contentRequestTimeout,
+                        ),
+                      ))
+                .timeout(
                   _contentRequestTimeout,
+                  onTimeout: () {
+                    cancellation.cancel('Content source request timed out');
+                    throw TimeoutException(
+                      'Content source request timed out',
+                      _contentRequestTimeout,
+                    );
+                  },
                 );
-              },
-            );
         _checkRevision(revision);
         final data = response.data;
         final type = response.headers.value('content-type') ?? '';
         final validLocation = origin == ContentOrigin.website
             ? SiteRoutes.isNative(response.realUri)
-            : response.realUri.removeFragment() == transport.removeFragment();
+            : (origin == ContentOrigin.github && github != null
+                          ? GitHubAcceleration.originalUri(response.realUri)
+                          : response.realUri)
+                      .removeFragment() ==
+                  transport.removeFragment();
         if (!validLocation ||
             data == null ||
             utf8.encode(data).length > maxPageBytes ||
@@ -419,30 +441,35 @@ class CatalogRepository {
       } on TimeoutException {
         _checkRevision(revision);
         if (origin == candidates.last) rethrow;
+      } on GitHubTransportException {
+        _checkRevision(revision);
+        if (origin == candidates.last) rethrow;
       } on DioException catch (error) {
         _checkRevision(revision);
         final status = error.response?.statusCode;
-        final retryable = switch (error.type) {
-          DioExceptionType.connectionTimeout ||
-          DioExceptionType.sendTimeout ||
-          DioExceptionType.receiveTimeout ||
-          DioExceptionType.transformTimeout ||
-          DioExceptionType.connectionError => true,
-          // Dart reports a peer disconnect during TLS setup as a handshake
-          // error, which Dio wraps as unknown rather than connectionError.
-          // Match that disconnect only; certificate/TLS failures stay fatal.
-          DioExceptionType.unknown => switch (error.error) {
-            HandshakeException(
-              message: 'Connection terminated during handshake',
-              osError: null,
-            ) =>
-              true,
-            _ => false,
-          },
-          DioExceptionType.badResponse =>
-            status == 429 || status != null && status >= 500,
-          _ => false,
-        };
+        final retryable = origin == ContentOrigin.github && github != null
+            ? GitHubAcceleration.retryable(error)
+            : switch (error.type) {
+                DioExceptionType.connectionTimeout ||
+                DioExceptionType.sendTimeout ||
+                DioExceptionType.receiveTimeout ||
+                DioExceptionType.transformTimeout ||
+                DioExceptionType.connectionError => true,
+                // Dart reports a peer disconnect during TLS setup as a handshake
+                // error, which Dio wraps as unknown rather than connectionError.
+                // Match that disconnect only; certificate/TLS failures stay fatal.
+                DioExceptionType.unknown => switch (error.error) {
+                  HandshakeException(
+                    message: 'Connection terminated during handshake',
+                    osError: null,
+                  ) =>
+                    true,
+                  _ => false,
+                },
+                DioExceptionType.badResponse =>
+                  status == 429 || status != null && status >= 500,
+                _ => false,
+              };
         if (origin == candidates.last || !retryable) rethrow;
       } finally {
         _pendingRequests.remove(cancellation);

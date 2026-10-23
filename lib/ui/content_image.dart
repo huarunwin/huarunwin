@@ -2,17 +2,21 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../services/content_sources.dart';
+import '../services/github_acceleration.dart';
 
-class ContentSourceScope extends InheritedNotifier<ContentSources> {
-  const ContentSourceScope({
+class ContentSourceScope extends InheritedNotifier<Listenable> {
+  ContentSourceScope({
     super.key,
-    required ContentSources sources,
+    required this.sources,
+    this.github,
     required super.child,
-  }) : super(notifier: sources);
+  }) : super(notifier: Listenable.merge([sources, github]));
 
-  static ContentSources? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<ContentSourceScope>()
-      ?.notifier;
+  final ContentSources sources;
+  final GitHubAcceleration? github;
+
+  static ContentSourceScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ContentSourceScope>();
 }
 
 /// Resolve only image transport URLs; models keep their original website URLs.
@@ -37,16 +41,14 @@ class ContentImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sources = ContentSourceScope.maybeOf(context);
-    final urls = sources == null
-        ? [imageUrl]
-        : {
-            for (final origin in sources.candidates)
-              sources.imageUrl(imageUrl, origin: origin),
-          }.toList();
+    final scope = ContentSourceScope.maybeOf(context);
+    final urls =
+        scope?.sources.imageUrls(imageUrl, github: scope.github) ?? [imageUrl];
 
     Widget render(int index) => CachedNetworkImage(
-      key: ValueKey('${sources?.revision}|${urls[index]}'),
+      key: ValueKey(
+        '${scope?.sources.revision}|${scope?.github?.mode.name}|${urls[index]}',
+      ),
       imageUrl: urls[index],
       width: width,
       height: height,

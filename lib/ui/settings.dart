@@ -7,14 +7,32 @@ import '../services/app_controller.dart';
 import '../services/content_sources.dart';
 import '../services/download_locations.dart';
 import '../services/downloads.dart';
+import '../services/github_acceleration.dart';
 import 'adaptive_dialog.dart';
 import 'app_updates.dart';
 import 'components.dart';
 import 'client_privacy_page.dart';
 import 'licenses_page.dart';
+import 'github_acceleration_page.dart';
 import 'page_components.dart';
 import 'site_page.dart';
 import 'theme.dart';
+
+String _contentSourceStatus(AppController controller) {
+  final source = controller.sources.active;
+  final github = controller.repository.github;
+  if (source != ContentOrigin.github || github == null) return source.label;
+  final route = switch (github.mode) {
+    GitHubAccessMode.automatic => github.lastSuccessful(GitHubTraffic.raw),
+    GitHubAccessMode.direct => GitHubRoute.direct,
+    GitHubAccessMode.proxy => GitHubRoute.proxy,
+  };
+  return '${source.label} · ${switch (route) {
+    GitHubRoute.direct => '直连',
+    GitHubRoute.proxy => '经 GH-Proxy',
+    null => '优先直连',
+  }}';
+}
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
@@ -29,7 +47,12 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([controller, downloads]),
+    listenable: Listenable.merge([
+      controller,
+      controller.repository.github,
+      downloads,
+      downloads.github,
+    ]),
     builder: (context, _) => ContentPage(
       title: '设置',
       showBackButton: showBackButton,
@@ -37,6 +60,7 @@ class SettingsPage extends StatelessWidget {
         try {
           await controller.refreshPreferences();
           await downloads.locations?.refreshPreferences();
+          await downloads.github?.reload();
         } catch (_) {
           if (context.mounted) {
             ScaffoldMessenger.of(
@@ -94,8 +118,8 @@ class SettingsPage extends StatelessWidget {
             PageRow(
               title: '内容来源',
               subtitle: controller.sources.mode == ContentSourceMode.automatic
-                  ? '自动 · ${controller.sources.active.label}'
-                  : controller.sources.mode.label,
+                  ? '自动 · ${_contentSourceStatus(controller)}'
+                  : _contentSourceStatus(controller),
               icon: Icons.public_rounded,
               trailing: const Icon(Icons.chevron_right_rounded, size: 18),
               onTap: () => Navigator.push(
@@ -119,6 +143,25 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
+        if (downloads.github case final github?)
+          PageSection(
+            title: '网络',
+            children: [
+              PageRow(
+                title: 'GitHub 加速',
+                subtitle: github.mode.label,
+                icon: Icons.speed_rounded,
+                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        GitHubAccelerationPage(acceleration: github),
+                  ),
+                ),
+              ),
+            ],
+          ),
         PageSection(
           title: '网站与社区',
           footer: '纠错在应用内打开，社区链接在系统浏览器中打开。',
@@ -254,7 +297,10 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
   Widget build(BuildContext context) => Scaffold(
     body: PageSafeArea(
       child: ListenableBuilder(
-        listenable: widget.controller.sources,
+        listenable: Listenable.merge([
+          widget.controller.sources,
+          widget.controller.repository.github,
+        ]),
         builder: (context, _) {
           final sources = widget.controller.sources;
           return ContentPage(
@@ -263,7 +309,7 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
             children: [
               PageSection(
                 title: '选择来源',
-                footer: '切换后重新加载目录、详情和图片。两个镜像使用同一份静态快照，内容可能晚于网站。',
+                footer: '切换后重新加载目录、详情和图片。GitHub 镜像的内容与图片遵循“GitHub 加速”设置。两个镜像使用同一份静态快照，内容可能晚于网站。',
                 children: [
                   for (final mode in ContentSourceMode.values)
                     PageRow(
@@ -272,7 +318,8 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
                         ContentSourceMode.automatic =>
                           '连接失败时顺延切换，回退后保持 2 小时；手动刷新优先重试网站。',
                         ContentSourceMode.website => '始终从华润赢网站读取内容。',
-                        ContentSourceMode.github => '始终从 GitHub 镜像读取内容。',
+                        ContentSourceMode.github =>
+                          '固定使用 GitHub 镜像，连接方式由“GitHub 加速”决定。',
                         ContentSourceMode.jsdelivr =>
                           '通过 jsDelivr 读取同一份 GitHub 镜像。',
                       },
@@ -286,17 +333,20 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
                     ),
                 ],
               ),
-              if (sources.mode == ContentSourceMode.automatic)
-                PageSection(
-                  title: '连接状态',
-                  children: [
-                    PageRow(
-                      title: sources.hasSuccessfulSource ? '最近成功来源' : '优先尝试来源',
-                      subtitle: sources.active.label,
-                      icon: Icons.cloud_done_outlined,
-                    ),
-                  ],
-                ),
+              PageSection(
+                title: '连接状态',
+                children: [
+                  PageRow(
+                    title:
+                        sources.mode != ContentSourceMode.automatic ||
+                            sources.hasSuccessfulSource
+                        ? '当前来源与线路'
+                        : '优先尝试来源',
+                    subtitle: _contentSourceStatus(widget.controller),
+                    icon: Icons.cloud_done_outlined,
+                  ),
+                ],
+              ),
             ],
           );
         },

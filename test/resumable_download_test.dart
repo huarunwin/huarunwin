@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/services/resumable_download.dart';
+import 'package:huarunwin/services/github_acceleration.dart';
 
 class ResumeAdapter implements HttpClientAdapter {
   ResumeAdapter(this.respond);
@@ -196,6 +197,131 @@ void main() {
     await fetch();
     expect(await partial.readAsBytes(), [1, 2, 3, 4]);
   });
+
+  test('proxy fallback preserves logical identity and restarts unverified partials', () async {
+    const source =
+        'https://github.com/example/app/releases/download/v1/app.apk';
+    await seed(source: source);
+    final github = GitHubAcceleration();
+    addTearDown(github.dispose);
+    final adapter = ResumeAdapter((request, call) {
+      if (call == 1) {
+        expect(request.uri.host, 'github.com');
+        expect(request.headers['Range'], 'bytes=2-');
+        return bytes([], status: 503);
+      }
+      expect(request.uri.host, 'gh-proxy.com');
+      expect(request.headers.containsKey('Range'), isFalse);
+      return bytes([5, 6, 7, 8]);
+    });
+    client.httpClientAdapter = adapter;
+    await ResumableDownload(
+      client,
+      github: github,
+      retryDelay: Duration.zero,
+    ).receive(
+      url: source,
+      partial: partial,
+      cancelToken: CancelToken(),
+      maxBytes: 1024,
+      resource: false,
+      onProgress: (_, _) {},
+    );
+    expect(await partial.readAsBytes(), [5, 6, 7, 8]);
+    final sidecar =
+        jsonDecode(await File('${partial.path}.json').readAsString()) as Map;
+    expect(sidecar['url'], source);
+    expect(sidecar['transportUrl'], '${GitHubAcceleration.proxyBase}$source');
+    expect(github.lastSuccessful(GitHubTraffic.download), GitHubRoute.proxy);
+    expect(github.lastSuccessful(GitHubTraffic.raw), isNull);
+  });
+
+  test('digest-bound partials retain Range through a route change', () async {
+    const source =
+        'https://github.com/example/app/releases/download/v1/app.apk';
+    final digest = List.filled(64, 'a').join();
+    await seed(source: source);
+    final metadata = File('${partial.path}.json');
+    final saved = jsonDecode(await metadata.readAsString()) as Map;
+    saved['sha256'] = digest;
+    await metadata.writeAsString(jsonEncode(saved));
+    final github = GitHubAcceleration();
+    addTearDown(github.dispose);
+    client.httpClientAdapter = ResumeAdapter((request, call) {
+      if (call == 1) return bytes([], status: 503);
+      expect(request.headers['Range'], 'bytes=2-');
+      return bytes([3, 4], status: 206, range: 'bytes 2-3/4');
+    });
+    await ResumableDownload(client, github: github).receive(
+      url: source,
+      partial: partial,
+      cancelToken: CancelToken(),
+      maxBytes: 1024,
+      resource: false,
+      sha256: digest,
+      onProgress: (_, _) {},
+    );
+    expect(await partial.readAsBytes(), [1, 2, 3, 4]);
+    // DownloadManager independently checks the final digest before accepting it.
+  });
+
+  test('automatic routing shares the three-attempt budget', () async {
+    const source =
+        'https://github.com/example/app/releases/download/v1/app.apk';
+    final github = GitHubAcceleration();
+    addTearDown(github.dispose);
+    final adapter = ResumeAdapter((_, _) => bytes([], status: 503));
+    client.httpClientAdapter = adapter;
+    await expectLater(
+      ResumableDownload(
+        client,
+        github: github,
+        retryDelay: Duration.zero,
+      ).receive(
+        url: source,
+        partial: partial,
+        cancelToken: CancelToken(),
+        maxBytes: 1024,
+        resource: false,
+        onProgress: (_, _) {},
+      ),
+      throwsA(isA<DioException>()),
+    );
+    expect(adapter.requests.map((r) => r.uri.host), [
+      'github.com',
+      'gh-proxy.com',
+      'gh-proxy.com',
+    ]);
+    expect(github.lastSuccessful(GitHubTraffic.download), isNull);
+  });
+
+  test(
+    'failed final validation never records the proxy as successful',
+    () async {
+      const source =
+          'https://github.com/example/app/releases/download/v1/app.apk';
+      final github = GitHubAcceleration();
+      addTearDown(github.dispose);
+      client.httpClientAdapter = ResumeAdapter(
+        (request, call) =>
+            call == 1 ? bytes([], status: 503) : bytes([1, 2, 3, 4]),
+      );
+      await expectLater(
+        ResumableDownload(client, github: github).receive(
+          url: source,
+          partial: partial,
+          cancelToken: CancelToken(),
+          maxBytes: 1024,
+          resource: false,
+          onProgress: (_, _) {},
+          verify: () async => throw const FormatException('Digest mismatch'),
+        ),
+        throwsFormatException,
+      );
+      expect(github.lastSuccessful(GitHubTraffic.download), isNull);
+      expect(await partial.exists(), isFalse);
+    },
+  );
 
   test('retry is bounded and a non-file response discards partials', () async {
     final adapter = ResumeAdapter((_, _) => bytes([], status: 503));

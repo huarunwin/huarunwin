@@ -2,6 +2,8 @@
 
 在线版本唯一来源为 [Hub 的 api/updates.json](https://github.com/huarunwin/huarunwin-hub/blob/main/api/updates.json)。只比较当前 `release`／`debug` 渠道的 `publishedVersion`，日志展示、tag 前置校验及 Release 说明也只读取该 Hub 文件。更新提醒和忽略规则见 [发布与许可](releasing.md)。
 
+客户端获取该 Raw 文件及 GitHub 安装包时遵循独立的“GitHub 加速”设置，可通过 GH-Proxy 转发同一原始地址；Raw 与下载分别记录回退状态。此设置不改变 Hub 数据格式、渠道、发布指针和附件解析规则，版本详情 HTML 仍直连 GitHub。手动检查更新或刷新日志优先重试 Raw 直连；详情见[GitHub 加速](content-sources.md#github-加速)。
+
 ## 安装包配置
 
 每版本 `downloadUrl` 可省略或为 `null`，此时使用 `https://github.com/huarunwin/huarunwin/releases/tag/v<version>`，例如 `0.2.0` 对应 `/releases/tag/v0.2.0`。显式配置继续优先，可使用确切发布页或本机可识别的安装包直链。GitHub 发布页仍仅解析其真实附件 HTML，不读取 Latest 或自行构造附件地址；发布页不存在或缺少本机安装包时明确失败。多个候选按系统架构和格式推荐，只有唯一且架构已知的推荐包才直接开始下载，否则由用户选择并确认。未知架构不声称兼容。

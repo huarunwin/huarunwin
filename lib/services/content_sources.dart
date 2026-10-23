@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'github_acceleration.dart';
+
 enum ContentSourceMode {
   automatic('自动'),
   website('华润赢网站'),
@@ -42,6 +44,7 @@ class ContentSources extends ChangeNotifier {
   Future<void>? _stateWrite;
   bool hasSuccessfulSource = false;
   int revision = 0;
+  VoidCallback? onRetryPrimary;
 
   ContentOrigin get active => switch (mode) {
     ContentSourceMode.automatic => _lastSuccessful,
@@ -82,6 +85,7 @@ class ContentSources extends ChangeNotifier {
 
   /// Called once per user refresh, before its catalog and detail requests.
   void retryPrimary() {
+    onRetryPrimary?.call();
     if (mode != ContentSourceMode.automatic) return;
     _fallbackStartedAt = null;
     _selection++;
@@ -270,5 +274,19 @@ class ContentSources extends ChangeNotifier {
       return original;
     }
     return _mirrorUri(uri.pathSegments, uri, origin ?? active).toString();
+  }
+
+  List<String> imageUrls(String original, {GitHubAcceleration? github}) {
+    final uri = Uri.tryParse(original);
+    if (uri == null || !isSiteImage(uri)) return [original];
+    return [
+      for (final origin in candidates)
+        if (origin == ContentOrigin.github && github != null)
+          ...github
+              .imageUris(Uri.parse(imageUrl(original, origin: origin)))
+              .map((uri) => uri.toString())
+        else
+          imageUrl(original, origin: origin),
+    ];
   }
 }

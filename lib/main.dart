@@ -14,6 +14,7 @@ import 'services/app_controller.dart';
 import 'services/download_locations.dart';
 import 'services/downloads.dart';
 import 'services/download_foreground.dart';
+import 'services/github_acceleration.dart';
 import 'ui/home.dart';
 import 'ui/content_image.dart';
 import 'ui/app_updates.dart';
@@ -45,8 +46,12 @@ Future<void> main() async {
   }
   final support = await getApplicationSupportDirectory();
   final preferences = await SharedPreferences.getInstance();
+  final github = GitHubAcceleration.instance..restore(preferences);
   final controller = AppController(
-    CatalogRepository(Directory(p.join(support.path, 'content'))),
+    CatalogRepository(
+      Directory(p.join(support.path, 'content')),
+      github: github,
+    ),
     preferences,
   );
   final legacyDownloads = Directory(p.join(support.path, 'downloads'));
@@ -69,6 +74,7 @@ Future<void> main() async {
   final downloads = DownloadManager(
     legacyDownloads,
     locations: downloadLocations,
+    github: github,
     foreground: Platform.isAndroid ? AndroidDownloadForeground() : null,
   );
   await downloads.restore();
@@ -129,6 +135,7 @@ class _HuarunAppState extends State<HuarunApp> {
   @override
   Widget build(BuildContext context) => ContentSourceScope(
     sources: widget.controller.sources,
+    github: widget.controller.repository.github,
     child: _buildApp(context),
   );
 
