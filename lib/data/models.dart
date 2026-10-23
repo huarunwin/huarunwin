@@ -184,7 +184,7 @@ String? normalizeSha256(String? value) {
       : null;
 }
 
-/// Public release and asset metadata embedded in the site's initial HTML.
+/// Public release and asset metadata parsed from the site's version HTML.
 class CatalogRelease {
   const CatalogRelease({
     required this.page,

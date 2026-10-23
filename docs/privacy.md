@@ -14,7 +14,7 @@
 
 客户端可能请求以下地址：
 
-- 浏览目录时按“内容来源”设置从 `huarun.win`、`raw.githubusercontent.com/huarunwin/huarunwin-static/main/` 或 `cdn.jsdelivr.net/gh/huarunwin/huarunwin-static@main/` 获取公开 HTML 和站内图片，更新排序或本机应用版本检查时按需获取相关详情 HTML；自动模式在网络失败时可能依次尝试网站、GitHub 直连、GH-Proxy 和 jsDelivr，外部图片仍由原服务提供；
+- 浏览目录时按“内容来源”设置从 `huarun.win`、`raw.githubusercontent.com/huarunwin/huarunwin-static/main/` 或 `cdn.jsdelivr.net/gh/huarunwin/huarunwin-static@main/` 获取公开 HTML 和站内图片，更新排序或本机应用版本检查时按需获取相关详情 HTML，打开版本选择时按需获取独立版本 HTML；自动模式在网络失败时可能依次尝试网站、GitHub 直连、GH-Proxy 和 jsDelivr，外部图片仍由原服务提供；
 - 启动时自动从公开仓库 `huarunwin-hub` 检查客户端更新，设置中的手动检查、查看或刷新更新日志也会请求该来源；
 - 用户选择的 GitHub Release 页面、附件或应用官方渠道；
 - 按统一“内容来源”选择，通过 `gh-proxy.com` 转发公开 GitHub Raw 文本、GitHub 内容镜像的站内图片及应用内文件下载；默认自动模式在直连失败后可能使用该服务，目录／更新信息与文件下载分别保持回退线路 2 小时。镜像图片跟随 Raw 线路并允许单张图片回退，不改变全局保持时间；官网、jsDelivr 和外部图片不经过该代理，GitHub 版本列表继续直连；

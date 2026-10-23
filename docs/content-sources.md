@@ -42,9 +42,9 @@ GitHub 传输方式由单一内容来源决定，不再单独保存用户选择�
 
 GitHub 镜像图片优先跟随最近成功的 Raw 线路，直至新的文本请求确认线路；图片缓存命中、成功或失败均不设置、清除或延长任何全局保持期。自动加速允许单张图片在直连与 GH-Proxy 之间回退，固定加速方式只用所选线路；两条线路均失败后，内容来源为自动时再尝试其他内容来源。图片继续沿用现有加载时限，按实际传输 URL 分开缓存。切换设置后的旧图片结果不覆盖新线路的显示。
 
-**网站已收录的版本与附件优先从详情 HTML 读取，随后按当前来源策略下载真实 GitHub 文件。** 默认最近 5 个发布及当前推荐版本的资料由网站采集并随静态页面发布；选择 GH-Proxy 时安装包直接使用代理，缺少公开摘要不触发额外的 GitHub 页面请求。
+**网站已收录的版本与附件按需从独立 `/apps/{slug}/releases` HTML 读取，随后按当前来源策略下载真实 GitHub 文件。** 网站默认最多保留最近 5 个发布，当前推荐版本包含在该上限内，资料由网站采集并随静态页面发布；选择 GH-Proxy 时安装包直接使用代理，缺少公开摘要不触发额外的 GitHub 页面请求。
 
-缺少隐藏版本资料或用户主动载入更多版本时，GitHub 版本列表、版本详情和附件 HTML 仍直连 GitHub。2026-10-23 对公开仓库的实际请求中，GH-Proxy 的 `/releases` 返回自有脚本页面，`/releases/tag/...` 与 `expanded_assets` 返回 HTTP 403，不能交给现有 HTML 解析器。客户端不引入 GitHub JSON API、不执行代理网页脚本。官网、jsDelivr 与外部图片、外部网页、商店及交给浏览器的下载不经过该代理。
+缺少独立版本资料或用户主动载入更多版本时，GitHub 版本列表、版本详情和附件 HTML 仍直连 GitHub。2026-10-23 对公开仓库的实际请求中，GH-Proxy 的 `/releases` 返回自有脚本页面，`/releases/tag/...` 与 `expanded_assets` 返回 HTTP 403，不能交给现有 HTML 解析器。客户端不引入 GitHub JSON API、不执行代理网页脚本。官网、jsDelivr 与外部图片、外部网页、商店及交给浏览器的下载不经过该代理。
 
 实现位于 `lib/services/github_acceleration.dart`、`lib/services/resumable_download.dart`、`lib/services/app_updates.dart`、`lib/data/repository.dart` 与 `lib/ui/settings.dart`。服务为第三方公共代理，可用性随网络和服务状态变化；一次成功请求不代表 Android 网络或所有附件均已验证。
 
