@@ -3,7 +3,9 @@ package win.huarun.huarunwin
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -32,7 +34,7 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "openDirectory" -> openDirectory(result)
+            "openDirectory" -> openDirectory(call.argument<String>("path"), result)
             "chooseDirectory" -> {
                 if (picker != null) {
                     result.error("copy_busy", "请先完成当前的文件夹选择。", null)
@@ -133,29 +135,46 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
 
     private fun document(tree: Uri): Uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
 
-    private fun openDirectory(result: MethodChannel.Result) {
-        if (!preferences.getBoolean("enabled", false)) {
-            result.error("copy_private_directory", "当前目录为应用专用目录，Android 不允许文件管理器直接访问。可通过“修改目录”选择公共文件夹。", null)
-            return
-        }
+    private fun openDirectory(path: String?, result: MethodChannel.Result) {
         try {
-            val tree = selectedTree()
-            if (tree.scheme != "content" || !DocumentsContract.isTreeUri(tree) ||
-                resolver.persistedUriPermissions.none { it.uri == tree && it.isReadPermission }) {
-                throw SecurityException()
+            val tree = if (preferences.getBoolean("enabled", false)) {
+                selectedTree().also {
+                    if (it.scheme != "content" || !DocumentsContract.isTreeUri(it) ||
+                        resolver.persistedUriPermissions.none { grant -> grant.uri == it && grant.isReadPermission }) {
+                        result.error("copy_permission", "文件夹授权已失效，请通过“修改目录”重新选择。", null)
+                        return
+                    }
+                }
+            } else {
+                DownloadDocumentsProvider.directoryUri(activity, path)
             }
-            activity.startActivity(Intent(Intent.ACTION_VIEW).apply {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(document(tree), DocumentsContract.Document.MIME_TYPE_DIR)
-                // Grant browsing access only to the selected folder and its
-                // descendants, never the app-owned package storage.
+                // Only the selected folder is readable. The app's provider
+                // additionally excludes history, partial files and other data.
                 clipData = ClipData.newRawUri("下载目录", tree)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-            })
+                // A reused DocumentsUI task otherwise resumes its last child
+                // folder, ignoring the directory requested by this action.
+                addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            }
+            // Prefer the system document browser, which supports document trees.
+            // An explicit target also preserves the new-document flags that some
+            // vendor resolvers strip, causing a stale folder to be reopened.
+            val packages = activity.packageManager.queryIntentActivities(
+                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PackageManager.MATCH_SYSTEM_ONLY)
+                .map { it.activityInfo.packageName }.toSet()
+            activity.packageManager.queryIntentActivities(intent,
+                PackageManager.MATCH_DEFAULT_ONLY or PackageManager.MATCH_SYSTEM_ONLY)
+                .firstOrNull { it.activityInfo.packageName in packages }?.activityInfo?.let {
+                    intent.component = ComponentName(it.packageName, it.name)
+                }
+            activity.startActivity(intent)
             result.success(null)
         } catch (_: ActivityNotFoundException) {
             result.error("copy_open_unavailable", "未找到支持打开此目录的文件管理器。", null)
         } catch (_: SecurityException) {
-            result.error("copy_permission", "文件夹授权已失效，请通过“修改目录”重新选择。", null)
+            result.error("copy_open_permission", "文件管理器未能获得目录访问权限，请重试或选择其他文件管理器。", null)
         } catch (_: Exception) {
             result.error("copy_open_failed", "无法打开当前下载目录，请检查文件夹或存储服务是否可用。", null)
         }

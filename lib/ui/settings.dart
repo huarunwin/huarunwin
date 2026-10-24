@@ -460,7 +460,10 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
     setState(() => _working = true);
     try {
       if (widget.copies case final copies?) {
-        await copies.openDirectory();
+        final directory = copies.hasCustomDirectory
+            ? widget.locations.directory
+            : await widget.locations.prepareDirectory();
+        await copies.openDirectory(managedPath: directory.path);
         return;
       }
       final directory = await widget.locations.prepareDirectory();

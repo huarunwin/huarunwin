@@ -19,6 +19,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/apk_paths"/>
         </provider>
+        <provider
+            android:name=".DownloadDocumentsProvider"
+            android:authorities="${applicationId}.downloads"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER"/>
+            </intent-filter>
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -66,6 +76,13 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT_TREE"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="content" android:mimeType="vnd.android.document/directory"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.UNINSTALL_PACKAGE"/>
             <data android:scheme="package"/>

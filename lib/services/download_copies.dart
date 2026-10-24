@@ -44,7 +44,8 @@ class AndroidDownloadCopies extends ChangeNotifier {
     return true;
   }
 
-  Future<void> openDirectory() => _channel.invokeMethod<void>('openDirectory');
+  Future<void> openDirectory({required String managedPath}) =>
+      _channel.invokeMethod<void>('openDirectory', {'path': managedPath});
 
   Future<void> resetDirectory() async {
     final settings = await _channel.invokeMapMethod<Object?, Object?>(
