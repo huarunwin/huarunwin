@@ -126,6 +126,7 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         PageSection(
+          title: '帮助与反馈',
           bottomSpacing: 16,
           children: [
             PageRow(
