@@ -16,6 +16,8 @@ class MainActivity : FlutterActivity() {
     private var incoming: IncomingApks? = null
     private var incomingChannel: MethodChannel? = null
     private var downloadChannel: MethodChannel? = null
+    private var copies: DownloadCopies? = null
+    private var copiesChannel: MethodChannel? = null
     private var openDownloads = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +47,9 @@ class MainActivity : FlutterActivity() {
         incomingChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "win.huarun/incoming_apks")
         incoming = IncomingApks(this) { incomingChannel?.invokeMethod("pendingApksChanged", null) }
         incomingChannel?.setMethodCallHandler(incoming)
+        copiesChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "win.huarun/download_copies")
+        copies = DownloadCopies(this)
+        copiesChannel?.setMethodCallHandler(copies)
         downloadChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "win.huarun/download_foreground")
         DownloadForegroundService.onStopped = { downloadChannel?.invokeMethod("downloadsStopped", it) }
         downloadChannel?.setMethodCallHandler { call, result ->
@@ -58,6 +63,7 @@ class MainActivity : FlutterActivity() {
                     "start", "update" -> {
                         val service = Intent(this, DownloadForegroundService::class.java)
                             .putExtra("count", call.argument<Number>("count")?.toInt() ?: 0)
+                            .putExtra("copyingOnly", call.argument<Boolean>("copyingOnly") == true)
                             .putExtra("received", call.argument<Number>("received")?.toLong() ?: 0)
                             .putExtra("total", call.argument<Number>("total")?.toLong() ?: 0)
                             .putExtra("name", call.argument<String>("name"))
@@ -83,6 +89,7 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         installer?.onActivityResult(requestCode, resultCode, data)
+        copies?.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -98,6 +105,10 @@ class MainActivity : FlutterActivity() {
         incomingChannel = null
         incoming?.dispose()
         incoming = null
+        copiesChannel?.setMethodCallHandler(null)
+        copiesChannel = null
+        copies?.dispose()
+        copies = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }

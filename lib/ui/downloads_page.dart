@@ -471,6 +471,24 @@ class _DownloadsPageState extends State<DownloadsPage> {
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ],
+          if (isApk &&
+              selected == DownloadPackage.original &&
+              (task.savingCopy ||
+                  task.copyError != null ||
+                  task.copyDirectory != null)) ...[
+            const SizedBox(height: 12),
+            Text(
+              task.savingCopy
+                  ? '正在保存原始 APK 副本…'
+                  : task.copyError ?? '副本已保存到：${task.copyDirectory}',
+              style: TextStyle(
+                fontSize: 12,
+                color: task.copyError != null
+                    ? colors.error
+                    : colors.onSurfaceVariant,
+              ),
+            ),
+          ],
           if (task.error != null && isOperation) ...[
             const SizedBox(height: 12),
             Text(
@@ -653,6 +671,33 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   ),
                   label: Text(_platform == 'Android' ? '分享安装包' : '查看文件'),
                 ),
+              if (isApk &&
+                  selected == DownloadPackage.original &&
+                  !task.isDerivedApk &&
+                  (task.savingCopy ||
+                      available &&
+                          !task.busy &&
+                          widget.manager.copies?.treeUri != null))
+                OutlinedButton.icon(
+                  onPressed: task.deleting
+                      ? null
+                      : task.savingCopy
+                      ? () => widget.manager.cancelDownloadCopy(task)
+                      : () => widget.manager.saveDownloadCopy(task),
+                  icon: Icon(
+                    task.savingCopy
+                        ? Icons.close_rounded
+                        : Icons.save_alt_rounded,
+                    size: 17,
+                  ),
+                  label: Text(
+                    task.savingCopy
+                        ? '取消保存副本'
+                        : task.copyError != null
+                        ? '重试保存副本'
+                        : '保存副本',
+                  ),
+                ),
               if (task.url.startsWith('https://'))
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -671,6 +716,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 onPressed:
                     task.state == DownloadState.installing ||
                         task.checking ||
+                        task.savingCopy ||
                         isApk && task.busy && !isOperation ||
                         task.deleting
                     ? null

@@ -58,6 +58,7 @@ class DownloadForegroundService : Service() {
 
     private fun notification(intent: Intent): Notification {
         val count = intent.getIntExtra("count", 1)
+        val copyingOnly = intent.getBooleanExtra("copyingOnly", false)
         val received = intent.getLongExtra("received", 0)
         val total = intent.getLongExtra("total", 0)
         val open = PendingIntent.getActivity(this, 0,
@@ -70,10 +71,10 @@ class DownloadForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(if (count == 1) intent.getStringExtra("name") ?: "下载应用" else "$count 个下载任务")
-            .setContentText(if (total > 0) "已下载 ${received * 100 / total}%" else "正在下载或校验安装包")
+            .setContentText(if (copyingOnly) "正在保存安装包副本" else if (total > 0) "已下载 ${received * 100 / total}%" else "正在下载或校验安装包")
             .setProgress(100, if (total > 0) (received * 100 / total).coerceIn(0, 100).toInt() else 0, total <= 0)
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
-            .addAction(0, "取消下载", cancel).build()
+            .addAction(0, if (copyingOnly) "取消保存" else "取消任务", cancel).build()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

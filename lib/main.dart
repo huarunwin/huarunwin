@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'data/repository.dart';
 import 'services/app_controller.dart';
 import 'services/download_locations.dart';
+import 'services/download_copies.dart';
 import 'services/downloads.dart';
 import 'services/download_foreground.dart';
 import 'services/github_acceleration.dart';
@@ -101,9 +102,12 @@ Future<void> main() async {
       ],
     );
   }
+  final downloadCopies = Platform.isAndroid ? AndroidDownloadCopies() : null;
+  await downloadCopies?.refresh(validate: false);
   final downloads = DownloadManager(
     legacyDownloads,
     locations: downloadLocations,
+    copies: downloadCopies,
     github: github,
     loadCatalogReleases: controller.repository.releases,
     foreground: Platform.isAndroid ? AndroidDownloadForeground() : null,

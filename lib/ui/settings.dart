@@ -6,6 +6,7 @@ import '../data/site_parser.dart';
 import '../services/app_controller.dart';
 import '../services/content_sources.dart';
 import '../services/download_locations.dart';
+import '../services/download_copies.dart';
 import '../services/downloads.dart';
 import '../services/github_acceleration.dart';
 import 'about_page.dart';
@@ -118,8 +119,10 @@ class SettingsPage extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) =>
-                        _DownloadDirectoryPage(locations: locations),
+                    builder: (_) => _DownloadDirectoryPage(
+                      locations: locations,
+                      copies: downloads.copies,
+                    ),
                   ),
                 ),
               ),
@@ -350,9 +353,10 @@ class _ContentSourcePageState extends State<_ContentSourcePage> {
 }
 
 class _DownloadDirectoryPage extends StatefulWidget {
-  const _DownloadDirectoryPage({required this.locations});
+  const _DownloadDirectoryPage({required this.locations, this.copies});
 
   final DownloadLocations locations;
+  final AndroidDownloadCopies? copies;
 
   @override
   State<_DownloadDirectoryPage> createState() => _DownloadDirectoryPageState();
@@ -360,6 +364,12 @@ class _DownloadDirectoryPage extends StatefulWidget {
 
 class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
   bool _working = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.copies?.refresh();
+  }
 
   void _message(String message) {
     if (mounted) {
@@ -373,6 +383,7 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
     setState(() => _working = true);
     try {
       await widget.locations.refreshPreferences();
+      await widget.copies?.refresh();
     } catch (_) {
       _message('暂时无法读取下载目录设置，请稍后重试。');
     } finally {
@@ -413,7 +424,7 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
           context: context,
           builder: (context) => StatefulBuilder(
             builder: (context, setDialogState) => AdaptiveDialog(
-              title: '选择下载目录',
+              title: '选择应用存储位置',
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -482,18 +493,49 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
     }
   }
 
+  Future<void> _chooseCopyDirectory() async {
+    if (_working) return;
+    setState(() => _working = true);
+    try {
+      if (await widget.copies!.chooseDirectory()) {
+        _message('已启用自动保存副本，对之后完成的 APK 下载生效。');
+      }
+    } catch (_) {
+      _message('无法使用此文件夹，请重新选择并允许读写。');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _setCopyEnabled(bool value) async {
+    if (_working) return;
+    if (value && widget.copies!.treeUri == null) {
+      await _chooseCopyDirectory();
+      return;
+    }
+    setState(() => _working = true);
+    try {
+      await widget.copies!.setEnabled(value);
+    } catch (_) {
+      _message('未能修改自动保存设置，请重新选择文件夹后重试。');
+      await widget.copies?.refresh();
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: PageSafeArea(
       child: ListenableBuilder(
-        listenable: widget.locations,
+        listenable: Listenable.merge([widget.locations, widget.copies]),
         builder: (context, _) => ContentPage(
           title: '下载目录',
           showBackButton: true,
           onRefresh: _refresh,
           children: [
             PageSection(
-              title: '当前目录',
+              title: widget.copies == null ? '当前目录' : '应用存储位置',
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -511,7 +553,9 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                   : '可选择应用专用存储位置。更改仅对新下载和新导入生效，已有文件保留原位置；卸载华润赢会清除这些目录。',
               children: [
                 PageRow(
-                  title: '修改目录',
+                  title: widget.locations.directoryOptions == null
+                      ? '修改目录'
+                      : '选择存储位置',
                   icon: Icons.folder_outlined,
                   trailing: _working
                       ? const SizedBox.square(
@@ -540,6 +584,41 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                 ),
               ],
             ),
+            if (widget.copies case final copies?)
+              PageSection(
+                title: '保存下载副本',
+                footer: '原始 APK 下载完成并校验后，另存一份到所选文件夹。已有下载、导入包和重签包不会自动复制。关闭此功能或删除应用内文件不会删除已保存的副本。',
+                children: [
+                  PageRow(
+                    title: '自动保存到其他文件夹',
+                    icon: Icons.save_alt_rounded,
+                    trailing: Switch(
+                      value: copies.enabled,
+                      onChanged: _working ? null : _setCopyEnabled,
+                    ),
+                    onTap: _working
+                        ? null
+                        : () => _setCopyEnabled(!copies.enabled),
+                  ),
+                  PageRow(
+                    title: copies.treeUri == null ? '选择文件夹' : '修改文件夹',
+                    subtitle: copies.directoryLabel ?? '使用系统文件夹选择器授权保存位置。',
+                    icon: Icons.folder_outlined,
+                    trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                    onTap: _working ? null : _chooseCopyDirectory,
+                  ),
+                  if (copies.warning case final warning?)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        warning,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
       ),

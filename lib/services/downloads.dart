@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../data/models.dart';
 import 'android_package.dart';
 import 'download_locations.dart';
+import 'download_copies.dart';
 import 'download_foreground.dart';
 import 'download_platform.dart';
 import 'github_acceleration.dart';
@@ -52,6 +53,9 @@ class DownloadTask {
     this.received = 0,
     this.total = 0,
     this.error,
+    this.copyUri,
+    this.copyDirectory,
+    this.copyError,
     this.installedPath,
     this.installedPackage,
     this.packageAvailable = true,
@@ -188,6 +192,8 @@ class DownloadTask {
   DownloadState state;
   int received, total;
   String? error, installedPath, installedPackage;
+  String? copyUri, copyDirectory, copyError;
+  bool savingCopy = false;
   CancelToken? cancelToken;
   bool deleting = false;
   bool checking = false;
@@ -273,6 +279,10 @@ class DownloadTask {
     'installedPath': installedPath,
     'installedPackage': installedPackage,
     'error': error,
+    'copyUri': copyUri,
+    'copyDirectory': copyDirectory,
+    'copyError': copyError,
+    'copyPending': savingCopy,
     'packageAvailable': packageAvailable,
     'sha256': sha256,
     'checksumSource': checksumSource,
@@ -317,6 +327,11 @@ class DownloadTask {
       installedPath: json['installedPath'] as String?,
       installedPackage: json['installedPackage'] as String?,
       error: json['error'] as String?,
+      copyUri: json['copyUri'] as String?,
+      copyDirectory: json['copyDirectory'] as String?,
+      copyError: json['copyPending'] == true
+          ? '上次保存副本已中断，原始 APK 已保留，可重试保存。'
+          : json['copyError'] as String?,
       packageAvailable:
           json['packageAvailable'] as bool? ?? json['error'] != '下载文件已被移动或删除。',
       sha256: normalizeSha256(json['sha256'] as String?),
@@ -666,6 +681,7 @@ class DownloadManager extends ChangeNotifier {
     this.maxConcurrentDownloads = 3,
     this.writeHistory,
     this.locations,
+    this.copies,
     this.foreground,
     this.github,
     this.loadCatalogReleases,
@@ -683,10 +699,14 @@ class DownloadManager extends ChangeNotifier {
        installer = installer ?? NativeInstaller(),
        macResolver = macResolver ?? MacDownloadResolver() {
     locations?.addListener(notifyListeners);
+    copies?.addListener(notifyListeners);
     foreground?.onStopped = (reason) {
       downloadWarning = reason;
       for (final task in List.of(tasks)) {
         if (task.cancelToken != null) cancel(task);
+      }
+      for (final token in _copyTokens.values) {
+        token.cancel('后台保存已停止');
       }
       notifyListeners();
     };
@@ -695,6 +715,8 @@ class DownloadManager extends ChangeNotifier {
   // APK staging. Package locations can change independently.
   final Directory directory;
   final DownloadLocations? locations;
+  final AndroidDownloadCopies? copies;
+  final Map<String, CancelToken> _copyTokens = {};
   final AndroidDownloadForeground? foreground;
   final GitHubAcceleration? github;
   final Future<List<CatalogRelease>> Function(CatalogApp app)?
@@ -703,19 +725,25 @@ class DownloadManager extends ChangeNotifier {
   Map<String, Object> get _foregroundProgress {
     final active = tasks
         .where(
-          (task) => [
-            DownloadState.queued,
-            DownloadState.downloading,
-            DownloadState.verifying,
-            DownloadState.resigning,
-          ].contains(task.state),
+          (task) =>
+              task.savingCopy ||
+              [
+                DownloadState.queued,
+                DownloadState.downloading,
+                DownloadState.verifying,
+                DownloadState.resigning,
+              ].contains(task.state),
         )
         .toList();
     return {
       'count': active.length,
-      'name': active.firstOrNull?.appName ?? '下载应用',
+      'copyingOnly':
+          active.isNotEmpty && active.every((task) => task.savingCopy),
+      'name': active.firstOrNull?.savingCopy == true
+          ? '保存副本 · ${active.first.appName}'
+          : active.firstOrNull?.appName ?? '下载应用',
       'received': active.fold<int>(0, (sum, task) => sum + task.received),
-      'total': active.every((task) => task.total > 0)
+      'total': active.every((task) => task.total > 0 && !task.savingCopy)
           ? active.fold<int>(0, (sum, task) => sum + task.total)
           : 0,
     };
@@ -790,6 +818,10 @@ class DownloadManager extends ChangeNotifier {
   void dispose() {
     foreground?.dispose();
     locations?.removeListener(notifyListeners);
+    copies?.removeListener(notifyListeners);
+    for (final token in _copyTokens.values) {
+      token.cancel('应用已关闭');
+    }
     installedApps.dispose();
     super.dispose();
   }
@@ -1464,11 +1496,21 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<void> retry(DownloadTask task) async {
-    if (task.busy || task.deleting || !tasks.contains(task)) return;
+    if (task.busy ||
+        task.savingCopy ||
+        task.deleting ||
+        !tasks.contains(task)) {
+      return;
+    }
     // The terminal state is emitted before the queue releases its slot.
     // A fast retry must wait for that cleanup before starting a new operation.
     await _running[task.id];
-    if (task.busy || task.deleting || !tasks.contains(task)) return;
+    if (task.busy ||
+        task.savingCopy ||
+        task.deleting ||
+        !tasks.contains(task)) {
+      return;
+    }
     task.state = DownloadState.queued;
     task.error = null;
     if (!task.wantsResign ||
@@ -1485,6 +1527,9 @@ class DownloadManager extends ChangeNotifier {
       }
     }
     task.resignedSha256 = null;
+    task.copyUri = null;
+    task.copyDirectory = null;
+    task.copyError = null;
     task._androidInspectionSha256 = null;
     task._androidInspectionPackage = null;
     task.removedPackages = {...task.removedPackages}
@@ -1828,8 +1873,10 @@ class DownloadManager extends ChangeNotifier {
       selected.add(DownloadPackage.original);
     }
     if (selected.isEmpty) return;
-    if (task.state == DownloadState.installing || task.checking) {
-      throw StateError('检查或安装中暂时不能删除。');
+    if (task.state == DownloadState.installing ||
+        task.checking ||
+        task.savingCopy) {
+      throw StateError('检查、安装或保存副本中暂时不能删除。');
     }
     if (task.deleting || !tasks.contains(task)) return;
     task._operation++;
@@ -2047,9 +2094,69 @@ class DownloadManager extends ChangeNotifier {
       }
       task.cancelToken = null;
       task.state = outcome;
+      if (outcome == DownloadState.downloaded &&
+          !resumeResign &&
+          !cancelToken.isCancelled &&
+          copies?.enabled == true &&
+          task.platform == 'Android' &&
+          task.kind == 'apk') {
+        await saveDownloadCopy(task);
+      }
       _emit();
     }
   }
+
+  Future<void> saveDownloadCopy(DownloadTask task) async {
+    final service = copies;
+    if (service == null ||
+        task.busy ||
+        task.savingCopy ||
+        task.deleting ||
+        !tasks.contains(task) ||
+        task.platform != 'Android' ||
+        task.kind != 'apk' ||
+        !task.originalAvailable ||
+        task.isDerivedApk) {
+      return;
+    }
+    final token = CancelToken();
+    _copyTokens[task.id] = token;
+    task.savingCopy = true;
+    task.copyError = null;
+    _emit();
+    try {
+      await flushHistory();
+      if (_historyError != null ||
+          _historyReadFailed ||
+          _pendingHistoryBackup != null) {
+        throw const FormatException('下载记录尚未保存，请刷新后重试保存副本。');
+      }
+      await foreground?.start(_foregroundProgress);
+      final result = await service.save(
+        id: task.id,
+        path: task.filePath,
+        sha256: task.verifiedSha256 ?? task.sha256,
+        cancelToken: token,
+      );
+      task.copyUri = result.uri;
+      task.copyDirectory = result.directory;
+    } catch (error) {
+      task.copyError = token.isCancelled
+          ? '保存副本已取消，原始 APK 已保留，可重试保存。'
+          : error is PlatformException
+          ? error.message ?? '保存副本失败，原始 APK 已保留，请重试。'
+          : error is FormatException
+          ? error.message
+          : '保存副本失败，请检查文件夹授权和可用空间后重试。';
+    } finally {
+      _copyTokens.remove(task.id);
+      task.savingCopy = false;
+      _emit();
+    }
+  }
+
+  void cancelDownloadCopy(DownloadTask task) =>
+      _copyTokens[task.id]?.cancel('用户取消');
 
   Future<void> _resignDownloaded(DownloadTask task, CancelToken token) async {
     final key = task.resignKey!;

@@ -658,6 +658,8 @@ class _AppLibraryPageState extends State<AppLibraryPage>
 
   Widget _item(LibraryItem item) {
     final active = item.activeTasks;
+    final savingCopy = item.tasks.any((task) => task.savingCopy);
+    final copyFailed = item.tasks.any((task) => task.copyError != null);
     final label = _summary(item);
     final metadata = [
       label,
@@ -724,7 +726,18 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                       const Icon(Icons.chevron_right_rounded, size: 18),
                     ],
                   ),
-                  if (active.isNotEmpty) ...[
+                  if (savingCopy || copyFailed) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      savingCopy ? '正在保存下载副本…' : '副本未保存，进入应用管理可查看并重试。',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: savingCopy
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  if (active.isNotEmpty || savingCopy) ...[
                     const SizedBox(height: 12),
                     LinearProgressIndicator(
                       value:
@@ -732,7 +745,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
                               active.single.state == DownloadState.downloading
                           ? active.single.progress
                           : null,
-                      semanticsLabel: label,
+                      semanticsLabel: savingCopy ? '正在保存下载副本' : label,
                     ),
                   ],
                   if (compact && action != null) ...[

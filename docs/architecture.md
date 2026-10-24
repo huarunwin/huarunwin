@@ -38,6 +38,7 @@
 | `lib/services/app_library.dart`、`lib/ui/app_library_page.dart`、`lib/ui/app_library_overview.dart` | 应用库归组、状态筛选、搜索和排序，复用本机查询与公开 HTML 版本检查；独立页签按需创建，切换时保留状态；统一应用管理页展示本机信息、更新状态及各份文件操作 |
 | `lib/ui/app_library_navigation.dart` | 将详情及栏目中的下载操作交给根导航，返回同一个应用库页签的下载任务筛选 |
 | `lib/services/download_locations.dart` | Android 与桌面下载目录偏好、可写检查、历史受管理目录登记 |
+| `lib/services/download_copies.dart`、`android/app/src/main/kotlin/win/huarun/huarunwin/DownloadCopies.kt` | Android SAF 目录授权、完成下载后的副本保存、校验及未完成文档清理 |
 | `lib/services/mac_downloads.dart` | App Store 链接识别、按平台解析 GitHub 发布页及附件 HTML、Mac 架构匹配 |
 | `lib/services/github_releases.dart`、`lib/ui/release_download_dialog.dart` | GitHub 版本分页、按需读取资源、版本与资源确认选择 |
 | `lib/services/download_platform.dart`、`lib/ui/app_download_button.dart` | 当前设备与所选平台判断、平台／安装包选择及统一下载入口 |
@@ -92,6 +93,10 @@ Android 用户开始下载后启动非导出的 `dataSync` 前台服务，显示
 下载目录与全部历史受管理根目录一起保存在 `downloadDirectories` 偏好中，兼容读取原 `desktopDownloadDirectories`，新键优先；确认所选目录可写且偏好保存成功后才切换，新任务在创建文件前登记实际规范路径。各任务继续保存自己的绝对文件路径，重试、安装、查看和删除均使用原路径；恢复历史及删除检查允许登记过的原目录，并保留子目录、符号链接与根目录保护。目录选择和新任务目录准备串行执行，切换不改写已创建任务。
 
 Android 从其他应用接收的 APK 仍先进入内部暂存目录；按当前目录复制后先持久化任务，再清理暂存副本，保存失败时保留副本和待确认记录，重复交接不创建第二条任务。原生安装与 FileProvider 仅允许内部 `downloads` 及应用专用外部文件目录下的 `Download`、`downloads` 范围，安装、重签和分享仍逐次核对所选文件，其他外部目录不可作为受管理安装包。目录页的“查看下载文件”返回共用应用库，Android 不向文件管理器暴露整个私有目录。
+
+Android 自选共享目录采用 Neo Store 的完成后复制方式，独立于 `DownloadLocations`。原生端在独立偏好中保存目录 URI、名称、自动保存开关及未完成文档 URI；通过 `ACTION_OPEN_DOCUMENT_TREE` 和持久读写授权访问，不将 URI 当成本地路径。默认关闭，选择目录后启用；取消不改设置。自动保存只针对之后完成的原始 APK 网络下载，已有和导入的原始包可以主动保存，派生重签文件不自动导出。复制请求校验来源在应用受管理 APK 根目录内，保存前核对已有摘要，完成后重新读取目标并核对 SHA-256。相同文件名且同摘要时复用，冲突时编号保存；先创建唯一临时文档，记录后写入，验证后重命名，下次刷新设置或复制时只清理已登记且名称仍匹配的临时文档。重命名后即使清理记录尚未写入，也不删除已完成副本。暂时不可访问的临时文档保留清理记录，不阻断用户选择新目录。启动只读取本机设置，目录可用性在进入设置、刷新及复制时检查，不让远程文档提供方阻塞首屏。
+
+下载任务分别保存 `copyUri`、`copyDirectory`、`copyError` 和 `copyPending`，副本失败不改写下载或安装状态。中断后保留明确提示，由用户主动重试；保存期间禁止删除原始任务，重复保存不会并发执行，取消和系统停止前台服务会传递到原生复制。应用库列表展示正在保存或失败提示，原始包卡片提供保存、取消及重试入口。前台服务在副本保存期间继续显示任务；文件夹切换与复制在原生端串行执行，已排队但目标已更改的请求明确失败并允许重试。关闭自动保存不取消已开始的副本，删除应用内记录不删除共享副本。此功能不自动清理已完成副本，也不把它们用于客户端安装。
 
 2026-10-17 按产品要求移除收藏功能，包括桌面／手机导航入口、卡片／列表／详情页按钮及收藏偏好读写；以下早期验证中的收藏记录仅反映当时版本。
 
