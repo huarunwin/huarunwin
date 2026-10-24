@@ -470,6 +470,8 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
       )) {
         throw StateError('open_directory');
       }
+    } on MissingPluginException {
+      _message('当前安装包尚未包含打开目录功能，请安装最新版本后重试。');
     } on PlatformException catch (error) {
       _message(error.message ?? '无法打开当前下载目录，请检查文件夹是否可访问。');
     } catch (_) {

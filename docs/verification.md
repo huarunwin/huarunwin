@@ -961,3 +961,16 @@ macOS 在 Apple Silicon 上实际启动 Release，检查宽屏及折叠侧栏的
 桌面新安装及恢复默认使用系统下载目录下的 `HuaRunWin Downloads`；系统目录无法取得时尝试用户主目录的 `Downloads`。Android 默认按主外部卷应用专用 `files/Download`、`files/downloads` 的顺序检查可写性，均不可用时使用内部 `files/downloads`。已有目录偏好与文件保留原位置；安装校验及 FileProvider 同时兼容新旧两个外部子目录。
 
 `fvm dart format`、`fvm flutter analyze --no-pub`、FileProvider XML 解析及 `git diff --check` 通过。已补充目录选择回退的用例，并调整现有原生用例以覆盖新旧外部目录；按项目约定，本轮未执行测试、平台构建或模拟器验证，不将上一轮结果视为本次改动的运行验证。
+
+## 2026-10-24 Android 真机下载目录跳转
+
+按用户要求，通过 ADB 在 Android API 36 真机操作“设置 → 应用目录 → 下载目录”。原安装包尚未包含原生 `openDirectory` 功能，点击后显示通用的“无法打开下载目录，请检查文件夹是否可访问”，并非本轮观测到的系统权限拒绝。界面增加 `MissingPluginException` 的独立提示，说明需要更新安装包，避免误报为目录访问问题。
+
+完成 Debug APK 构建并保留应用数据覆盖安装后，实测结果如下：
+
+- 默认位置为应用专用的外部 `files/Download`；“打开目录”明确说明 Android 的访问限制。“修改目录”从公共 `Download` 开始，两者不是同一个目录。
+- 在公共 `Download` 下创建唯一命名的临时空文件夹，通过系统选择器选择并授权后，设置显示其完整路径。点击“打开目录”，从系统打开方式中选择“文件”，准确进入该文件夹，没有权限报错，也没有进入文件夹选择模式。
+- 再次点击“修改目录”，系统选择器从当前自选文件夹开始；取消选择后原设置保留。
+- 验证结束通过应用恢复默认，确认自选目录设置已清除，并删除本轮创建的临时空文件夹；已有下载文件与应用数据保留。
+
+`fvm dart format lib/ui/settings.dart`、`fvm flutter analyze --no-pub`、`fvm flutter build apk --debug --no-pub --target-platform android-arm64`、`git diff --check` 与新增内容的个人环境信息检查通过。本轮仅验证上述真机交互，未运行自动化测试、模拟器或其他平台检查；没有将默认应用专用目录记为可由外部文件管理器打开。
