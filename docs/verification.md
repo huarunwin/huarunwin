@@ -4,7 +4,7 @@
 
 首次 `v0.7.0` 流水线的 Android、Windows 构建通过，共用 Flutter 界面测试因旧断言失败，后续 macOS 构建和发布被跳过。同步目录、类型及设备筛选测试中的“发现”标题，iOS 设置测试改为确认不显示空的应用目录分组；高级设置重置测试在滚动后等待布局刷新再点击。保留现有产品界面及发布检查。
 
-所改测试文件经 `fvm dart format` 格式化，`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未在本机运行测试，重新发布的检查和平台构建结果以对应 GitHub Actions 记录为准。
+所改测试文件经 `fvm dart format` 格式化，`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未在本机运行测试。[修复后的发布流水线](https://github.com/huarunwin/huarunwin/actions/runs/40069608611) 的共用检查、Android、macOS 两种架构、Windows 两种架构及发布任务全部通过。[v0.7.0 Release](https://github.com/huarunwin/huarunwin/releases/tag/v0.7.0) 已公开，11 个预期附件齐全，来源提交与修复提交一致；发布页与所有附件的匿名 HEAD 请求均返回 HTTP 200。保留 Hub 原有的正式更新指针。
 
 ## 2026-10-24 设置首页隐藏下载目录具体位置
 
