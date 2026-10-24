@@ -95,23 +95,11 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
-        PageSection(
-          title: '应用目录',
-          bottomSpacing: 16,
-          children: [
-            PageRow(
-              title: '重置为默认值',
-              subtitle: '清除记住的平台与设备筛选，恢复当前设备平台。',
-              icon: Icons.restart_alt_rounded,
-              onTap: () async {
-                await controller.resetCatalogPlatform();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('已恢复默认平台筛选')));
-                }
-              },
-            ),
-            if (downloads.locations case final locations?)
+        if (downloads.locations case final locations?)
+          PageSection(
+            title: '应用目录',
+            bottomSpacing: 16,
+            children: [
               PageRow(
                 title: '下载目录',
                 subtitle:
@@ -129,8 +117,8 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ),
               ),
-          ],
-        ),
+            ],
+          ),
         PageSection(
           title: '帮助与反馈',
           bottomSpacing: 16,
@@ -239,6 +227,24 @@ class _AdvancedSettingsPage extends StatelessWidget {
                           _ContentSourcePage(controller: controller),
                     ),
                   ),
+                ),
+              ],
+            ),
+            PageSection(
+              title: '重置',
+              children: [
+                PageRow(
+                  title: '恢复默认平台筛选',
+                  subtitle: '清除记住的平台与设备选择，恢复当前设备平台。',
+                  icon: Icons.restart_alt_rounded,
+                  onTap: () async {
+                    await controller.resetCatalogPlatform();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已恢复默认平台筛选')),
+                      );
+                    }
+                  },
                 ),
               ],
             ),

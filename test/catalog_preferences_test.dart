@@ -228,7 +228,7 @@ void main() {
 
   for (final size in [const Size(1240, 900), const Size(390, 844)]) {
     testWidgets(
-      'settings reset deletes the saved filter and restores the platform immediately and after relaunch at $size',
+      'advanced settings reset deletes the saved filter and restores the platform immediately and after relaunch at $size',
       (tester) async {
         viewport(tester, size);
         await preferences.setString('catalogPlatform', 'Windows');
@@ -238,12 +238,19 @@ void main() {
         expect(selection(tester), 'Windows');
         await tester.tap(find.text(size.width >= 900 ? '偏好设置' : '设置'));
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('重置为默认值'));
-        await tester.tap(find.text('重置为默认值'));
+        expect(find.text('恢复默认平台筛选'), findsNothing);
+        await tester.ensureVisible(find.text('高级设置'));
+        await tester.tap(find.text('高级设置'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('恢复默认平台筛选'));
+        await tester.tap(find.text('恢复默认平台筛选'));
         await tester.pumpAndSettle();
         expect(preferences.containsKey('catalogPlatform'), isFalse);
         expect(preferences.getString('theme'), 'dark');
         expect(preferences.getBool('catalogGrid'), isFalse);
+        await tester.ensureVisible(find.byTooltip('返回'));
+        await tester.tap(find.byTooltip('返回'));
+        await tester.pumpAndSettle();
         await tester.tap(
           size.width >= 900
               ? find.byKey(const ValueKey('nav-applications'))
