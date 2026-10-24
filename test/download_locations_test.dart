@@ -34,11 +34,14 @@ void main() {
   final locations = <DownloadLocations>[];
   final managers = <DownloadManager>[];
 
-  Future<DownloadLocations> load() async {
+  Future<DownloadLocations> load({
+    List<DownloadDirectoryOption>? options,
+  }) async {
     final result = await DownloadLocations.load(
       preferences: preferences,
       legacyDirectory: legacy,
       defaultDirectory: defaults,
+      directoryOptions: options,
     );
     locations.add(result);
     return result;
@@ -70,7 +73,7 @@ void main() {
   setUp(() async {
     sandbox = await Directory.systemTemp.createTemp('huarun-locations-');
     legacy = Directory(p.join(sandbox.path, 'support', 'downloads'));
-    defaults = Directory(p.join(sandbox.path, 'Downloads', 'huarunwin'));
+    defaults = Directory(p.join(sandbox.path, 'Downloads', 'downloads'));
     SharedPreferences.setMockInitialValues({});
     preferences = await SharedPreferences.getInstance();
   });
@@ -138,7 +141,7 @@ void main() {
     'failed selection leaves preferences unchanged and allows retry',
     () async {
       final location = await load();
-      final previous = preferences.getStringList('desktopDownloadDirectories');
+      final previous = preferences.getStringList('downloadDirectories');
       var changes = 0;
       location.addListener(() => changes++);
       await expectLater(
@@ -152,11 +155,115 @@ void main() {
         throwsA(isA<FileSystemException>()),
       );
       expect(location.directory.path, defaults.path);
-      expect(preferences.getStringList('desktopDownloadDirectories'), previous);
+      expect(preferences.getStringList('downloadDirectories'), previous);
       expect(changes, 0);
       expect(await collision.readAsString(), 'keep');
       await location.selectDirectory(p.join(sandbox.path, 'valid'));
       expect(changes, 1);
+    },
+  );
+
+  test('desktop preferences migrate without moving existing files', () async {
+    final oldRoot = p.join(sandbox.path, 'Downloads', 'huarunwin');
+    await preferences.setStringList('desktopDownloadDirectories', [oldRoot]);
+    final location = await load();
+    expect(location.directory.path, oldRoot);
+    expect(preferences.getStringList('downloadDirectories')!.first, oldRoot);
+    await location.resetDirectory();
+    final reloaded = await load();
+    expect(reloaded.directory.path, defaults.path);
+    expect(
+      reloaded.managedRoot(p.join(oldRoot, 'task', 'file.apk'))?.path,
+      oldRoot,
+    );
+  });
+
+  test('Android selection accepts only app-owned storage locations', () async {
+    final external = Directory(p.join(sandbox.path, 'external', 'downloads'));
+    final options = [
+      DownloadDirectoryOption('应用内部存储', defaults),
+      DownloadDirectoryOption('应用专用外部存储', external),
+    ];
+    final location = await load(options: options);
+    final outside = p.join(sandbox.path, 'shared');
+    await expectLater(
+      location.selectDirectory(outside),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await Directory(outside).exists(), isFalse);
+    await location.selectDirectory(external.path);
+    expect((await load(options: options)).directory.path, external.path);
+    await location.resetDirectory();
+    expect(location.directory.path, defaults.path);
+  });
+
+  test(
+    'incoming APK follows the selected root after durable adoption',
+    () async {
+      await legacy.create(recursive: true);
+      final location = await load();
+      final external = p.join(sandbox.path, 'external', 'downloads');
+      await location.selectDirectory(external);
+      final downloads = manager(location);
+      await downloads.restore();
+      final staged = File(
+        p.join(legacy.path, 'incoming-fixture', 'fixture.apk'),
+      );
+      await staged.parent.create();
+      await staged.writeAsBytes([1, 2, 3]);
+      final entry = {'id': 'incoming-fixture', 'path': staged.path};
+      final task = await downloads.adoptAndroidApk(entry);
+      expect(
+        p.dirname(p.dirname(task.filePath)),
+        await Directory(external).resolveSymbolicLinks(),
+      );
+      expect(await File(task.filePath).readAsBytes(), [1, 2, 3]);
+      expect(await staged.exists(), isFalse);
+      expect(await downloads.adoptAndroidApk(entry), same(task));
+      final restored = manager(await load());
+      await restored.restore();
+      expect(
+        await restored.adoptAndroidApk(entry),
+        same(restored.tasks.single),
+      );
+      await restored.remove(restored.tasks.single);
+      expect(await File(task.filePath).exists(), isFalse);
+    },
+  );
+
+  test(
+    'failed adoption retains its staging copy until history is saved',
+    () async {
+      await legacy.create(recursive: true);
+      final location = await load();
+      await location.selectDirectory(
+        p.join(sandbox.path, 'external', 'downloads'),
+      );
+      var failing = true;
+      final downloads = DownloadManager(
+        legacy,
+        locations: location,
+        writeHistory: (_) async {
+          if (failing) throw const FileSystemException('fixture disk error');
+        },
+      );
+      managers.add(downloads);
+      final staged = File(
+        p.join(legacy.path, 'incoming-failure', 'fixture.apk'),
+      );
+      await staged.parent.create();
+      await staged.writeAsBytes([1, 2, 3]);
+      final entry = {'id': 'incoming-failure', 'path': staged.path};
+      await expectLater(
+        downloads.adoptAndroidApk(entry),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(await staged.readAsBytes(), [1, 2, 3]);
+      failing = false;
+      final adopted = await downloads.adoptAndroidApk(entry);
+      expect(downloads.tasks, [adopted]);
+      expect(await File(adopted.filePath).readAsBytes(), [1, 2, 3]);
+      expect(await staged.exists(), isFalse);
     },
   );
 

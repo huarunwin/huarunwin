@@ -68,7 +68,27 @@ Future<void> main() async {
       legacyDirectory: legacyDownloads,
       defaultDirectory: systemDownloads == null
           ? legacyDownloads
-          : Directory(p.join(systemDownloads.path, 'huarunwin')),
+          : Directory(p.join(systemDownloads.path, 'downloads')),
+    );
+  } else if (Platform.isAndroid) {
+    Directory? external;
+    try {
+      external = await getExternalStorageDirectory();
+    } catch (_) {
+      // Internal app storage remains available without an external volume.
+    }
+    downloadLocations = await DownloadLocations.load(
+      preferences: preferences,
+      legacyDirectory: legacyDownloads,
+      defaultDirectory: legacyDownloads,
+      directoryOptions: [
+        DownloadDirectoryOption('应用内部存储', legacyDownloads),
+        if (external != null)
+          DownloadDirectoryOption(
+            '应用专用外部存储',
+            Directory(p.join(external.path, 'downloads')),
+          ),
+      ],
     );
   }
   final downloads = DownloadManager(

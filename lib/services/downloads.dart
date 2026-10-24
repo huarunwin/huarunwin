@@ -691,8 +691,8 @@ class DownloadManager extends ChangeNotifier {
       notifyListeners();
     };
   }
-  // The original directory remains the fixed home for tasks.json and Android
-  // private files. Desktop package locations can change independently.
+  // The original directory remains the fixed home for tasks.json and incoming
+  // APK staging. Package locations can change independently.
   final Directory directory;
   final DownloadLocations? locations;
   final AndroidDownloadForeground? foreground;
@@ -1543,6 +1543,23 @@ class DownloadManager extends ChangeNotifier {
     final path = entry['path'] as String;
     final file = File(path);
     final root = await directory.resolveSymbolicLinks();
+    final normalized = p.normalize(p.absolute(path));
+    if (!id.startsWith('incoming-') ||
+        (!p.equals(p.dirname(p.dirname(normalized)), root) &&
+            !p.equals(
+              p.dirname(p.dirname(normalized)),
+              directory.absolute.path,
+            )) ||
+        p.basename(p.dirname(normalized)) != id ||
+        p.extension(normalized).toLowerCase() != '.apk') {
+      throw const FormatException('导入的 APK 路径无效，请重新打开文件。');
+    }
+    final existing = tasks.where((task) => task.id == id).firstOrNull;
+    if (existing != null) {
+      await _persistIncomingApk(existing);
+      await _cleanIncomingCopy(file, existing);
+      return existing;
+    }
     final canonical = await file.resolveSymbolicLinks();
     if (!id.startsWith('incoming-') ||
         !p.isWithin(root, canonical) ||
@@ -1551,20 +1568,32 @@ class DownloadManager extends ChangeNotifier {
         p.extension(canonical).toLowerCase() != '.apk') {
       throw const FormatException('导入的 APK 路径无效，请重新打开文件。');
     }
-    final existing = tasks.where((task) => task.id == id).firstOrNull;
-    if (existing != null) {
-      await _persistIncomingApk(existing);
-      return existing;
-    }
     final bytes = await file.length();
     if (bytes <= 0 || bytes > maxBytes) {
       throw const FormatException('APK 文件大小无效。');
+    }
+    final selected = await locations?.prepareDirectory() ?? Directory(root);
+    var destination = p.join(directory.path, id, p.basename(canonical));
+    if (!p.equals(selected.path, root)) {
+      final folder = await Directory(p.join(selected.path, id))
+          .create(recursive: true);
+      if (!p.equals(await folder.resolveSymbolicLinks(), folder.path)) {
+        throw const FileSystemException('APK 导入目录无效。');
+      }
+      destination = p.join(folder.path, p.basename(canonical));
+      final temporary = await folder.createTemp('.incoming-');
+      try {
+        final copied = await file.copy(p.join(temporary.path, 'package.apk'));
+        await copied.rename(destination);
+      } finally {
+        await temporary.delete(recursive: true);
+      }
     }
     final task = DownloadTask(
       id: id,
       appName: p.basenameWithoutExtension(canonical),
       url: '',
-      filePath: p.join(directory.path, id, p.basename(canonical)),
+      filePath: destination,
       kind: 'apk',
       platform: 'Android',
       createdAt: DateTime.now(),
@@ -1576,7 +1605,26 @@ class DownloadManager extends ChangeNotifier {
     await _updatePackageModifiedTime(task, DownloadPackage.original);
     await _captureApkIdentity(task, DownloadPackage.original);
     await _persistIncomingApk(task);
+    await _cleanIncomingCopy(file, task);
     return task;
+  }
+
+  Future<void> _cleanIncomingCopy(File source, DownloadTask task) async {
+    if (p.equals(source.path, task.filePath)) return;
+    try {
+      if (!await source.exists()) return;
+      // Only remove the staging copy once its new task is durably recorded.
+      final root = await directory.resolveSymbolicLinks();
+      final canonical = await source.resolveSymbolicLinks();
+      if (!p.equals(p.dirname(p.dirname(canonical)), root) ||
+          p.basename(p.dirname(canonical)) != task.id) {
+        return;
+      }
+      await source.delete();
+      if (await source.parent.list().isEmpty) await source.parent.delete();
+    } on FileSystemException {
+      // The durable task remains usable; a later pending import can retry cleanup.
+    }
   }
 
   Future<void> _persistIncomingApk(DownloadTask task) async {

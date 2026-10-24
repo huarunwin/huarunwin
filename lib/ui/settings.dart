@@ -11,6 +11,7 @@ import '../services/github_acceleration.dart';
 import 'about_page.dart';
 import 'adaptive_dialog.dart';
 import 'app_updates.dart';
+import 'app_library_navigation.dart';
 import 'components.dart';
 import 'page_components.dart';
 import 'theme.dart';
@@ -68,26 +69,6 @@ class SettingsPage extends StatelessWidget {
         }
       },
       children: [
-        if (downloads.locations case final locations?)
-          PageSection(
-            title: '下载与安装',
-            bottomSpacing: 16,
-            children: [
-              PageRow(
-                title: '下载目录',
-                subtitle: locations.directory.path,
-                icon: Icons.folder_outlined,
-                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        _DownloadDirectoryPage(locations: locations),
-                  ),
-                ),
-              ),
-            ],
-          ),
         PageSection(
           title: '外观',
           bottomSpacing: 16,
@@ -130,6 +111,26 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
+        if (downloads.locations case final locations?)
+          PageSection(
+            title: '下载与安装',
+            bottomSpacing: 16,
+            children: [
+              PageRow(
+                title: '下载目录',
+                subtitle: locations.directory.path,
+                icon: Icons.folder_outlined,
+                trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        _DownloadDirectoryPage(locations: locations),
+                  ),
+                ),
+              ),
+            ],
+          ),
         PageSection(
           bottomSpacing: 16,
           children: [
@@ -411,6 +412,43 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
         );
         if (confirmed != true || !mounted) return;
         await widget.locations.resetDirectory();
+      } else if (widget.locations.directoryOptions case final options?) {
+        var selected = widget.locations.directory.path;
+        final path = await showAdaptiveForm<String>(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => AdaptiveDialog(
+              title: '选择下载目录',
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in options)
+                    PageRow(
+                      title: option.label,
+                      subtitle: option.directory.path,
+                      trailing: selected == option.directory.path
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: Theme.of(context).colorScheme.primary,
+                            )
+                          : null,
+                      onTap: () => setDialogState(
+                        () => selected = option.directory.path,
+                      ),
+                    ),
+                ],
+              ),
+              actions: DialogActionsRow(
+                confirmLabel: '确认',
+                onCancel: () => Navigator.pop(context),
+                onConfirm: () => Navigator.pop(context, selected),
+              ),
+            ),
+          ),
+        );
+        if (path == null || !mounted) return;
+        selecting = false;
+        await widget.locations.selectDirectory(path);
       } else {
         final current = widget.locations.directory;
         final initial = await current.exists() ? current.path : null;
@@ -473,7 +511,9 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
             ),
             PageSection(
               title: '目录操作',
-              footer: '更改目录仅对新下载和新导入生效，已有任务及文件保留原位置。',
+              footer: widget.locations.directoryOptions == null
+                  ? '更改目录仅对新下载和新导入生效，已有任务及文件保留原位置。'
+                  : '可选择应用专用存储位置。更改仅对新下载和新导入生效，已有文件保留原位置；卸载华润赢会清除这些目录。',
               children: [
                 PageRow(
                   title: '修改目录',
@@ -487,10 +527,16 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                   onTap: _working ? null : _change,
                 ),
                 PageRow(
-                  title: '打开目录',
+                  title: widget.locations.directoryOptions == null
+                      ? '打开目录'
+                      : '查看下载文件',
                   icon: Icons.folder_open_outlined,
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: _working ? null : _open,
+                  onTap: _working
+                      ? null
+                      : widget.locations.directoryOptions == null
+                      ? _open
+                      : () => AppLibraryNavigation.showDownloads(context),
                 ),
                 PageRow(
                   title: '恢复默认目录',

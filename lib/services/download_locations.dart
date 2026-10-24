@@ -4,20 +4,32 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Desktop file locations. History stays in the original application directory.
+class DownloadDirectoryOption {
+  const DownloadDirectoryOption(this.label, this.directory);
+
+  final String label;
+  final Directory directory;
+}
+
+/// Package locations. History stays in the original application directory.
 class DownloadLocations extends ChangeNotifier {
   DownloadLocations._(
     this._preferences,
     this.defaultDirectory,
     this._directory,
     this._roots,
+    this.directoryOptions,
   );
 
-  static const _preferenceKey = 'desktopDownloadDirectories';
+  static const _preferenceKey = 'downloadDirectories';
+  static const _legacyPreferenceKey = 'desktopDownloadDirectories';
   final SharedPreferences _preferences;
   final Directory defaultDirectory;
   Directory _directory;
   Set<String> _roots;
+
+  /// Android only offers app-owned locations that support ordinary file I/O.
+  final List<DownloadDirectoryOption>? directoryOptions;
   Future<void> _pending = Future.value();
 
   Directory get directory => _directory;
@@ -26,10 +38,13 @@ class DownloadLocations extends ChangeNotifier {
     required SharedPreferences preferences,
     required Directory legacyDirectory,
     required Directory defaultDirectory,
+    List<DownloadDirectoryOption>? directoryOptions,
   }) async {
     final legacy = p.normalize(legacyDirectory.absolute.path);
     final fallback = p.normalize(defaultDirectory.absolute.path);
-    final saved = preferences.getStringList(_preferenceKey);
+    final saved =
+        preferences.getStringList(_preferenceKey) ??
+        preferences.getStringList(_legacyPreferenceKey);
     final roots = <String>{
       legacy,
       if (await legacyDirectory.exists())
@@ -51,6 +66,7 @@ class DownloadLocations extends ChangeNotifier {
       Directory(fallback),
       Directory(selected),
       roots,
+      directoryOptions == null ? null : List.unmodifiable(directoryOptions),
     );
     await locations._save(selected, roots);
     return locations;
@@ -112,6 +128,16 @@ class DownloadLocations extends ChangeNotifier {
       throw const FileSystemException('请选择完整的文件夹路径。');
     }
     final selected = Directory(p.normalize(path));
+    if (directoryOptions case final options?) {
+      if (!options.any(
+        (option) => p.equals(
+          p.normalize(option.directory.absolute.path),
+          selected.absolute.path,
+        ),
+      )) {
+        throw const FileSystemException('请选择应用可用的存储位置。');
+      }
+    }
     await selected.create(recursive: true);
     final canonical = p.normalize(await selected.resolveSymbolicLinks());
     final directory = Directory(canonical);

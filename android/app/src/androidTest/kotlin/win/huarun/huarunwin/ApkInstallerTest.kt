@@ -98,6 +98,42 @@ class ApkInstallerTest {
         assertTrue(apk.isFile)
     }
 
+    @Suppress("DEPRECATION")
+    @Test fun appExternalDownloadsCanBeInspectedAndSharedWithReadAccess() {
+        val external = File(requireNotNull(base.getExternalFilesDir(null)),
+            "downloads/installer-qa-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            apk = apk.copyTo(File(external, "fixture.apk"))
+            val inspected = Reply()
+            instrumentation.runOnMainSync {
+                installer.onMethodCall(MethodCall("inspectApk", mapOf("path" to apk.path)), inspected)
+            }
+            assertNull(inspected.await().error)
+            assertEquals(instrumentation.context.packageName, (inspected.value as Map<*, *>)["packageName"])
+            assertNull(open(digest()).error)
+            val chooser = requests.poll(10, TimeUnit.SECONDS)!!
+            val intent = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+            assertNotEquals(0, intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val bytes = base.contentResolver.openInputStream(intent.data!!)!!.use { it.readBytes() }
+            assertArrayEquals(apk.readBytes(), bytes)
+        } finally {
+            external.deleteRecursively()
+        }
+    }
+
+    @Test fun unrelatedAppExternalFilesAreNotAcceptedAsManagedPackages() {
+        val outside = File(requireNotNull(base.getExternalFilesDir(null)),
+            "outside-qa-${System.nanoTime()}.apk")
+        try {
+            apk.copyTo(outside)
+            apk = outside
+            assertEquals("installation", open(digest()).error)
+            assertTrue(requests.isEmpty())
+        } finally {
+            outside.delete()
+        }
+    }
+
     private fun digest() = MessageDigest.getInstance("SHA-256").digest(apk.readBytes())
         .joinToString("") { "%02x".format(it) }
 

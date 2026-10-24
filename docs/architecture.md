@@ -37,7 +37,7 @@
 | `lib/services/download_foreground.dart`、`android/app/src/main/kotlin/win/huarun/huarunwin/DownloadForegroundService.kt` | Android 前台下载服务、聚合进度通知、取消与返回应用库 |
 | `lib/services/app_library.dart`、`lib/ui/app_library_page.dart`、`lib/ui/app_library_overview.dart` | 应用库归组、状态筛选、搜索和排序，复用本机查询与公开 HTML 版本检查；独立页签按需创建，切换时保留状态；统一应用管理页展示本机信息、更新状态及各份文件操作 |
 | `lib/ui/app_library_navigation.dart` | 将详情及栏目中的下载操作交给根导航，返回同一个应用库页签的下载任务筛选 |
-| `lib/services/download_locations.dart` | 桌面下载目录偏好、可写检查、历史受管理目录登记 |
+| `lib/services/download_locations.dart` | Android 与桌面下载目录偏好、可写检查、历史受管理目录登记 |
 | `lib/services/mac_downloads.dart` | App Store 链接识别、按平台解析 GitHub 发布页及附件 HTML、Mac 架构匹配 |
 | `lib/services/github_releases.dart`、`lib/ui/release_download_dialog.dart` | GitHub 版本分页、按需读取资源、版本与资源确认选择 |
 | `lib/services/download_platform.dart`、`lib/ui/app_download_button.dart` | 当前设备与所选平台判断、平台／安装包选择及统一下载入口 |
@@ -87,7 +87,11 @@ Android 用户开始下载后启动非导出的 `dataSync` 前台服务，显示
 
 自身更新任务沿用下载历史，额外保存 `selfUpdateChannel` 和 `selfUpdateJob`，相同 URL 的不同目标版本不合并。准备安装前和退出前均等待记录持久化，保存失败取消退出。桌面安装进程通过独立任务目录的 `ready`／`cancel`、`result`、`error.txt` 与客户端交接，重启或刷新下载管理时读取结果；没有明确成功结果仍保留未确认状态，不根据版本或文件存在推断安装成功。详见 [客户端自身更新](self-updating.md)。
 
-Windows、macOS、Linux 的新安装默认将安装包保存到系统下载目录下的 `huarunwin` 子目录，目录名固定使用小写 ASCII，设置中的“恢复默认”也使用该目录；系统未配置下载目录时沿用应用支持目录下的 `downloads/`。首次升级检测到旧下载目录时保留该目录，不自动迁移文件。桌面下载目录与全部历史受管理根目录一起保存在 `desktopDownloadDirectories` 偏好中；确认所选目录可写且偏好保存成功后才切换，新任务在创建文件前登记实际规范路径。各任务继续保存自己的绝对文件路径，重试、安装、查看和删除均使用原路径；恢复历史及删除检查允许登记过的原目录，并保留子目录、符号链接与根目录保护。目录选择和新任务目录准备串行执行，切换不改写已创建任务。Android 私有 APK 目录及原生 FileProvider 范围不变。
+默认目录名统一为小写 ASCII 的 `downloads`。Windows、macOS、Linux 的新安装和“恢复默认”使用系统下载目录下的该子目录；系统未配置下载目录时沿用应用支持目录下的同名目录。已有目录（包括旧版 `huarunwin` 子目录）与文件保留原位置，不自动迁移。Android 默认使用应用内部存储下的 `downloads`，可选择主外部卷的应用专用文件目录下的同名目录；只提供可直接读写的应用专用位置，不把 SAF content URI 当作普通路径，也不申请全部文件访问权限。外部存储不可用时保留设置与记录，失败可重试，不静默搬迁。iOS 继续使用原有应用目录下的 `downloads`。
+
+下载目录与全部历史受管理根目录一起保存在 `downloadDirectories` 偏好中，兼容读取原 `desktopDownloadDirectories`，新键优先；确认所选目录可写且偏好保存成功后才切换，新任务在创建文件前登记实际规范路径。各任务继续保存自己的绝对文件路径，重试、安装、查看和删除均使用原路径；恢复历史及删除检查允许登记过的原目录，并保留子目录、符号链接与根目录保护。目录选择和新任务目录准备串行执行，切换不改写已创建任务。
+
+Android 从其他应用接收的 APK 仍先进入内部暂存目录；按当前目录复制后先持久化任务，再清理暂存副本，保存失败时保留副本和待确认记录，重复交接不创建第二条任务。原生安装与 FileProvider 仅新增应用专用外部文件目录下的 `downloads` 范围，安装、重签和分享仍逐次核对所选文件，其他外部目录不可作为受管理安装包。目录页的“查看下载文件”返回共用应用库，Android 不向文件管理器暴露整个私有目录。
 
 2026-10-17 按产品要求移除收藏功能，包括桌面／手机导航入口、卡片／列表／详情页按钮及收藏偏好读写；以下早期验证中的收藏记录仅反映当时版本。
 

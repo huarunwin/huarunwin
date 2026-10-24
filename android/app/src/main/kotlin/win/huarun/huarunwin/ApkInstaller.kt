@@ -266,8 +266,11 @@ class ApkInstaller(
     private fun managedApk(path: String?): File {
         require(!path.isNullOrBlank()) { "安装包路径无效。" }
         val file = File(path).canonicalFile
-        val root = File(activity.filesDir, "downloads").canonicalFile
-        require(file.path.startsWith(root.path + File.separator) &&
+        val roots = listOfNotNull(
+            File(activity.filesDir, "downloads"),
+            activity.getExternalFilesDir(null)?.let { File(it, "downloads") },
+        ).map { it.canonicalFile }
+        require(roots.any { file.path.startsWith(it.path + File.separator) } &&
             file.isFile && file.extension.equals("apk", ignoreCase = true)) {
             "请选择华润赢下载管理中的 APK 安装包。"
         }
