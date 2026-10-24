@@ -537,7 +537,7 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                 PageRow(
                   title: '打开目录',
                   icon: Icons.folder_open_outlined,
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 18),
                   onTap: _working ? null : _open,
                 ),
                 PageRow(
