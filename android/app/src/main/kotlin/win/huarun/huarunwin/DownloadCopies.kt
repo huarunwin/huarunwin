@@ -1,6 +1,8 @@
 package win.huarun.huarunwin
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -30,6 +32,7 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "openDirectory" -> openDirectory(result)
             "chooseDirectory" -> {
                 if (picker != null) {
                     result.error("copy_busy", "请先完成当前的文件夹选择。", null)
@@ -129,6 +132,34 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
         ?: throw Failure("copy_permission", "请先选择保存副本的文件夹。")
 
     private fun document(tree: Uri): Uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+
+    private fun openDirectory(result: MethodChannel.Result) {
+        if (!preferences.getBoolean("enabled", false)) {
+            result.error("copy_private_directory", "当前目录为应用专用目录，Android 不允许文件管理器直接访问。可通过“修改目录”选择公共文件夹。", null)
+            return
+        }
+        try {
+            val tree = selectedTree()
+            if (tree.scheme != "content" || !DocumentsContract.isTreeUri(tree) ||
+                resolver.persistedUriPermissions.none { it.uri == tree && it.isReadPermission }) {
+                throw SecurityException()
+            }
+            activity.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(document(tree), DocumentsContract.Document.MIME_TYPE_DIR)
+                // Grant browsing access only to the selected folder and its
+                // descendants, never the app-owned package storage.
+                clipData = ClipData.newRawUri("下载目录", tree)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+            })
+            result.success(null)
+        } catch (_: ActivityNotFoundException) {
+            result.error("copy_open_unavailable", "未找到支持打开此目录的文件管理器。", null)
+        } catch (_: SecurityException) {
+            result.error("copy_permission", "文件夹授权已失效，请通过“修改目录”重新选择。", null)
+        } catch (_: Exception) {
+            result.error("copy_open_failed", "无法打开当前下载目录，请检查文件夹或存储服务是否可用。", null)
+        }
+    }
 
     private fun pickerInitialDirectory(): Uri {
         if (preferences.getBoolean("enabled", false)) {

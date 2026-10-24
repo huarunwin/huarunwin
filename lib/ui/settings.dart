@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/site_parser.dart';
@@ -12,7 +13,6 @@ import '../services/github_acceleration.dart';
 import 'about_page.dart';
 import 'adaptive_dialog.dart';
 import 'app_updates.dart';
-import 'app_library_navigation.dart';
 import 'components.dart';
 import 'page_components.dart';
 import 'theme.dart';
@@ -459,6 +459,10 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
     if (_working) return;
     setState(() => _working = true);
     try {
+      if (widget.copies case final copies?) {
+        await copies.openDirectory();
+        return;
+      }
       final directory = await widget.locations.prepareDirectory();
       if (!await launchUrl(
         directory.uri,
@@ -466,6 +470,8 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
       )) {
         throw StateError('open_directory');
       }
+    } on PlatformException catch (error) {
+      _message(error.message ?? '无法打开当前下载目录，请检查文件夹是否可访问。');
     } catch (_) {
       _message('无法打开下载目录，请检查文件夹是否可访问。');
     } finally {
@@ -524,16 +530,10 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                   onTap: _working ? null : _change,
                 ),
                 PageRow(
-                  title: widget.locations.directoryOptions == null
-                      ? '打开目录'
-                      : '查看下载文件',
+                  title: '打开目录',
                   icon: Icons.folder_open_outlined,
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: _working
-                      ? null
-                      : widget.locations.directoryOptions == null
-                      ? _open
-                      : () => AppLibraryNavigation.showDownloads(context),
+                  onTap: _working ? null : _open,
                 ),
                 PageRow(
                   title: '恢复默认',
