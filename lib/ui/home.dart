@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
@@ -80,8 +81,13 @@ class _HomePageState extends State<HomePage> {
       section == 5 &&
           (_mobilePaths.contains(sitePath) ||
               _historySections.containsKey(sitePath));
-  bool get _usesMobileTabs =>
-      usesMobileDesign(context) && MediaQuery.sizeOf(context).width < 900;
+  bool get _usesMobileTabs {
+    final width = MediaQuery.sizeOf(context).width;
+    return width < 900 &&
+        (defaultTargetPlatform != TargetPlatform.iOS ||
+            width < compactLayoutBreakpoint);
+  }
+
   int _filterRun = 0;
   late int _sourceRevision;
   bool _sourceNeedsMetadata = false;
@@ -149,7 +155,9 @@ class _HomePageState extends State<HomePage> {
       final desktop = MediaQuery.sizeOf(context).width >= 900;
       final mobileTabs = _usesMobileTabs;
       final floatingDock =
-          mobileTabs && MediaQuery.viewInsetsOf(context).bottom == 0;
+          mobileTabs &&
+          usesMobileDesign(context) &&
+          MediaQuery.viewInsetsOf(context).bottom == 0;
       return Scaffold(
         extendBody: floatingDock,
         body: PageBottomInset(
@@ -595,7 +603,7 @@ class _HomePageState extends State<HomePage> {
         controller.coreCatalogs[selectedCore]?.warning;
     final scopeError =
         controller.deviceErrors[device] ?? controller.coreErrors[selectedCore];
-    final title = compact ? '应用' : applicationType?.label ?? '应用';
+    final title = compact ? '发现' : applicationType?.label ?? '发现';
     final padding = compact ? 16.0 : 32.0;
     final filters = CatalogFilterControls(
       inline: inlineFilters,

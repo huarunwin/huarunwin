@@ -202,10 +202,16 @@ class SiteHtmlParser {
       final label = text(
         labelNode?.querySelector('.detail-specs-label-desktop') ?? labelNode,
       );
-      final value = text(
-        row.querySelector('.detail-specs-summary') ??
-            row.querySelector('.detail-specs-value'),
-      );
+      final platforms = row
+          .querySelectorAll('.detail-platform-links a')
+          .map(text)
+          .where((value) => value.isNotEmpty);
+      final value = platforms.isNotEmpty
+          ? platforms.join(' · ')
+          : text(
+              row.querySelector('.detail-specs-summary') ??
+                  row.querySelector('.detail-specs-value'),
+            );
       if (label.isNotEmpty && value.isNotEmpty) facts[label] = value;
     }
     final platformVersions = <String, String>{};

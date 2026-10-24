@@ -1,5 +1,41 @@
 # 验证记录
 
+## 2026-10-24 Telegram 社区入口移至设置首页
+
+将 Telegram 群组与频道从关于页移到设置首页的“帮助与反馈”分组，排在反馈之后；继续复用原有链接和系统打开方式。关于页移除重复社区入口及对应说明，将“网站与社区”分组更名为“网站”，保留访问网站。各平台使用同一设置布局，同步功能文档和项目约定。
+
+`fvm dart format lib/ui/settings.dart lib/ui/about_page.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
+## 2026-10-24 桌面中等宽度保留完整底部导航
+
+修复桌面窗口在 600–899 dp 时将 VPS 和机场入口隐藏的问题。底部导航项不再依赖正文是否使用窄屏视觉；桌面未显示侧栏时始终保留发现、应用库、VPS、机场和设置，达到 900 dp 后继续使用原侧栏。正文布局、浮动导航留白、页面树及非窄屏 iOS 三项导航沿用原规则。
+
+`fvm dart format lib/ui/home.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
+## 2026-10-24 发现页标题与导航统一
+
+将窄屏首页及宽屏全部目录的主标题由“应用”改为“发现”，与底部导航及桌面侧栏命名一致；宽屏具体应用类型页继续显示对应类型名称。同步功能文档和项目约定。
+
+`fvm dart format lib/ui/home.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
+## 2026-10-24 移除应用截图预览切换按钮
+
+应用详情的截图预览分区在所有平台及窗口宽度移除标题右侧的左右切换按钮，并清理仅供按钮使用的滚动状态监听与跳转逻辑；保留横向滚动、滚动位置和点击放大。
+
+`fvm dart format lib/ui/detail_components.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
+## 2026-10-24 应用详情预览与更新分区顺序
+
+应用详情在元信息栏之后先展示截图预览，再展示“新功能／版本信息”，随后为应用介绍；手机与桌面使用相同顺序。同步功能文档和项目约定。
+
+`fvm dart format lib/ui/detail.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
+## 2026-10-24 应用详情平台名称分隔
+
+修复“详细信息 → 适用平台”将相邻 HTML 平台链接直接拼接的问题，按独立链接提取名称并使用 ` · ` 分隔；沿用原生可选择文本的自然换行。核对现有 FlClash、Clash Verge Rev HTML 样本及线上 FlClash 详情，线上页面返回 200，平台仍以独立链接提供。
+
+`fvm dart format lib/data/html_parser.dart`、`fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未运行测试，未重新构建或进行设备页面验证。
+
 以下迁自原 README，保留各次改动的验证范围、设备条件和未覆盖事项。记录仅代表当时版本，不表示当前全部平台或最新改动均已验证；当前功能约定见 [AGENTS.md](../AGENTS.md)。文中的命令和源码路径以仓库根目录为基准。
 
 历史记录中的 Flutter／Dart 命令统一以项目 FVM 入口表示，个人安装路径、设备名称和代理地址已省略；这仅是命令与环境信息的通用化，不代表重新执行了历史检查。

@@ -386,25 +386,6 @@ class AppScreenshotGallery extends StatefulWidget {
 
 class _AppScreenshotGalleryState extends State<AppScreenshotGallery> {
   final scroll = ScrollController();
-  bool canBack = false, canForward = false;
-
-  @override
-  void initState() {
-    super.initState();
-    scroll.addListener(_update);
-  }
-
-  void _update() {
-    if (!mounted || !scroll.hasClients) return;
-    final back = scroll.offset > 1;
-    final forward = scroll.offset < scroll.position.maxScrollExtent - 1;
-    if (back != canBack || forward != canForward) {
-      setState(() {
-        canBack = back;
-        canForward = forward;
-      });
-    }
-  }
 
   @override
   void dispose() {
@@ -412,78 +393,46 @@ class _AppScreenshotGalleryState extends State<AppScreenshotGallery> {
     super.dispose();
   }
 
-  void _move(int direction) {
-    if (!scroll.hasClients) return;
-    scroll.animateTo(
-      (scroll.offset + direction * scroll.position.viewportDimension * .85)
-          .clamp(0.0, scroll.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   @override
   Widget build(BuildContext context) => DetailSection(
     title: '预览',
-    trailing: widget.urls.length < 2
-        ? null
-        : Row(
-            children: [
-              IconButton(
-                tooltip: '上一组截图',
-                onPressed: canBack ? () => _move(-1) : null,
-                icon: const Icon(Icons.chevron_left_rounded),
-              ),
-              IconButton(
-                tooltip: '下一组截图',
-                onPressed: canForward ? () => _move(1) : null,
-                icon: const Icon(Icons.chevron_right_rounded),
-              ),
-            ],
-          ),
     child: LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxWidth < 600
             ? (MediaQuery.sizeOf(context).height * .42).clamp(180.0, 320.0)
             : 320.0;
         final colors = Theme.of(context).colorScheme;
-        return NotificationListener<ScrollMetricsNotification>(
-          onNotification: (_) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => _update());
-            return false;
-          },
-          child: SizedBox(
-            height: height,
-            child: ListView.separated(
-              controller: scroll,
-              scrollDirection: Axis.horizontal,
-              itemCount: widget.urls.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 16),
-              itemBuilder: (context, index) => ClipPath.shape(
-                shape: surfaceShape(12),
-                child: Material(
-                  color: colors.surfaceContainer,
-                  child: InkWell(
-                    onTap: () => _preview(index),
-                    child: ContentImage(
-                      imageUrl: widget.urls[index],
+        return SizedBox(
+          height: height,
+          child: ListView.separated(
+            controller: scroll,
+            scrollDirection: Axis.horizontal,
+            itemCount: widget.urls.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
+            itemBuilder: (context, index) => ClipPath.shape(
+              shape: surfaceShape(12),
+              child: Material(
+                color: colors.surfaceContainer,
+                child: InkWell(
+                  onTap: () => _preview(index),
+                  child: ContentImage(
+                    imageUrl: widget.urls[index],
+                    height: height,
+                    fit: BoxFit.contain,
+                    imageBuilder: (context, provider) => Image(
+                      image: provider,
                       height: height,
                       fit: BoxFit.contain,
-                      imageBuilder: (context, provider) => Image(
-                        image: provider,
-                        height: height,
-                        fit: BoxFit.contain,
-                        semanticLabel: '应用截图 ${index + 1}',
-                      ),
-                      placeholder: (_, _) => SizedBox(
-                        width: height * .6,
-                        child: const Center(child: CircularProgressIndicator()),
-                      ),
-                      errorWidget: (_, _, _) => SizedBox(
-                        width: height * .6,
-                        child: const Center(
-                          child: Icon(Icons.broken_image_outlined),
-                        ),
+                      semanticLabel: '应用截图 ${index + 1}',
+                    ),
+                    placeholder: (_, _) => SizedBox(
+                      width: height * .6,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                    errorWidget: (_, _, _) => SizedBox(
+                      width: height * .6,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_outlined),
                       ),
                     ),
                   ),

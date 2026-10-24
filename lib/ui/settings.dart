@@ -130,6 +130,20 @@ class SettingsPage extends StatelessWidget {
               onTap: () =>
                   openLink(context, '${SiteRoutes.origin}/corrections'),
             ),
+            for (final entry in SiteRoutes.onlineLinks.entries.where(
+              (entry) => entry.key != '/corrections',
+            ))
+              PageRow(
+                title: entry.value,
+                icon: Icons.send_outlined,
+                trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                onTap: () => openLink(
+                  context,
+                  entry.key.startsWith('/')
+                      ? '${SiteRoutes.origin}${entry.key}'
+                      : entry.key,
+                ),
+              ),
           ],
         ),
         PageSection(

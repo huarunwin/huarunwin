@@ -85,8 +85,7 @@ class AboutPage extends StatelessWidget {
             ],
           ),
           PageSection(
-            title: '网站与社区',
-            footer: '社区链接在系统浏览器中打开。',
+            title: '网站',
             children: [
               PageRow(
                 title: '访问网站',
@@ -94,20 +93,6 @@ class AboutPage extends StatelessWidget {
                 trailing: const Icon(Icons.open_in_new_rounded, size: 16),
                 onTap: () => openLink(context, SiteRoutes.origin),
               ),
-              for (final entry in SiteRoutes.onlineLinks.entries.where(
-                (entry) => entry.key != '/corrections',
-              ))
-                PageRow(
-                  title: entry.value,
-                  icon: Icons.send_outlined,
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: () => openLink(
-                    context,
-                    entry.key.startsWith('/')
-                        ? '${SiteRoutes.origin}${entry.key}'
-                        : entry.key,
-                  ),
-                ),
             ],
           ),
         ],

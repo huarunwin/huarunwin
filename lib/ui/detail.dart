@@ -174,6 +174,8 @@ class _DetailPageState extends State<DetailPage> {
             ? detail.app.description
             : '';
         final sections = <Widget>[
+          if (detail.screenshots.isNotEmpty)
+            AppScreenshotGallery(urls: detail.screenshots),
           if (detail.changelog.isNotEmpty || compact && hasReleaseInfo)
             DetailSection(
               title: detail.changelog.isNotEmpty ? '新功能' : '版本信息',
@@ -201,8 +203,6 @@ class _DetailPageState extends State<DetailPage> {
                 ],
               ),
             ),
-          if (detail.screenshots.isNotEmpty)
-            AppScreenshotGallery(urls: detail.screenshots),
           if (description.isNotEmpty)
             DetailSection(
               title: '应用介绍',
