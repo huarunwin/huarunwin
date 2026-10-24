@@ -109,13 +109,7 @@ class SettingsPage extends StatelessWidget {
                 }
               },
             ),
-          ],
-        ),
-        if (downloads.locations case final locations?)
-          PageSection(
-            title: '下载与安装',
-            bottomSpacing: 16,
-            children: [
+            if (downloads.locations case final locations?)
               PageRow(
                 title: '下载目录',
                 subtitle: locations.directory.path,
@@ -129,8 +123,8 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ),
+          ],
+        ),
         PageSection(
           bottomSpacing: 16,
           children: [
