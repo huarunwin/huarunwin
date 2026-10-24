@@ -40,6 +40,9 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
                     activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            putExtra(DocumentsContract.EXTRA_INITIAL_URI, pickerInitialDirectory())
+                        }
                     }, PICK_DIRECTORY)
                 } catch (_: Exception) {
                     picker = null
@@ -126,6 +129,21 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
         ?: throw Failure("copy_permission", "请先选择保存副本的文件夹。")
 
     private fun document(tree: Uri): Uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+
+    private fun pickerInitialDirectory(): Uri {
+        if (preferences.getBoolean("enabled", false)) {
+            preferences.getString("treeUri", null)?.let { saved ->
+                try {
+                    val tree = Uri.parse(saved)
+                    if (tree.scheme == "content" && DocumentsContract.isTreeUri(tree)) return document(tree)
+                } catch (_: Exception) { /* Let the picker use the public Downloads folder. */ }
+            }
+        }
+        // App-owned internal storage and Android/data cannot be browsed by
+        // modern system pickers. Start at the public Downloads folder instead.
+        return DocumentsContract.buildDocumentUri(
+            "com.android.externalstorage.documents", "primary:${Environment.DIRECTORY_DOWNLOADS}")
+    }
 
     private fun requireFolder(tree: Uri): String {
         if (tree.scheme != "content" || !DocumentsContract.isTreeUri(tree) ||
