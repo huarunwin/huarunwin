@@ -53,11 +53,17 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
                 if (validate) cleanupPartial()
                 settings(validate)
             }
-            "setEnabled" -> execute(result) {
-                val enabled = call.argument<Boolean>("enabled") == true
-                if (enabled) requireFolder(selectedTree())
-                checkSaved(preferences.edit().putBoolean("enabled", enabled).commit())
-                settings()
+            "resetDirectory" -> execute(result) {
+                val old = preferences.getString("treeUri", null)
+                checkSaved(preferences.edit().putBoolean("enabled", false)
+                    .remove("treeUri").remove("label").commit())
+                cleanupPartial()
+                if (old != null && partials().isEmpty()) {
+                    try { resolver.releasePersistableUriPermission(Uri.parse(old),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+                    catch (_: Exception) { /* The folder may already be unavailable. */ }
+                }
+                settings(false)
             }
             "copy" -> {
                 val id = call.argument<String>("id")
@@ -136,15 +142,16 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
 
     private fun settings(validate: Boolean = true): Map<String, Any?> {
         val tree = preferences.getString("treeUri", null)
+        val enabled = preferences.getBoolean("enabled", false)
         var warning: String? = null
         // Startup only reads preferences. A remote document provider must not
         // prevent the app from showing its first page.
-        if (tree != null && validate) {
+        if (enabled && tree != null && validate) {
             try { requireFolder(Uri.parse(tree)) }
             catch (_: Exception) { warning = "文件夹不可用或授权已失效，请重新选择。" }
         }
         if (warning == null && partials().isNotEmpty()) warning = "上次中断的临时副本尚未清理；请恢复原文件夹授权后刷新。"
-        return mapOf("enabled" to preferences.getBoolean("enabled", false), "treeUri" to tree,
+        return mapOf("enabled" to enabled, "treeUri" to tree,
             "label" to preferences.getString("label", null), "warning" to warning)
     }
 

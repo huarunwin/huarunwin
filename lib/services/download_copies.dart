@@ -9,6 +9,10 @@ class AndroidDownloadCopies extends ChangeNotifier {
   bool enabled = false;
   String? treeUri, directoryLabel, warning;
 
+  bool get hasCustomDirectory => enabled && treeUri != null;
+  String get directoryDescription =>
+      hasCustomDirectory ? directoryLabel ?? '已选择的文件夹' : '应用默认位置';
+
   void _apply(Map<Object?, Object?> settings) {
     enabled = settings['enabled'] == true;
     treeUri = settings['treeUri'] as String?;
@@ -39,10 +43,9 @@ class AndroidDownloadCopies extends ChangeNotifier {
     return true;
   }
 
-  Future<void> setEnabled(bool value) async {
+  Future<void> resetDirectory() async {
     final settings = await _channel.invokeMapMethod<Object?, Object?>(
-      'setEnabled',
-      {'enabled': value},
+      'resetDirectory',
     );
     if (settings != null) _apply(settings);
   }
@@ -54,7 +57,7 @@ class AndroidDownloadCopies extends ChangeNotifier {
     String? sha256,
   }) async {
     final target = treeUri;
-    if (target == null) {
+    if (!hasCustomDirectory || target == null) {
       throw PlatformException(
         code: 'copy_permission',
         message: '请先在下载目录设置中选择保存副本的文件夹。',

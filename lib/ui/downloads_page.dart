@@ -677,7 +677,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   (task.savingCopy ||
                       available &&
                           !task.busy &&
-                          widget.manager.copies?.treeUri != null))
+                          widget.manager.copies?.hasCustomDirectory == true))
                 OutlinedButton.icon(
                   onPressed: task.deleting
                       ? null

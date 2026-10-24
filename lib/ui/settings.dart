@@ -60,6 +60,7 @@ class SettingsPage extends StatelessWidget {
         try {
           await controller.refreshPreferences();
           await downloads.locations?.refreshPreferences();
+          await downloads.copies?.refresh(validate: false);
           await downloads.github?.reload();
         } catch (_) {
           if (context.mounted) {
@@ -113,7 +114,9 @@ class SettingsPage extends StatelessWidget {
             if (downloads.locations case final locations?)
               PageRow(
                 title: '下载目录',
-                subtitle: locations.directory.path,
+                subtitle:
+                    downloads.copies?.directoryDescription ??
+                    locations.directory.path,
                 icon: Icons.folder_outlined,
                 trailing: const Icon(Icons.chevron_right_rounded, size: 18),
                 onTap: () => Navigator.push(
@@ -404,9 +407,17 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(widget.locations.defaultDirectory.path),
+                SelectableText(
+                  widget.copies == null
+                      ? widget.locations.defaultDirectory.path
+                      : '应用默认位置',
+                ),
                 const SizedBox(height: 12),
-                const Text('新任务将保存到此目录，已有任务及文件保留原位置。'),
+                Text(
+                  widget.copies == null
+                      ? '新任务将保存到此目录，已有任务及文件保留原位置。'
+                      : '新下载将使用应用默认位置，不再保存到自选文件夹；已有任务及文件保留原位置。',
+                ),
               ],
             ),
             actions: DialogActionsRow(
@@ -418,43 +429,10 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
         );
         if (confirmed != true || !mounted) return;
         await widget.locations.resetDirectory();
-      } else if (widget.locations.directoryOptions case final options?) {
-        var selected = widget.locations.directory.path;
-        final path = await showAdaptiveForm<String>(
-          context: context,
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => AdaptiveDialog(
-              title: '选择应用存储位置',
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final option in options)
-                    PageRow(
-                      title: option.label,
-                      subtitle: option.directory.path,
-                      trailing: selected == option.directory.path
-                          ? Icon(
-                              Icons.check_rounded,
-                              color: Theme.of(context).colorScheme.primary,
-                            )
-                          : null,
-                      onTap: () => setDialogState(
-                        () => selected = option.directory.path,
-                      ),
-                    ),
-                ],
-              ),
-              actions: DialogActionsRow(
-                confirmLabel: '确认',
-                onCancel: () => Navigator.pop(context),
-                onConfirm: () => Navigator.pop(context, selected),
-              ),
-            ),
-          ),
-        );
-        if (path == null || !mounted) return;
+        await widget.copies?.resetDirectory();
+      } else if (widget.copies case final copies?) {
         selecting = false;
-        await widget.locations.selectDirectory(path);
+        if (!await copies.chooseDirectory()) return;
       } else {
         final current = widget.locations.directory;
         final initial = await current.exists() ? current.path : null;
@@ -467,7 +445,13 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
         selecting = false;
         await widget.locations.selectDirectory(selected);
       }
-      _message('下载目录已更新，仅对新任务生效。');
+      _message(
+        widget.copies == null
+            ? '下载目录已更新，仅对新任务生效。'
+            : reset
+            ? '已恢复默认目录，已有文件保留原位置。'
+            : '下载目录已更新，之后完成的原始 APK 将自动保存副本。',
+      );
     } catch (_) {
       _message(selecting ? '无法打开目录选择窗口，请重试。' : '无法使用此目录，请检查文件夹权限、磁盘连接和可用空间。');
     } finally {
@@ -493,37 +477,6 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
     }
   }
 
-  Future<void> _chooseCopyDirectory() async {
-    if (_working) return;
-    setState(() => _working = true);
-    try {
-      if (await widget.copies!.chooseDirectory()) {
-        _message('已启用自动保存副本，对之后完成的 APK 下载生效。');
-      }
-    } catch (_) {
-      _message('无法使用此文件夹，请重新选择并允许读写。');
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
-  }
-
-  Future<void> _setCopyEnabled(bool value) async {
-    if (_working) return;
-    if (value && widget.copies!.treeUri == null) {
-      await _chooseCopyDirectory();
-      return;
-    }
-    setState(() => _working = true);
-    try {
-      await widget.copies!.setEnabled(value);
-    } catch (_) {
-      _message('未能修改自动保存设置，请重新选择文件夹后重试。');
-      await widget.copies?.refresh();
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
     body: PageSafeArea(
@@ -535,27 +488,36 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
           onRefresh: _refresh,
           children: [
             PageSection(
-              title: widget.copies == null ? '当前目录' : '应用存储位置',
+              title: '当前下载目录',
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: SelectableText(
-                    widget.locations.directory.path,
+                    widget.copies?.directoryDescription ??
+                        widget.locations.directory.path,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
+                if (widget.copies?.warning case final warning?)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Text(
+                      warning,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
               ],
             ),
             PageSection(
               title: '目录操作',
-              footer: widget.locations.directoryOptions == null
+              footer: widget.copies == null
                   ? '更改目录仅对新下载和新导入生效，已有任务及文件保留原位置。'
-                  : '可选择应用专用存储位置。更改仅对新下载和新导入生效，已有文件保留原位置；卸载华润赢会清除这些目录。',
+                  : '选择其他文件夹后，原始 APK 下载完成会自动保存副本；安装所需文件仍由应用管理。',
               children: [
                 PageRow(
-                  title: widget.locations.directoryOptions == null
-                      ? '修改目录'
-                      : '选择存储位置',
+                  title: '修改目录',
                   icon: Icons.folder_outlined,
                   trailing: _working
                       ? const SizedBox.square(
@@ -578,47 +540,12 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
                       : () => AppLibraryNavigation.showDownloads(context),
                 ),
                 PageRow(
-                  title: '恢复默认目录',
+                  title: '恢复默认',
                   icon: Icons.restart_alt_rounded,
                   onTap: _working ? null : () => _change(reset: true),
                 ),
               ],
             ),
-            if (widget.copies case final copies?)
-              PageSection(
-                title: '保存下载副本',
-                footer: '原始 APK 下载完成并校验后，另存一份到所选文件夹。已有下载、导入包和重签包不会自动复制。关闭此功能或删除应用内文件不会删除已保存的副本。',
-                children: [
-                  PageRow(
-                    title: '自动保存到其他文件夹',
-                    icon: Icons.save_alt_rounded,
-                    trailing: Switch(
-                      value: copies.enabled,
-                      onChanged: _working ? null : _setCopyEnabled,
-                    ),
-                    onTap: _working
-                        ? null
-                        : () => _setCopyEnabled(!copies.enabled),
-                  ),
-                  PageRow(
-                    title: copies.treeUri == null ? '选择文件夹' : '修改文件夹',
-                    subtitle: copies.directoryLabel ?? '使用系统文件夹选择器授权保存位置。',
-                    icon: Icons.folder_outlined,
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-                    onTap: _working ? null : _chooseCopyDirectory,
-                  ),
-                  if (copies.warning case final warning?)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        warning,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
           ],
         ),
       ),
