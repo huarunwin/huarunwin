@@ -407,11 +407,7 @@ class _DownloadDirectoryPageState extends State<_DownloadDirectoryPage> {
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  widget.copies == null
-                      ? widget.locations.defaultDirectory.path
-                      : '应用默认位置',
-                ),
+                SelectableText(widget.locations.defaultDirectory.path),
                 const SizedBox(height: 12),
                 Text(
                   widget.copies == null

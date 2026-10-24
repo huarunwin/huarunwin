@@ -7,16 +7,17 @@ import 'package:flutter/services.dart';
 class AndroidDownloadCopies extends ChangeNotifier {
   static const _channel = MethodChannel('win.huarun/download_copies');
   bool enabled = false;
-  String? treeUri, directoryLabel, warning;
+  String? treeUri, directoryLabel, directoryLocation, warning;
 
   bool get hasCustomDirectory => enabled && treeUri != null;
-  String get directoryDescription =>
-      hasCustomDirectory ? directoryLabel ?? '已选择的文件夹' : '应用默认位置';
+  String? get directoryDescription =>
+      hasCustomDirectory ? directoryLocation ?? treeUri : null;
 
   void _apply(Map<Object?, Object?> settings) {
     enabled = settings['enabled'] == true;
     treeUri = settings['treeUri'] as String?;
     directoryLabel = settings['label'] as String?;
+    directoryLocation = settings['location'] as String?;
     warning = settings['warning'] as String?;
     notifyListeners();
   }

@@ -3,7 +3,9 @@ package win.huarun.huarunwin
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -152,7 +154,32 @@ class DownloadCopies(private val activity: Activity) : MethodChannel.MethodCallH
         }
         if (warning == null && partials().isNotEmpty()) warning = "上次中断的临时副本尚未清理；请恢复原文件夹授权后刷新。"
         return mapOf("enabled" to enabled, "treeUri" to tree,
-            "label" to preferences.getString("label", null), "warning" to warning)
+            "label" to preferences.getString("label", null),
+            "location" to tree?.let { folderLocation(Uri.parse(it)) }, "warning" to warning)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun folderLocation(tree: Uri): String {
+        // Display only: every operation on the selected folder still uses SAF.
+        // Other providers, including cloud storage, need not have a local path.
+        if (tree.authority != "com.android.externalstorage.documents") return tree.toString()
+        return try {
+            val parts = DocumentsContract.getTreeDocumentId(tree).split(':', limit = 2)
+            if (parts.size != 2) return tree.toString()
+            val (volumeId, relative) = parts
+            val root = if (Build.VERSION.SDK_INT >= 30) {
+                activity.getSystemService(StorageManager::class.java)?.storageVolumes?.firstOrNull {
+                    if (volumeId == "primary") it.isPrimary else it.uuid.equals(volumeId, true)
+                }?.directory
+            } else if (volumeId == "primary") {
+                Environment.getExternalStorageDirectory()
+            } else null
+            if (root == null || relative.startsWith('/') ||
+                relative.split('/').any { it == "." || it == ".." }) return tree.toString()
+            if (relative.isEmpty()) root.absolutePath else File(root, relative).absolutePath
+        } catch (_: Exception) {
+            tree.toString()
+        }
     }
 
     private fun managedFile(path: String?): File {
