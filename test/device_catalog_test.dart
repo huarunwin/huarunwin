@@ -189,7 +189,7 @@ void main() {
         }
 
         await choose('Steam Deck');
-        expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+        expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
         expect(find.text('Deck Plugin'), findsOneWidget);
         expect(find.text('Desktop Linux'), findsNothing);
         expect(repository.calls, [CatalogDevice.steamDeck]);

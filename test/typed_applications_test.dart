@@ -309,7 +309,7 @@ void main() {
           expect(find.text('1 款应用'), findsOneWidget);
           expect(
             tester.widget<PageHeader>(find.byType(PageHeader)).title,
-            '应用',
+            '发现',
           );
           expect(find.text('搜索范围：所有类型与平台'), findsNothing);
           expect(
@@ -453,7 +453,7 @@ void main() {
         find.byKey(const ValueKey('catalog-platform-menu')),
         findsOneWidget,
       );
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       expect(find.text('1 款应用'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -518,7 +518,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('nav-applications')));
       await tester.pumpAndSettle();
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       expect(find.text('1 款应用'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -737,13 +737,13 @@ void main() {
       expect(find.byKey(const ValueKey('catalog-platform-menu')), findsNothing);
       expect(find.text('blackmatrix7 规则集'), findsOneWidget);
       expect(find.text('1 款应用'), findsOneWidget);
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       tester.view.physicalSize = const Size(1240, 900);
       await tester.pumpAndSettle();
       expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '规则与配置');
       tester.view.physicalSize = const Size(390, 844);
       await tester.pumpAndSettle();
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       expect(find.text('blackmatrix7 规则集'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

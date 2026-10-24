@@ -579,7 +579,7 @@ void main() {
       await tester.tapAt(const Offset(900, 580));
       await tester.pumpAndSettle();
       expect(controller.catalogPlatform, '全部');
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
 
       await tester.tap(platform);
       await tester.pumpAndSettle();
@@ -587,7 +587,7 @@ void main() {
       await tester.ensureVisible(mac);
       await tester.tap(mac);
       await tester.pumpAndSettle();
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       expect(controller.catalogPlatform, 'macOS');
       expect(find.byTooltip('平台与设备：Mac'), findsOneWidget);
       expect(
@@ -613,7 +613,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byTooltip('平台与设备：Asuswrt-Merlin'), findsOneWidget);
-      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '应用');
+      expect(tester.widget<PageHeader>(find.byType(PageHeader)).title, '发现');
       await tester.tap(find.byKey(const ValueKey('catalog-platform-menu')));
       await tester.pumpAndSettle();
       expect(

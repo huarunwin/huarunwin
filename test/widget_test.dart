@@ -140,7 +140,8 @@ void main() {
     expect(find.text('Android Example'), findsNothing);
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
-    expect(find.text('应用目录'), findsOneWidget);
+    expect(find.text('应用目录'), findsNothing);
+    expect(find.text('帮助与反馈'), findsOneWidget);
     expect(
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
       2,

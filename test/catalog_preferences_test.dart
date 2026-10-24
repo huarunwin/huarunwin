@@ -240,15 +240,18 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('恢复默认平台筛选'), findsNothing);
         await tester.ensureVisible(find.text('高级设置'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('高级设置'));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('恢复默认平台筛选'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('恢复默认平台筛选'));
         await tester.pumpAndSettle();
         expect(preferences.containsKey('catalogPlatform'), isFalse);
         expect(preferences.getString('theme'), 'dark');
         expect(preferences.getBool('catalogGrid'), isFalse);
         await tester.ensureVisible(find.byTooltip('返回'));
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('返回'));
         await tester.pumpAndSettle();
         await tester.tap(
