@@ -102,9 +102,6 @@ class SettingsPage extends StatelessWidget {
             children: [
               PageRow(
                 title: '下载目录',
-                subtitle:
-                    downloads.copies?.directoryDescription ??
-                    locations.directory.path,
                 icon: Icons.folder_outlined,
                 trailing: const Icon(Icons.chevron_right_rounded, size: 18),
                 onTap: () => Navigator.push(
