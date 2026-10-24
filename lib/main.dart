@@ -61,14 +61,20 @@ Future<void> main() async {
     try {
       systemDownloads = await getDownloadsDirectory();
     } catch (_) {
-      // A desktop without a configured Downloads folder keeps the old default.
+      // Fall back to the conventional Downloads folder in the user's home.
+    }
+    final userHome = Platform.isWindows
+        ? Platform.environment['USERPROFILE']
+        : Platform.environment['HOME'];
+    if (systemDownloads == null && userHome != null && p.isAbsolute(userHome)) {
+      systemDownloads = Directory(p.join(userHome, 'Downloads'));
     }
     downloadLocations = await DownloadLocations.load(
       preferences: preferences,
       legacyDirectory: legacyDownloads,
       defaultDirectory: systemDownloads == null
           ? legacyDownloads
-          : Directory(p.join(systemDownloads.path, 'downloads')),
+          : Directory(p.join(systemDownloads.path, 'HuaRunWin Downloads')),
     );
   } else if (Platform.isAndroid) {
     Directory? external;
@@ -77,17 +83,21 @@ Future<void> main() async {
     } catch (_) {
       // Internal app storage remains available without an external volume.
     }
+    final externalDirectory = await DownloadLocations.firstWritableDirectory([
+      if (external != null) ...[
+        // Android's DIRECTORY_DOWNLOADS uses this name on the primary volume.
+        Directory(p.join(external.path, 'Download')),
+        Directory(p.join(external.path, 'downloads')),
+      ],
+    ]);
     downloadLocations = await DownloadLocations.load(
       preferences: preferences,
       legacyDirectory: legacyDownloads,
-      defaultDirectory: legacyDownloads,
+      defaultDirectory: externalDirectory ?? legacyDownloads,
       directoryOptions: [
+        if (externalDirectory != null)
+          DownloadDirectoryOption('应用专用外部存储', externalDirectory),
         DownloadDirectoryOption('应用内部存储', legacyDownloads),
-        if (external != null)
-          DownloadDirectoryOption(
-            '应用专用外部存储',
-            Directory(p.join(external.path, 'downloads')),
-          ),
       ],
     );
   }

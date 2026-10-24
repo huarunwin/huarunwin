@@ -100,24 +100,27 @@ class ApkInstallerTest {
 
     @Suppress("DEPRECATION")
     @Test fun appExternalDownloadsCanBeInspectedAndSharedWithReadAccess() {
-        val external = File(requireNotNull(base.getExternalFilesDir(null)),
-            "downloads/installer-qa-${System.nanoTime()}").apply { mkdirs() }
-        try {
-            apk = apk.copyTo(File(external, "fixture.apk"))
-            val inspected = Reply()
-            instrumentation.runOnMainSync {
-                installer.onMethodCall(MethodCall("inspectApk", mapOf("path" to apk.path)), inspected)
+        val original = apk
+        for (directory in listOf("Download", "downloads")) {
+            val external = File(requireNotNull(base.getExternalFilesDir(null)),
+                "$directory/installer-qa-${System.nanoTime()}").apply { mkdirs() }
+            try {
+                apk = original.copyTo(File(external, "fixture.apk"))
+                val inspected = Reply()
+                instrumentation.runOnMainSync {
+                    installer.onMethodCall(MethodCall("inspectApk", mapOf("path" to apk.path)), inspected)
+                }
+                assertNull(inspected.await().error)
+                assertEquals(instrumentation.context.packageName, (inspected.value as Map<*, *>)["packageName"])
+                assertNull(open(digest()).error)
+                val chooser = requests.poll(10, TimeUnit.SECONDS)!!
+                val intent = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+                assertNotEquals(0, intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val bytes = base.contentResolver.openInputStream(intent.data!!)!!.use { it.readBytes() }
+                assertArrayEquals(apk.readBytes(), bytes)
+            } finally {
+                external.deleteRecursively()
             }
-            assertNull(inspected.await().error)
-            assertEquals(instrumentation.context.packageName, (inspected.value as Map<*, *>)["packageName"])
-            assertNull(open(digest()).error)
-            val chooser = requests.poll(10, TimeUnit.SECONDS)!!
-            val intent = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
-            assertNotEquals(0, intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val bytes = base.contentResolver.openInputStream(intent.data!!)!!.use { it.readBytes() }
-            assertArrayEquals(apk.readBytes(), bytes)
-        } finally {
-            external.deleteRecursively()
         }
     }
 

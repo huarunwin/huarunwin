@@ -34,6 +34,34 @@ class DownloadLocations extends ChangeNotifier {
 
   Directory get directory => _directory;
 
+  static Future<Directory?> firstWritableDirectory(
+    Iterable<Directory> candidates,
+  ) async {
+    for (final directory in candidates) {
+      try {
+        await _ensureWritable(directory);
+        return directory;
+      } on FileSystemException {
+        // Android can report an external directory that is not writable.
+      }
+    }
+    return null;
+  }
+
+  static Future<void> _ensureWritable(Directory directory) async {
+    await directory.create(recursive: true);
+    // Creating a folder alone does not establish that package files can be
+    // written. Use a unique, temporary probe and remove only what we created.
+    final probe = await directory.createTemp('.huarun-write-');
+    final file = File(p.join(probe.path, 'probe'));
+    try {
+      await file.writeAsBytes([0], flush: true);
+    } finally {
+      if (await file.exists()) await file.delete();
+      await probe.delete();
+    }
+  }
+
   static Future<DownloadLocations> load({
     required SharedPreferences preferences,
     required Directory legacyDirectory,
@@ -53,7 +81,7 @@ class DownloadLocations extends ChangeNotifier {
         if (p.isAbsolute(path)) p.normalize(path),
     };
     // Earlier versions created this directory even without any downloads.
-    // Keep their files in place; fresh installations use the system Downloads.
+    // Keep their files in place; fresh installations use the platform default.
     final selected =
         saved != null && saved.isNotEmpty && p.isAbsolute(saved.first)
         ? p.normalize(saved.first)
@@ -141,16 +169,7 @@ class DownloadLocations extends ChangeNotifier {
     await selected.create(recursive: true);
     final canonical = p.normalize(await selected.resolveSymbolicLinks());
     final directory = Directory(canonical);
-    // Creating a folder alone does not establish that package files can be
-    // written. Use a unique, temporary probe and remove only what we created.
-    final probe = await directory.createTemp('.huarun-write-');
-    final file = File(p.join(probe.path, 'probe'));
-    try {
-      await file.writeAsBytes([0], flush: true);
-    } finally {
-      if (await file.exists()) await file.delete();
-      await probe.delete();
-    }
+    await _ensureWritable(directory);
     final roots = {..._roots, canonical};
     // Retain the requested alias too, particularly for the default folder.
     roots.add(selected.path);

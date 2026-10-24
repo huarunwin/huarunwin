@@ -924,3 +924,10 @@ macOS 在 Apple Silicon 上实际启动 Release，检查宽屏及折叠侧栏的
 本轮没有连接 Android 真机；Android 页面行为由 Flutter Widget 测试覆盖，原生安装／重签／改包等由模拟器 instrumentation 覆盖，未将其写成真机逐页验收。Intel Mac 仅验证编译架构，未在 Intel 硬件运行；未重复进行真实管理员认证或替换用户已安装应用。构建中的第三方弃用／SDK 工具版本提示不影响本轮检查通过。两小时策略使用受控的持久化时间验证，没有实际等待两小时。
 
 日志和安装包保留在忽略的 `build/qa-2026-10-23/`、`build/app/outputs/flutter-apk/` 与 `build/macos/Build/Products/Release/`；所改 Dart 文件格式及 `git diff --check` 通过。未修改 Hub 发布信息，本轮结果为本地验证，不代表旧 tag 的远端工作流已重新通过。
+
+
+## 2026-10-24 下载目录参照 Komi Store
+
+桌面新安装及恢复默认使用系统下载目录下的 `HuaRunWin Downloads`；系统目录无法取得时尝试用户主目录的 `Downloads`。Android 默认按主外部卷应用专用 `files/Download`、`files/downloads` 的顺序检查可写性，均不可用时使用内部 `files/downloads`。已有目录偏好与文件保留原位置；安装校验及 FileProvider 同时兼容新旧两个外部子目录。
+
+`fvm dart format`、`fvm flutter analyze --no-pub`、FileProvider XML 解析及 `git diff --check` 通过。已补充目录选择回退的用例，并调整现有原生用例以覆盖新旧外部目录；按项目约定，本轮未执行测试、平台构建或模拟器验证，不将上一轮结果视为本次改动的运行验证。

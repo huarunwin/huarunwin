@@ -73,7 +73,9 @@ void main() {
   setUp(() async {
     sandbox = await Directory.systemTemp.createTemp('huarun-locations-');
     legacy = Directory(p.join(sandbox.path, 'support', 'downloads'));
-    defaults = Directory(p.join(sandbox.path, 'Downloads', 'downloads'));
+    defaults = Directory(
+      p.join(sandbox.path, 'Downloads', 'HuaRunWin Downloads'),
+    );
     SharedPreferences.setMockInitialValues({});
     preferences = await SharedPreferences.getInstance();
   });
@@ -112,6 +114,36 @@ void main() {
     final location = await load();
     expect(location.directory.path, legacy.path);
     expect(await defaults.exists(), isFalse);
+  });
+
+  test('Android uses the first writable external directory', () async {
+    final preferred = Directory(p.join(sandbox.path, 'external', 'Download'));
+    final fallback = Directory(p.join(sandbox.path, 'external', 'downloads'));
+    expect(
+      (await DownloadLocations.firstWritableDirectory([preferred, fallback]))
+          ?.path,
+      preferred.path,
+    );
+    expect(await preferred.list().isEmpty, isTrue);
+    expect(await fallback.exists(), isFalse);
+  });
+
+  test('unusable external directories allow the next location', () async {
+    final blocked = await File(p.join(sandbox.path, 'blocked'))
+        .writeAsString('keep');
+    final fallback = Directory(p.join(sandbox.path, 'external', 'downloads'));
+    expect(
+      (await DownloadLocations.firstWritableDirectory([
+        Directory(blocked.path),
+        fallback,
+      ]))?.path,
+      fallback.path,
+    );
+    expect(
+      await DownloadLocations.firstWritableDirectory([Directory(blocked.path)]),
+      isNull,
+    );
+    expect(await blocked.readAsString(), 'keep');
   });
 
   test(

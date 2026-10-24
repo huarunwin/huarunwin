@@ -10,6 +10,7 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.android.apksig.ApkVerifier
@@ -268,6 +269,7 @@ class ApkInstaller(
         val file = File(path).canonicalFile
         val roots = listOfNotNull(
             File(activity.filesDir, "downloads"),
+            activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
             activity.getExternalFilesDir(null)?.let { File(it, "downloads") },
         ).map { it.canonicalFile }
         require(roots.any { file.path.startsWith(it.path + File.separator) } &&
