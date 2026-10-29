@@ -71,6 +71,7 @@ class _SitePageState extends State<SitePage> {
   bool serviceSearch = false;
   bool timelineDescending = false;
   bool referenceOpen = false;
+  String airportBillingPeriod = '全部';
   final selected = <String, String>{};
   double? minMemory, minTraffic, minPrice, maxPrice;
   List<SiteItem> items = [];
@@ -454,6 +455,10 @@ class _SitePageState extends State<SitePage> {
     setState(() {
       search.clear();
       query = '';
+      if (target.kind == BlockKind.offer &&
+          target.item?.facets['付款周期']?.isNotEmpty == true) {
+        airportBillingPeriod = '全部';
+      }
       if (document!.directory) referenceOpen = true;
       for (final block in _walk(document!.blocks)) {
         if (block.kind == BlockKind.disclosure && contains(block)) {
@@ -815,6 +820,7 @@ class _SitePageState extends State<SitePage> {
 
   Widget _servicePage(SiteDocument? doc) {
     final reading = SiteRoutes.readingKind(Uri.parse(pageUrl)) != null;
+    final airport = Uri.parse(pageUrl).pathSegments.firstOrNull == 'jichang';
     void back() {
       if (ModalRoute.isCurrentOf(context) == true) {
         Navigator.of(context).maybePop();
@@ -844,7 +850,9 @@ class _SitePageState extends State<SitePage> {
           autofocus: true,
           child: Scaffold(
             resizeToAvoidBottomInset: !widget.embedded,
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+            backgroundColor: airport
+                ? Theme.of(context).colorScheme.surface
+                : Theme.of(context).colorScheme.surfaceContainerLow,
             body: PageSafeArea(
               child: Align(
                 alignment: Alignment.topCenter,
@@ -1638,6 +1646,7 @@ class _SitePageState extends State<SitePage> {
     required bool compact,
   }) {
     final overview = ServiceDetailOverview(detail: service);
+    final desktopAirport = !compact && service.kind == SiteServiceKind.airport;
     final blocks = doc.blocks
         .where((block) => block != service.overview)
         .toList();
@@ -1650,8 +1659,11 @@ class _SitePageState extends State<SitePage> {
           compact: compact,
           onOpen: _open,
         ),
-        SizedBox(height: compact ? 20 : 26),
-        if (service.highlights.isNotEmpty) ...[
+        if (desktopAirport)
+          const DetailSectionDivider()
+        else
+          SizedBox(height: compact ? 20 : 26),
+        if (!desktopAirport && service.highlights.isNotEmpty) ...[
           DetailMetadata(values: service.highlights, compact: compact),
           SizedBox(height: compact ? 12 : 24),
         ],
@@ -1659,7 +1671,16 @@ class _SitePageState extends State<SitePage> {
           overview,
           if (blocks.isNotEmpty) const DetailSectionDivider(),
         ],
-        _blocks(blocks, flat: true, appDetailStyle: true),
+        _blocks(
+          blocks,
+          flat: true,
+          appDetailStyle: true,
+          serviceKind: service.kind,
+          airportBillingPeriod: airportBillingPeriod,
+          onAirportBillingPeriod: (value) => setState(() {
+            airportBillingPeriod = value;
+          }),
+        ),
       ],
     );
   }
@@ -1668,6 +1689,9 @@ class _SitePageState extends State<SitePage> {
     List<SiteBlock> blocks, {
     bool flat = false,
     bool appDetailStyle = false,
+    SiteServiceKind? serviceKind,
+    String airportBillingPeriod = '全部',
+    ValueChanged<String>? onAirportBillingPeriod,
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1682,6 +1706,9 @@ class _SitePageState extends State<SitePage> {
           }),
           flat: flat,
           appDetailStyle: appDetailStyle,
+          serviceKind: serviceKind,
+          airportBillingPeriod: airportBillingPeriod,
+          onAirportBillingPeriod: onAirportBillingPeriod,
           sectionDivider: index > 0,
           timelineDescending: timelineDescending,
           imageGallery: _walk(document?.blocks ?? [])

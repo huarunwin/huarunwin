@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../data/site_models.dart';
 import '../data/site_parser.dart';
+import 'airport_price.dart';
+import 'service_card_metrics.dart';
 import 'reading_catalog.dart';
 import 'content_image.dart';
 import 'components.dart';
@@ -93,6 +95,9 @@ class SiteBlockView extends StatelessWidget {
     this.depth = 0,
     this.flat = false,
     this.appDetailStyle = false,
+    this.serviceKind,
+    this.airportBillingPeriod = '全部',
+    this.onAirportBillingPeriod,
     this.sectionDivider = true,
     this.timelineDescending = false,
     this.imageGallery = const [],
@@ -105,6 +110,9 @@ class SiteBlockView extends StatelessWidget {
   final int depth;
   final bool flat;
   final bool appDetailStyle;
+  final SiteServiceKind? serviceKind;
+  final String airportBillingPeriod;
+  final ValueChanged<String>? onAirportBillingPeriod;
   final bool sectionDivider;
   final bool timelineDescending;
   final List<SiteBlock> imageGallery;
@@ -240,23 +248,27 @@ class SiteBlockView extends StatelessWidget {
       ),
       BlockKind.panel =>
         flat
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (depth == 0 && sectionDivider) ...[
-                    if (appDetailStyle)
-                      const DetailSectionDivider()
-                    else ...[
-                      const SizedBox(height: 12),
-                      Divider(
-                        color: colors.outlineVariant.withValues(alpha: .5),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  ],
-                  _children(),
-                ],
-              )
+            ? _isAirportPackages
+                  ? _airportPackages(context)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (depth == 0 && sectionDivider) ...[
+                          if (appDetailStyle)
+                            const DetailSectionDivider()
+                          else ...[
+                            const SizedBox(height: 12),
+                            Divider(
+                              color: colors.outlineVariant.withValues(
+                                alpha: .5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ],
+                        _children(),
+                      ],
+                    )
             : depth <= 1
             ? SurfacePanel(
                 padding: const EdgeInsets.all(18),
@@ -267,11 +279,22 @@ class SiteBlockView extends StatelessWidget {
     return Padding(
       key: anchors.putIfAbsent(block, GlobalKey.new),
       padding: EdgeInsets.only(
-        bottom: appDetailStyle && block.kind == BlockKind.panel ? 0 : 12,
+        bottom:
+            appDetailStyle &&
+                (block.kind == BlockKind.panel ||
+                    serviceKind == SiteServiceKind.airport &&
+                        block.kind == BlockKind.offer)
+            ? 0
+            : 12,
       ),
       child: content,
     );
   }
+
+  bool get _isAirportPackages =>
+      appDetailStyle &&
+      serviceKind == SiteServiceKind.airport &&
+      block.children.any((child) => child.kind == BlockKind.offer);
 
   Widget _child(SiteBlock child) => SiteBlockView(
     block: child,
@@ -282,6 +305,9 @@ class SiteBlockView extends StatelessWidget {
     depth: depth + 1,
     flat: flat,
     appDetailStyle: appDetailStyle,
+    serviceKind: serviceKind,
+    airportBillingPeriod: airportBillingPeriod,
+    onAirportBillingPeriod: onAirportBillingPeriod,
     timelineDescending: timelineDescending,
     imageGallery: imageGallery,
   );
@@ -329,13 +355,18 @@ class SiteBlockView extends StatelessWidget {
         children.add(
           LayoutBuilder(
             builder: (context, size) {
-              final columns =
-                  size.maxWidth >= (child.kind == BlockKind.related ? 580 : 760)
-                  ? 2
-                  : 1;
-              final width = (size.maxWidth - (columns - 1) * 16) / columns;
+              final airportOffers =
+                  appDetailStyle &&
+                  serviceKind == SiteServiceKind.airport &&
+                  child.kind == BlockKind.offer;
+              final breakpoint = airportOffers
+                  ? MediaQuery.textScalerOf(context).scale(760)
+                  : (child.kind == BlockKind.related ? 580 : 760);
+              final columns = size.maxWidth >= breakpoint ? 2 : 1;
+              final spacing = airportOffers ? 32.0 : 16.0;
+              final width = (size.maxWidth - (columns - 1) * spacing) / columns;
               return Wrap(
-                spacing: 16,
+                spacing: spacing,
                 children: [
                   for (final offer in offers)
                     SizedBox(width: width, child: _child(offer)),
@@ -354,6 +385,246 @@ class SiteBlockView extends StatelessWidget {
       children: children,
     );
   }
+
+  Widget _airportPackages(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final children = block.children;
+    final firstOffer = children.indexWhere(
+      (child) => child.kind == BlockKind.offer,
+    );
+    if (firstOffer < 0) return _children();
+    final before = children.take(firstOffer).toList();
+    final offers = children
+        .skip(firstOffer)
+        .takeWhile((child) => child.kind == BlockKind.offer)
+        .toList();
+    final after = children.skip(firstOffer + offers.length).toList();
+    final options = _airportPeriodOptions(offers);
+    final selected = options.contains(airportBillingPeriod)
+        ? airportBillingPeriod
+        : '全部';
+    final visible = selected == '全部'
+        ? offers
+        : offers
+              .where(
+                (offer) =>
+                    offer.item?.facets['付款周期']?.contains(selected) ?? false,
+              )
+              .toList();
+    final heading = before
+        .where((child) => child.kind == BlockKind.heading)
+        .firstOrNull;
+    final note = before
+        .where((child) => child.kind == BlockKind.text)
+        .firstOrNull;
+    final otherBefore = before
+        .where((child) => child != heading && child != note)
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (depth == 0 && sectionDivider) const DetailSectionDivider(),
+        _airportPackageSummary(context, heading, note, offers.length),
+        if (options.length > 1) ...[
+          const SizedBox(height: 18),
+          _airportPeriodTabs(context, options, selected),
+        ],
+        const SizedBox(height: 20),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 22),
+            child: Text(
+              '没有符合付款周期的套餐',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          )
+        else
+          _airportOfferGrid(context, visible),
+        for (final child in [...otherBefore, ...after]) _child(child),
+      ],
+    );
+  }
+
+  List<String> _airportPeriodOptions(List<SiteBlock> offers) {
+    final found = <String>[];
+    for (final offer in offers) {
+      for (final value in offer.item?.facets['付款周期'] ?? const <String>[]) {
+        if (value.isNotEmpty && !found.contains(value)) found.add(value);
+      }
+    }
+    const preferred = ['月付', '年付', '半年付'];
+    return [
+      '全部',
+      ...preferred.where(found.contains),
+      ...found.where((value) => !preferred.contains(value)),
+    ];
+  }
+
+  Widget _airportPackageSummary(
+    BuildContext context,
+    SiteBlock? heading,
+    SiteBlock? note,
+    int count,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final textScaler = MediaQuery.textScalerOf(context);
+    final title = heading?.text.trim().isNotEmpty == true
+        ? heading!.text.trim()
+        : '套餐';
+    final titleWidget = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (heading != null)
+          SizedBox(
+            key: anchors.putIfAbsent(heading, GlobalKey.new),
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          )
+        else
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        const SizedBox(width: 12),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Text(
+              '$count 款套餐',
+              style: TextStyle(
+                fontSize: textScaler.scale(13),
+                height: 1.2,
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    final noteWidget = note == null
+        ? null
+        : SizedBox(
+            key: anchors.putIfAbsent(note, GlobalKey.new),
+            child: SiteRichText(
+              note.runs,
+              onLink: onLink,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.45,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          );
+    return LayoutBuilder(
+      builder: (context, size) {
+        final horizontal = noteWidget != null && size.maxWidth >= 620;
+        if (horizontal) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: titleWidget),
+              const SizedBox(width: 24),
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: noteWidget,
+                ),
+              ),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            titleWidget,
+            if (noteWidget != null) ...[const SizedBox(height: 10), noteWidget],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _airportPeriodTabs(
+    BuildContext context,
+    List<String> options,
+    String selected,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: SurfacePanel.raisedColor(context),
+      shape: surfaceShape(1000),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in options)
+                Semantics(
+                  selected: option == selected,
+                  button: true,
+                  child: TextButton(
+                    key: ValueKey('airport-period-$option'),
+                    onPressed: onAirportBillingPeriod == null
+                        ? null
+                        : () => onAirportBillingPeriod!(option),
+                    style: TextButton.styleFrom(
+                      backgroundColor: option == selected
+                          ? colors.primaryContainer
+                          : Colors.transparent,
+                      foregroundColor: option == selected
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: surfaceShape(1000),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        height: 20 / 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: Text(option),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _airportOfferGrid(BuildContext context, List<SiteBlock> offers) =>
+      LayoutBuilder(
+        builder: (context, size) {
+          final textScaler = MediaQuery.textScalerOf(context);
+          final spacing = MediaQuery.sizeOf(context).width < 600 ? 8.0 : 14.0;
+          final columns = size.maxWidth >= textScaler.scale(760) ? 2 : 1;
+          final width = (size.maxWidth - spacing * (columns - 1)) / columns;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final offer in offers)
+                SizedBox(width: width, child: _child(offer)),
+            ],
+          );
+        },
+      );
 
   Widget _related(BuildContext context) {
     final item = block.item!;
@@ -599,10 +870,15 @@ class SiteBlockView extends StatelessWidget {
   Widget _offer(BuildContext context) {
     final item = block.item!;
     final colors = Theme.of(context).colorScheme;
+    final airportOffer =
+        appDetailStyle && serviceKind == SiteServiceKind.airport;
     final price = item.facts['付款金额'] ?? item.facts['官方报价'];
     final facts = item.facts.entries
         .where((entry) => !{'付款金额', '官方报价'}.contains(entry.key))
         .toList();
+    if (airportOffer) {
+      return _airportOfferCard(context, item, price, facts);
+    }
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -702,6 +978,78 @@ class SiteBlockView extends StatelessWidget {
     return Card(
       color: colors.surfaceContainer,
       shape: surfaceShape(18),
+      child: Padding(padding: const EdgeInsets.all(20), child: content),
+    );
+  }
+
+  Widget _airportOfferCard(
+    BuildContext context,
+    SiteItem item,
+    String? price,
+    List<MapEntry<String, String>> facts,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final content = LayoutBuilder(
+      builder: (context, size) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final columns = (size.maxWidth / scaler.scale(110)).floor().clamp(1, 3);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.title, style: Theme.of(context).textTheme.titleMedium),
+            if (item.subtitle.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                item.subtitle,
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+              ),
+            ],
+            if (facts.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              ServiceCardMetrics(
+                facts: facts,
+                columns: columns,
+                truncate: false,
+              ),
+            ],
+            if (block.children.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _children(),
+            ],
+            if (price != null) ...[
+              const SizedBox(height: 16),
+              AirportPrice(
+                value: price,
+                fontSize: MediaQuery.sizeOf(context).width < 600 ? 24 : 26,
+              ),
+            ],
+            if (item.url.isNotEmpty &&
+                (item.actions.isNotEmpty || item.subtitle.isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => onLink(item.url),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                    label: const Text('查看套餐'),
+                  ),
+                  for (final action in item.actions)
+                    FilledButton.tonal(
+                      onPressed: () => onLink(action.url),
+                      style: downloadButtonStyle(context),
+                      child: Text(action.label),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+    return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(padding: const EdgeInsets.all(20), child: content),
     );
   }

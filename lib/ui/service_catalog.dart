@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../data/site_models.dart';
 import 'adaptive_dialog.dart';
+import 'airport_price.dart';
 import 'catalog_controls.dart';
 import 'content_image.dart';
 import 'components.dart';
 import 'page_components.dart';
+import 'service_card_metrics.dart';
 import 'theme.dart';
 
 enum ServiceCatalogKind { airport, vps }
@@ -1192,61 +1194,7 @@ class _ServiceCard extends StatelessWidget {
         ),
       ],
     );
-    final metrics = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var start = 0; start < facts.length; start += metricsColumns) ...[
-          if (start > 0) const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final fact in facts.skip(start).take(metricsColumns)) ...[
-                if (fact != facts[start]) const SizedBox(width: 12),
-                Expanded(
-                  child: Tooltip(
-                    message: '${fact.key}：${fact.value}',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fact.key,
-                          style: TextStyle(
-                            fontSize: compact
-                                ? 12
-                                : (usesMobileDesign(context) ? 13 : 11),
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          fact.value,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: compact
-                                ? 13
-                                : (usesMobileDesign(context) ? 15 : 13),
-                            fontWeight: compact
-                                ? FontWeight.w500
-                                : FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              // Keep incomplete rows aligned with the full column layout.
-              for (
-                var column = facts.length - start;
-                column < metricsColumns;
-                column++
-              ) ...[const SizedBox(width: 12), const Spacer()],
-            ],
-          ),
-        ],
-      ],
-    );
+    final metrics = ServiceCardMetrics(facts: facts, columns: metricsColumns);
     Widget action(SiteLink link) => FilledButton(
       style: downloadButtonStyle(context),
       onPressed: () => onOpen(link.url),
@@ -1263,7 +1211,7 @@ class _ServiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (emphasizeAirportPrice && paymentValue != null)
-                    _AirportPrice(value: paymentValue, compact: list)
+                    AirportPrice(value: paymentValue, fontSize: list ? 22 : 26)
                   else
                     Text(
                       payment ?? (isVps ? '官方报价未记录' : '付款金额未记录'),
@@ -1411,75 +1359,6 @@ class _ServiceCard extends StatelessWidget {
                   ],
                 ),
         ),
-      ),
-    );
-  }
-}
-
-class _AirportPrice extends StatelessWidget {
-  const _AirportPrice({required this.value, required this.compact});
-
-  final String value;
-  final bool compact;
-
-  // Split only for typography; keep the published amount and suffix as text.
-  static final _parts = RegExp(r'^([≈约]?\s*[¥￥\$€£]\s*)(\d+(?:[.,]\d+)*)(.*)$');
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final parts = _parts.firstMatch(value);
-    if (parts == null) {
-      return Text(
-        value,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: colors.onSurface,
-        ),
-      );
-    }
-    final suffix = parts[3]!.trimLeft();
-    return Semantics(
-      label: value,
-      excludeSemantics: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            parts[1]!,
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.15,
-              fontWeight: FontWeight.w600,
-              color: colors.onSurfaceVariant,
-            ),
-          ),
-          Flexible(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(text: parts[2]),
-                  if (suffix.isNotEmpty)
-                    TextSpan(
-                      text: ' $suffix',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-              style: TextStyle(
-                fontSize: compact ? 22 : 26,
-                height: 1.15,
-                fontWeight: FontWeight.w700,
-                color: colors.onSurface,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

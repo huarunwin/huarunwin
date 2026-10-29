@@ -22,6 +22,7 @@ class ServiceDetailHero extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final compact = this.compact ?? constraints.maxWidth < 600;
+      final desktopAirport = !compact && detail.kind == SiteServiceKind.airport;
       final theme = Theme.of(context);
       final colors = theme.colorScheme;
       final icon = detail.kind == SiteServiceKind.vps
@@ -29,6 +30,8 @@ class ServiceDetailHero extends StatelessWidget {
           : Icons.flight_rounded;
       final iconSize = compact
           ? (constraints.maxWidth * .3).clamp(88.0, 140.0)
+          : desktopAirport
+          ? 96.0
           : 112.0;
       final purchase = detail.purchase;
       final actionStyle = compact
@@ -43,7 +46,7 @@ class ServiceDetailHero extends StatelessWidget {
               ),
             ).merge(downloadButtonStyle(context))
           : downloadButtonStyle(context);
-      return Row(
+      final hero = Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipPath.shape(
@@ -74,10 +77,12 @@ class ServiceDetailHero extends StatelessWidget {
                     ),
             ),
           ),
-          SizedBox(width: compact ? 16 : 26),
+          SizedBox(width: compact ? 16 : (desktopAirport ? 20 : 26)),
           Expanded(
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: compact ? iconSize : 0),
+              constraints: BoxConstraints(
+                minHeight: compact || desktopAirport ? iconSize : 0,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -93,35 +98,43 @@ class ServiceDetailHero extends StatelessWidget {
                           maxLines: compact ? 3 : null,
                           overflow: compact ? TextOverflow.ellipsis : null,
                           style: theme.textTheme.headlineMedium?.copyWith(
-                            fontSize: compact ? 22 : 30,
-                            height: compact ? 27 / 22 : null,
-                            fontWeight: compact ? FontWeight.w600 : null,
+                            fontSize: compact ? 22 : (desktopAirport ? 28 : 30),
+                            height: compact
+                                ? 27 / 22
+                                : (desktopAirport ? 1.2 : null),
+                            fontWeight: compact || desktopAirport
+                                ? FontWeight.w600
+                                : null,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      SiteRichText(
-                        detail.identity.isNotEmpty
-                            ? detail.identity
-                            : [
-                                SiteText(
-                                  detail.kind == SiteServiceKind.vps
-                                      ? 'VPS 套餐'
-                                      : '机场',
-                                ),
-                              ],
-                        onLink: onOpen,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 20 / 14,
-                          color: colors.onSurfaceVariant,
+                      if (!desktopAirport || detail.identity.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        SiteRichText(
+                          detail.identity.isNotEmpty
+                              ? detail.identity
+                              : [
+                                  SiteText(
+                                    detail.kind == SiteServiceKind.vps
+                                        ? 'VPS 套餐'
+                                        : '机场',
+                                  ),
+                                ],
+                          onLink: onOpen,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 20 / 14,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                   if (purchase != null)
                     Padding(
-                      padding: EdgeInsets.only(top: compact ? 8 : 16),
+                      padding: EdgeInsets.only(
+                        top: compact || desktopAirport ? 8 : 16,
+                      ),
                       child: FilledButton(
                         style: actionStyle,
                         onPressed: () => onOpen(purchase.url),
@@ -132,6 +145,70 @@ class ServiceDetailHero extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      );
+      if (!desktopAirport || detail.highlights.isEmpty) return hero;
+      final highlights = _AirportHighlights(values: detail.highlights);
+      final textScaler = MediaQuery.textScalerOf(context);
+      if (constraints.maxWidth >= textScaler.scale(840)) {
+        return Row(
+          children: [
+            Expanded(child: hero),
+            const SizedBox(width: 40),
+            SizedBox(width: textScaler.scale(300), child: highlights),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [hero, const SizedBox(height: 20), highlights],
+      );
+    },
+  );
+}
+
+class _AirportHighlights extends StatelessWidget {
+  const _AirportHighlights({required this.values});
+
+  final Map<String, String> values;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final colors = Theme.of(context).colorScheme;
+      final textScaler = MediaQuery.textScalerOf(context);
+      final width = constraints.maxWidth.clamp(0.0, textScaler.scale(360));
+      final columns = values.length.clamp(1, 2);
+      return Wrap(
+        spacing: 24,
+        runSpacing: 16,
+        children: [
+          for (final entry in values.entries)
+            SizedBox(
+              width: (width - (columns - 1) * 24) / columns,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.key,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    entry.value,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       );
     },

@@ -588,6 +588,7 @@ class PublicSiteParser {
 
   SiteBlock _airportOffer(Element e) {
     final facts = <String, String>{};
+    final facets = <String, List<String>>{};
     final quotaValue = _text(e.querySelector('.airport-product-quota-value'));
     final quotaUnit = _text(e.querySelector('.airport-product-quota-unit'));
     final quota = quotaValue.isNotEmpty && quotaUnit.isNotEmpty
@@ -608,6 +609,8 @@ class PublicSiteParser {
         ? '$amount $period'
         : _text(e.querySelector('.airport-product-price'));
     if (price.isNotEmpty) facts['付款金额'] = price;
+    final billing = _airportBillingPeriod(period);
+    if (billing.isNotEmpty) facets['付款周期'] = [billing];
     final remainder = e.clone(true);
     for (final node in remainder.querySelectorAll(
       '.airport-product-name, .airport-product-quota, .airport-product-specs, '
@@ -622,9 +625,20 @@ class PublicSiteParser {
         title: _text(e.querySelector('.airport-product-name')),
         url: _base.toString(),
         facts: facts,
+        facets: facets,
       ),
       children: _children(remainder),
     );
+  }
+
+  String _airportBillingPeriod(String value) {
+    final clean = value.replaceFirst(RegExp(r'^/\s*'), '').trim();
+    return switch (clean) {
+      '月' => '月付',
+      '半年' => '半年付',
+      '年' => '年付',
+      _ => clean,
+    };
   }
 
   List<SiteLink> _links(Element root, {bool keepLabels = false}) {
