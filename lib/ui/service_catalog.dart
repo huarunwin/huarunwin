@@ -1180,6 +1180,15 @@ class _ServiceCard extends StatelessWidget {
                   ),
                 ),
               ],
+              // Keep incomplete rows aligned with the full column layout.
+              for (
+                var column = facts.length - start;
+                column < metricsColumns;
+                column++
+              ) ...[
+                const SizedBox(width: 12),
+                const Spacer(),
+              ],
             ],
           ),
         ],
@@ -1338,11 +1347,11 @@ class _ServiceCard extends StatelessWidget {
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     identity,
                     SizedBox(height: list ? 16 : 24),
                     details,
+                    const Spacer(),
                     SizedBox(height: list ? 16 : 24),
                     commerce,
                   ],

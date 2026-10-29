@@ -318,6 +318,7 @@ Android 原生页面与弹层的滚动区在用户开始拖动时收起键盘，
 - GitHub Actions 使用 GitHub 标准托管 runner：检查、Android 及 Apple Silicon Mac 构建固定使用 `macos-15`，Intel Mac 构建使用 `macos-15-intel`，Release 发布使用 `ubuntu-24.04`；不依赖个人机器或网站项目的 runner。Mac 参照 FlClash 分别发布 `macos-arm64.dmg` 和 `macos-amd64.dmg`，不再生成 Universal DMG／ZIP，签名与公证状态维护在发布文档。PR 编译 Android Debug 及 instrumentation 源码，无需签名 Secrets；Android 发布按更新渠道使用 `ANDROID_DEBUG_*`／`ANDROID_RELEASE_*` 两组固定密钥，核对精确证书、应用身份、版本与 ABI 后才合并发布。正式渠道拒绝调试证书，缺少任一组配置均不生成替代身份或回退另一组。密钥、密码及个人路径只存放于忽略的私有配置，具体流程见 [发布与许可](docs/releasing.md)。
 - Windows 自动打包参照 FlClash 使用 `windows-2022`／`windows-11-arm`，分别发布 x64 和 ARM64 的安装版 EXE、完整便携 ZIP。CI 通过 Flutter Action 使用 `.fvmrc` 版本，Windows ARM64 参照 FlClash 使用 `master` 安装通道检出固定版本 tag，其他 runner 使用 `stable`；不能使用浮动版本。本机继续使用 FVM，原生文本版本保留完整预发布标识。安装器与便携包共用已核对架构和身份的运行目录，缺少任一平台产物不得更新 Release。Release 正文按系统分组使用下载徽章，徽章链接对应本次真实附件，保留 GitHub 下载量、源码提交、构建记录与校验文件入口；不展示尚未构建的平台。详情与验证范围见 [发布与许可](docs/releasing.md)。
 - 按用户最新要求，后续需求直接修改代码，默认不运行测试；只有用户明确要求测试时才执行，不将测试作为完成普通改动的前置步骤。
+- 每次代码修改完成后，直接热更新当前正在运行的本项目模拟器或调试会话，无需再次确认；优先使用 Flutter hot reload，改动无法热更新时使用 hot restart，涉及原生代码时按需重新构建并运行当前目标。确认更新成功后再报告完成；没有可用运行会话或更新失败时如实说明，不把源码修改视为已更新界面。热更新不改变上述默认不运行测试的约定。
 - 从应用目录、详情和 HTML 解析开始，再接下载管理与 Mac 安装能力。
 - 用少量代表性 HTML 样本验证解析，包括多平台、缺失字段、下架条目和不同下载入口；源码规则与线上样本都要核对。
 - 网页内容与布局变化时检查解析兼容性，自动安装所需信息不足时回退到官方入口。
