@@ -190,9 +190,9 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
                   padding,
-                  (compact ? 16 : 34) + PageSafeArea.topInsetOf(context),
+                  (compact ? 16 : 24) + PageSafeArea.topInsetOf(context),
                   padding,
-                  compact ? 16 : 20,
+                  16,
                 ),
                 sliver: SliverToBoxAdapter(
                   child: _header(desktop, grid, results.length),
@@ -253,9 +253,13 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                         (constraints.crossAxisExtent - 14 * (columns - 1)) /
                             columns -
                         (grid || usesMobileDesign(context) ? 40 : 32);
+                    final metricWidth = grid && !usesMobileDesign(context)
+                        ? 90.0
+                        : 130.0;
                     final metricsColumns =
                         (cardWidth /
-                                MediaQuery.textScalerOf(context).scale(130))
+                                MediaQuery.textScalerOf(context)
+                                    .scale(metricWidth))
                             .floor()
                             .clamp(1, 3);
                     return SliverList.builder(
@@ -338,7 +342,12 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
     );
   }
 
-  Widget _header(bool desktop, bool grid, int count) {
+  Widget _header(bool desktop, bool grid, int count) => LayoutBuilder(
+    builder: (context, constraints) =>
+        _headerContent(desktop, grid, count, constraints.maxWidth),
+  );
+
+  Widget _headerContent(bool desktop, bool grid, int count, double width) {
     final theme = Theme.of(context);
     final header = PageHeader(
       title: _isVps ? 'VPS' : '机场',
@@ -350,6 +359,10 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
     final compact = MediaQuery.sizeOf(context).width < 600;
     final colors = theme.colorScheme;
     final inlineFilters = useInlineCatalogFilters(context, wide: desktop);
+    final combineControls =
+        !compact &&
+        inlineFilters &&
+        width >= MediaQuery.textScalerOf(context).scale(800);
     final hasFilters = _filterCount > 0 || _query.isNotEmpty;
     final countLabel = widget.initialError != null
         ? '尚未载入$_subject'
@@ -368,6 +381,16 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
       if (_isVps && widget.items.any((item) => item.memory != null))
         'memory': '内存从高到低',
     };
+    final sortMenu = CatalogMenu<String>(
+      key: ValueKey('$_prefix-sort'),
+      label: sorts[_sort] ?? '综合排序',
+      tooltip: '排序方式：${sorts[_sort]}',
+      selected: _sort,
+      active: _sort != 'original',
+      values: sorts.keys.toList(),
+      labelFor: (value) => sorts[value]!,
+      onSelected: (value) => setState(() => _sort = value),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -412,8 +435,8 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: compact ? 12 : 16,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
                           ),
                         ),
                       ),
@@ -425,8 +448,8 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                 const SizedBox(height: 12),
                 _compactFilters(),
               ],
-              if (!compact && _hasFilterMenus) ...[
-                const SizedBox(height: 16),
+              if (!compact && _hasFilterMenus && !combineControls) ...[
+                const SizedBox(height: 12),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -502,24 +525,39 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
             ],
           ),
         ),
-        SizedBox(height: compact ? 12 : 16),
+        const SizedBox(height: 12),
         if (compact)
           _compactToolbar(sorts, countLabel)
+        else if (combineControls)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _inlineFilters(showReset: hasFilters, sort: sortMenu),
+              ),
+              const SizedBox(width: 16),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: width / 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(child: CatalogResultCount(countLabel)),
+                    const SizedBox(width: 8),
+                    CatalogViewSwitch(
+                      grid: grid,
+                      onChanged: (value) => setState(() => _grid = value),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
         else
           CatalogToolbar(
             count: countLabel,
             grid: grid,
             onGridChanged: (value) => setState(() => _grid = value),
-            sort: CatalogMenu<String>(
-              key: ValueKey('$_prefix-sort'),
-              label: sorts[_sort] ?? '综合排序',
-              tooltip: '排序方式：${sorts[_sort]}',
-              selected: _sort,
-              active: _sort != 'original',
-              values: sorts.keys.toList(),
-              labelFor: (value) => sorts[value]!,
-              onSelected: (value) => setState(() => _sort = value),
-            ),
+            sort: sortMenu,
           ),
         if (widget.message?.isNotEmpty ?? false)
           Padding(
@@ -724,7 +762,7 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
         },
       );
 
-  Widget _inlineFilters({required bool showReset}) {
+  Widget _inlineFilters({required bool showReset, Widget? sort}) {
     final facets = _facets;
     final hasMemory = _hasMemory;
     final hasTraffic = _hasTraffic;
@@ -737,7 +775,8 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
         (hasTraffic ? 1 : 0) +
         (hasPrice ? 1 : 0) +
         (hasProvider ? 1 : 0) +
-        (hasDirectory ? 1 : 0);
+        (hasDirectory ? 1 : 0) +
+        (sort == null ? 0 : 1);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 600;
@@ -859,6 +898,7 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                 ),
               ),
             if (hasDirectory) fit(_vpsDirectoryMenu(compact: compact)),
+            if (sort != null) fit(sort),
             if (showReset)
               TextButton(onPressed: _reset, child: const Text('重置筛选')),
           ],
@@ -1074,6 +1114,14 @@ class _ServiceCard extends StatelessWidget {
         .toList();
     final payment = item.facts[isVps ? '官方报价' : '付款金额'];
     final referencePrice = isVps ? item.facts['人民币参考价'] : null;
+    final emphasizeAirportPrice = !isVps && !usesMobileDesign(context);
+    final paymentPrefix = const [
+      '参考付款金额：',
+      '参考付款金额:',
+      '付款金额：',
+      '付款金额:',
+    ].where((prefix) => payment?.startsWith(prefix) ?? false).firstOrNull;
+    final paymentValue = payment?.substring(paymentPrefix?.length ?? 0).trim();
     final identity = Row(
       children: [
         ClipPath.shape(
@@ -1083,7 +1131,7 @@ class _ServiceCard extends StatelessWidget {
                 ? 48
                 : list
                 ? 44
-                : 52,
+                : 48,
             child: item.image == null
                 ? usesMobileDesign(context)
                       ? ColoredBox(
@@ -1094,11 +1142,19 @@ class _ServiceCard extends StatelessWidget {
                 : ColoredBox(
                     // Some published logos are black with a transparent background.
                     color: const Color(0xfff5f5f5),
-                    child: ContentImage(
-                      imageUrl: item.image!,
-                      fit: BoxFit.contain,
-                      errorWidget: (_, _, _) =>
-                          Icon(icon, color: Colors.black54),
+                    child: Padding(
+                      padding: EdgeInsets.all(
+                        usesMobileDesign(context) ? 0 : 4,
+                      ),
+                      child: ClipPath.shape(
+                        shape: surfaceShape(10),
+                        child: ContentImage(
+                          imageUrl: item.image!,
+                          fit: BoxFit.contain,
+                          errorWidget: (_, _, _) =>
+                              Icon(icon, color: Colors.black54),
+                        ),
+                      ),
                     ),
                   ),
           ),
@@ -1140,7 +1196,7 @@ class _ServiceCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var start = 0; start < facts.length; start += metricsColumns) ...[
-          if (start > 0) SizedBox(height: compact ? 12 : 16),
+          if (start > 0) const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1161,7 +1217,7 @@ class _ServiceCard extends StatelessWidget {
                             color: colors.onSurfaceVariant,
                           ),
                         ),
-                        SizedBox(height: compact ? 4 : 6),
+                        const SizedBox(height: 4),
                         Text(
                           fact.value,
                           maxLines: 2,
@@ -1185,10 +1241,7 @@ class _ServiceCard extends StatelessWidget {
                 var column = facts.length - start;
                 column < metricsColumns;
                 column++
-              ) ...[
-                const SizedBox(width: 12),
-                const Spacer(),
-              ],
+              ) ...[const SizedBox(width: 12), const Spacer()],
             ],
           ),
         ],
@@ -1209,18 +1262,19 @@ class _ServiceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    payment ?? (isVps ? '官方报价未记录' : '付款金额未记录'),
-                    style: TextStyle(
-                      fontSize: isVps || usesMobileDesign(context) ? 16 : 12,
-                      fontWeight: isVps || usesMobileDesign(context)
-                          ? FontWeight.w600
-                          : null,
-                      color: isVps || usesMobileDesign(context)
-                          ? colors.onSurface
-                          : colors.onSurfaceVariant,
+                  if (emphasizeAirportPrice && paymentValue != null)
+                    _AirportPrice(value: paymentValue, compact: list)
+                  else
+                    Text(
+                      payment ?? (isVps ? '官方报价未记录' : '付款金额未记录'),
+                      style: TextStyle(
+                        fontSize: payment == null ? 12 : 16,
+                        fontWeight: payment == null ? null : FontWeight.w600,
+                        color: payment != null
+                            ? colors.onSurface
+                            : colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
                   if (referencePrice != null) ...[
                     const SizedBox(height: 5),
                     Text(
@@ -1349,14 +1403,83 @@ class _ServiceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     identity,
-                    SizedBox(height: list ? 16 : 24),
+                    const SizedBox(height: 16),
                     details,
                     const Spacer(),
-                    SizedBox(height: list ? 16 : 24),
+                    const SizedBox(height: 16),
                     commerce,
                   ],
                 ),
         ),
+      ),
+    );
+  }
+}
+
+class _AirportPrice extends StatelessWidget {
+  const _AirportPrice({required this.value, required this.compact});
+
+  final String value;
+  final bool compact;
+
+  // Split only for typography; keep the published amount and suffix as text.
+  static final _parts = RegExp(r'^([≈约]?\s*[¥￥\$€£]\s*)(\d+(?:[.,]\d+)*)(.*)$');
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final parts = _parts.firstMatch(value);
+    if (parts == null) {
+      return Text(
+        value,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: colors.onSurface,
+        ),
+      );
+    }
+    final suffix = parts[3]!.trimLeft();
+    return Semantics(
+      label: value,
+      excludeSemantics: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            parts[1]!,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.15,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: parts[2]),
+                  if (suffix.isNotEmpty)
+                    TextSpan(
+                      text: ' $suffix',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: compact ? 22 : 26,
+                height: 1.15,
+                fontWeight: FontWeight.w700,
+                color: colors.onSurface,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
