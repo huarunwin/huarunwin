@@ -53,12 +53,13 @@ class SiteBlock {
     this.children = const [],
     this.rows = const [],
     this.url,
+    this.preview,
     this.level = 0,
     this.open = false,
     this.item,
   });
   final BlockKind kind;
-  final String? id, url;
+  final String? id, url, preview;
   final List<SiteText> runs;
   final List<SiteBlock> children;
   final List<List<List<SiteText>>> rows;
@@ -186,6 +187,7 @@ class SiteServiceDetails {
     this.identity = const [],
     this.image,
     this.purchase,
+    this.communityLinks = const [],
     this.highlights = const {},
     this.price = '',
     this.referencePrice = '',
@@ -197,6 +199,7 @@ class SiteServiceDetails {
   final List<SiteText> identity;
   final String? image;
   final SiteLink? purchase;
+  final List<SiteLink> communityLinks;
   final Map<String, String> highlights;
   // Kept in the document's block tree so search, anchors and link sharing work.
   final SiteBlock overview;

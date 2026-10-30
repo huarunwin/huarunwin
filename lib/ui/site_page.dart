@@ -1709,7 +1709,10 @@ class _SitePageState extends State<SitePage> {
           serviceKind: serviceKind,
           airportBillingPeriod: airportBillingPeriod,
           onAirportBillingPeriod: onAirportBillingPeriod,
-          sectionDivider: index > 0,
+          sectionDivider:
+              index > 0 &&
+              !(blocks[index - 1].kind == BlockKind.disclosure &&
+                  blocks[index - 1].preview != null),
           timelineDescending: timelineDescending,
           imageGallery: _walk(document?.blocks ?? [])
               .where((block) => block.kind == BlockKind.image)

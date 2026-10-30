@@ -208,6 +208,7 @@ class SiteBlockView extends StatelessWidget {
           );
         },
       ),
+      BlockKind.disclosure when block.preview != null => _notice(context),
       BlockKind.disclosure => SurfacePanel(
         radius: 16,
         child: ExpansionTile(
@@ -285,6 +286,8 @@ class SiteBlockView extends StatelessWidget {
                     serviceKind == SiteServiceKind.airport &&
                         block.kind == BlockKind.offer)
             ? 0
+            : block.kind == BlockKind.disclosure && block.preview != null
+            ? 24
             : 12,
       ),
       child: content,
@@ -295,6 +298,75 @@ class SiteBlockView extends StatelessWidget {
       appDetailStyle &&
       serviceKind == SiteServiceKind.airport &&
       block.children.any((child) => child.kind == BlockKind.offer);
+
+  Widget _notice(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final open = expanded.contains(block);
+    final heading = block.children
+        .where((child) => child.kind == BlockKind.heading)
+        .firstOrNull;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        key: ValueKey((block, open)),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        initiallyExpanded: open,
+        onExpansionChanged: (value) => onExpansion(block, value),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Icon(
+          Icons.campaign_outlined,
+          size: 20,
+          color: colors.onSurfaceVariant,
+        ),
+        title: SizedBox(
+          key: heading == null
+              ? null
+              : anchors.putIfAbsent(heading, GlobalKey.new),
+          child: SiteRichText(
+            block.runs,
+            onLink: onLink,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        subtitle: open
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  block.preview!.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              open ? '收起' : '展开',
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+              size: 20,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        children: [
+          for (final child in block.children)
+            if (child != heading) _child(child),
+        ],
+      ),
+    );
+  }
 
   Widget _child(SiteBlock child) => SiteBlockView(
     block: child,

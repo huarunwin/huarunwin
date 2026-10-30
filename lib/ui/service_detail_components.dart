@@ -130,15 +130,61 @@ class ServiceDetailHero extends StatelessWidget {
                       ],
                     ],
                   ),
-                  if (purchase != null)
+                  if (purchase != null || detail.communityLinks.isNotEmpty)
                     Padding(
                       padding: EdgeInsets.only(
                         top: compact || desktopAirport ? 8 : 16,
                       ),
-                      child: FilledButton(
-                        style: actionStyle,
-                        onPressed: () => onOpen(purchase.url),
-                        child: Text(purchase.label),
+                      child: Wrap(
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (purchase != null)
+                            FilledButton(
+                              style: actionStyle,
+                              onPressed: () => onOpen(purchase.url),
+                              child: Text(purchase.label),
+                            ),
+                          if (detail.communityLinks.isNotEmpty)
+                            Wrap(
+                              spacing: 4,
+                              children: [
+                                for (final link in detail.communityLinks)
+                                  Tooltip(
+                                    message: link.label,
+                                    child: TextButton.icon(
+                                      onPressed: () => onOpen(link.url),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor:
+                                            colors.onSurfaceVariant,
+                                        minimumSize: const Size(0, 34),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 7,
+                                        ),
+                                        shape: surfaceShape(1000),
+                                        textStyle: const TextStyle(
+                                          fontSize: 14,
+                                          height: 20 / 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        link.label == 'Telegram 群组'
+                                            ? Icons.group_outlined
+                                            : Icons.send_outlined,
+                                        size: 16,
+                                      ),
+                                      label: Text(switch (link.label) {
+                                        'Telegram 群组' => 'TG 群组',
+                                        'Telegram 频道' => 'TG 频道',
+                                        _ => link.label,
+                                      }),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
                       ),
                     ),
                 ],

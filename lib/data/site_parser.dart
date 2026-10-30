@@ -487,6 +487,9 @@ class PublicSiteParser {
     final purchase = purchaseUrl == null
         ? null
         : SiteLink(_text(purchaseNode), purchaseUrl);
+    final communityLinks = isVps
+        ? const <SiteLink>[]
+        : _airportCommunityLinks(root);
     final highlights = <String, String>{};
     String price = '', referencePrice = '', referenceNote = '';
     if (isVps) {
@@ -533,10 +536,13 @@ class PublicSiteParser {
             .map((text) => text.replaceFirst(RegExp(r'^/\s*'), ''))
             .join(' · ');
       }
-      // Keep plans near the purchase action; supporting material follows them.
-      for (final section in root.querySelectorAll(
-        '.airport-channel-section, .airport-contact-section',
-      )) {
+      // Channel updates lead the content below the native identity header.
+      final updates = root.querySelectorAll('.airport-channel-section');
+      for (final section in updates) {
+        section.remove();
+      }
+      root.nodes.insertAll(0, updates);
+      for (final section in root.querySelectorAll('.airport-contact-section')) {
         section.remove();
         root.append(section);
       }
@@ -554,6 +560,8 @@ class PublicSiteParser {
           SiteText('\n${fact.key}：${fact.value}'),
         if (purchase != null)
           SiteText('\n${purchase.label}', url: purchase.url),
+        for (final link in communityLinks)
+          SiteText('\n${link.label}', url: link.url),
       ],
     );
     hero.remove();
@@ -578,12 +586,49 @@ class PublicSiteParser {
       identity: identity,
       image: image,
       purchase: purchase,
+      communityLinks: communityLinks,
       highlights: highlights,
       price: price,
       referencePrice: referencePrice,
       referenceNote: referenceNote,
       overview: overview,
     );
+  }
+
+  List<SiteLink> _airportCommunityLinks(Element root) {
+    final links = <SiteLink>[];
+    final seen = <String>{};
+    for (final section in root.querySelectorAll('.airport-contact-section')) {
+      for (final anchor in section.querySelectorAll(
+        '.airport-contact a[href]',
+      )) {
+        final url = _href(anchor);
+        final label = _text(anchor);
+        if (url == null || label.isEmpty) continue;
+        final host = Uri.parse(url).host.toLowerCase();
+        if (!const {
+          't.me',
+          'www.t.me',
+          'telegram.me',
+          'www.telegram.me',
+        }.contains(host)) {
+          continue;
+        }
+        if (seen.add(url)) links.add(SiteLink(label, url));
+        anchor.remove();
+      }
+      // Keep other contact details; omit a section left with only its heading.
+      final remainder = section.clone(true);
+      for (final heading in remainder.querySelectorAll('h2, h3')) {
+        heading.remove();
+      }
+      if (_text(remainder).isEmpty &&
+          remainder.querySelector('a[href], img, video, audio, iframe') ==
+              null) {
+        section.remove();
+      }
+    }
+    return links;
   }
 
   SiteBlock _airportOffer(Element e) {
@@ -962,6 +1007,26 @@ class PublicSiteParser {
     if (_ignored(e)) return [];
     final id = e.id.isEmpty ? null : e.id;
     final tag = e.localName;
+    if (_serviceDetail && e.classes.contains('airport-channel-section')) {
+      final preview = e.querySelector('.airport-channel-preview')?.text.trim();
+      final children = _children(e);
+      if (!children.any((child) => child.kind != BlockKind.heading)) return [];
+      if (preview != null && preview.isNotEmpty) {
+        final heading = children
+            .where((child) => child.kind == BlockKind.heading)
+            .firstOrNull;
+        return [
+          SiteBlock(
+            kind: BlockKind.disclosure,
+            id: id,
+            runs: heading?.runs ?? const [SiteText('频道近况')],
+            preview: preview,
+            children: children,
+          ),
+        ];
+      }
+      return [SiteBlock(kind: BlockKind.panel, id: id, children: children)];
+    }
     if (_editorial) {
       if (e.classes.contains('protocol-timeline-intro')) {
         // The native controls own order and expansion; retain the historical
@@ -1244,14 +1309,11 @@ class PublicSiteParser {
           : [SiteBlock(kind: BlockKind.panel, id: id, children: result)];
     }
     if (tag == 'button') {
-      final preview = e.querySelector('.airport-channel-preview');
-      return preview == null
+      final preview = e.querySelector('.airport-channel-preview')?.text.trim();
+      return preview == null || preview.isEmpty
           ? []
           : [
-              SiteBlock(
-                kind: BlockKind.quote,
-                runs: [SiteText(preview.text.trim())],
-              ),
+              SiteBlock(id: id, runs: [SiteText(preview)]),
             ];
     }
     if (tag == 'nav' || e.classes.contains('vps-detail-identity')) {
