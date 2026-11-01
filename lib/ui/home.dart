@@ -21,6 +21,7 @@ import 'mac_window.dart';
 import 'site_page.dart';
 import 'sidebar.dart';
 import 'compact_navigation.dart';
+import 'navigation_icon.dart';
 import 'page_components.dart';
 
 class HomePage extends StatefulWidget {
@@ -155,9 +156,7 @@ class _HomePageState extends State<HomePage> {
       final desktop = MediaQuery.sizeOf(context).width >= 900;
       final mobileTabs = _usesMobileTabs;
       final floatingDock =
-          mobileTabs &&
-          usesMobileDesign(context) &&
-          MediaQuery.viewInsetsOf(context).bottom == 0;
+          !desktop && MediaQuery.viewInsetsOf(context).bottom == 0;
       return Scaffold(
         extendBody: floatingDock,
         body: PageBottomInset(
@@ -202,20 +201,20 @@ class _HomePageState extends State<HomePage> {
                 onSelected: _selectMobileTab,
                 destinations: [
                   const NavigationDestination(
-                    icon: Icon(Icons.grid_view_rounded),
+                    icon: NavigationIcon.discovery(),
                     label: '发现',
                   ),
                   _libraryDestination(),
                   const NavigationDestination(
-                    icon: Icon(Icons.cloud_rounded),
+                    icon: NavigationIcon.cloud(),
                     label: 'VPS',
                   ),
                   const NavigationDestination(
-                    icon: Icon(Icons.flight_rounded),
+                    icon: NavigationIcon.airplane(),
                     label: '机场',
                   ),
                   const NavigationDestination(
-                    icon: Icon(Icons.tune_rounded),
+                    icon: NavigationIcon.settings(),
                     label: '设置',
                   ),
                 ],
@@ -235,12 +234,12 @@ class _HomePageState extends State<HomePage> {
                 },
                 destinations: [
                   const NavigationDestination(
-                    icon: Icon(Icons.grid_view_rounded),
+                    icon: NavigationIcon.discovery(),
                     label: '发现',
                   ),
                   _libraryDestination(),
                   const NavigationDestination(
-                    icon: Icon(Icons.tune_rounded),
+                    icon: NavigationIcon.settings(),
                     label: '设置',
                   ),
                 ],
@@ -398,7 +397,7 @@ class _HomePageState extends State<HomePage> {
     icon: Badge.count(
       count: _activeDownloads,
       isLabelVisible: _activeDownloads > 0,
-      child: const Icon(Icons.inventory_2_outlined),
+      child: const NavigationIcon.library(),
     ),
     label: '应用库',
   );
