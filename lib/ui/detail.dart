@@ -208,6 +208,11 @@ class _DetailPageState extends State<DetailPage> {
               title: '应用介绍',
               child: DetailText(description, maxLines: 7),
             ),
+          if (detail.communityLinks.isNotEmpty)
+            DetailSection(
+              title: '相关链接',
+              child: AppCommunityLinks(links: detail.communityLinks),
+            ),
           if (detail.notices.isNotEmpty)
             DetailSection(
               title: '使用提示',
@@ -406,16 +411,22 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _divider() => const DetailSectionDivider();
 
-  Map<String, String> _officialLinks(AppDetails detail) => {
-    for (final link in detail.officialActions) link.url: link.label,
-    if (detail.releaseUrl != null)
-      detail.releaseUrl!: isAppStoreUrl(detail.releaseUrl!)
-          ? 'App Store'
-          : '官方发布页',
-    if (detail.officialUrl != null) detail.officialUrl!: '官方网站',
-    for (final link in detail.downloads.where((link) => !link.isPackage))
-      link.url: isAppStoreUrl(link.url) ? 'App Store' : '官方获取入口',
-  };
+  Map<String, String> _officialLinks(AppDetails detail) {
+    final links = <String, String>{
+      for (final link in detail.officialActions) link.url: link.label,
+      if (detail.releaseUrl != null)
+        detail.releaseUrl!: isAppStoreUrl(detail.releaseUrl!)
+            ? 'App Store'
+            : '官方发布页',
+      if (detail.officialUrl != null) detail.officialUrl!: '官方网站',
+      for (final link in detail.downloads.where((link) => !link.isPackage))
+        link.url: isAppStoreUrl(link.url) ? 'App Store' : '官方获取入口',
+    };
+    for (final link in detail.communityLinks) {
+      links.remove(link.url);
+    }
+    return links;
+  }
 
   Widget _channels(AppDetails detail) {
     if (detail.app.withdrawn) {

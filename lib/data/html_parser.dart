@@ -397,6 +397,7 @@ class SiteHtmlParser {
       platformVersions: platformVersions,
       updatedAt: summary.isClient ? metadataText('dateModified') : resourceDate,
       officialActions: officialActions.values.toList(),
+      communityLinks: _appCommunityLinks(doc, base),
       description: paragraphs?.isNotEmpty == true
           ? paragraphs!
           : metadataDescription ?? app.description,
@@ -424,6 +425,83 @@ class SiteHtmlParser {
           ) ??
           fallbackRelease,
     );
+  }
+
+  List<AppCommunityLink> _appCommunityLinks(Document document, Uri base) {
+    final links = <String, AppCommunityLink>{};
+    final root = document.querySelector('.detail-page');
+    if (root == null) return const [];
+    for (final anchor in root.querySelectorAll(
+      '.detail-official-link[href], '
+      '.detail-github-link:not(.detail-fact-evidence)[href]',
+    )) {
+      final url = webUrl(anchor.attributes['href'], base);
+      if (url == null) continue;
+      final uri = Uri.parse(url);
+      final label = text(anchor);
+      final semanticLabel = anchor.attributes['aria-label'] ?? label;
+      final type =
+          const {
+                'github.com',
+                'www.github.com',
+              }.contains(uri.host.toLowerCase()) &&
+              uri.pathSegments.where((part) => part.isNotEmpty).length == 2
+          ? AppCommunityType.github
+          : anchor.classes.contains('detail-official-link') &&
+                (label == '官方网站' || semanticLabel.contains('官方网站'))
+          ? AppCommunityType.website
+          : null;
+      if (type == null) continue;
+      links.putIfAbsent(
+        url,
+        () => AppCommunityLink(
+          type: type,
+          label: label.isEmpty ? type.label : label,
+          url: url,
+        ),
+      );
+    }
+    for (final anchor in root.querySelectorAll(
+      '.detail-hero-community a[href], .app-dock-community a[href], '
+      'nav[aria-label="Telegram 社区"] a[href]',
+    )) {
+      final url = webUrl(anchor.attributes['href'], base);
+      if (url == null ||
+          !const {
+            't.me',
+            'www.t.me',
+            'telegram.me',
+            'www.telegram.me',
+          }.contains(Uri.parse(url).host.toLowerCase())) {
+        continue;
+      }
+      final label = text(anchor);
+      final semanticLabel = anchor.attributes['aria-label']?.trim() ?? label;
+      final type = semanticLabel.startsWith('Telegram 群组') || label == '群组'
+          ? AppCommunityType.group
+          : semanticLabel.startsWith('Telegram 频道') || label == '频道'
+          ? AppCommunityType.channel
+          : null;
+      if (type == null) continue;
+      links.putIfAbsent(
+        url,
+        () => AppCommunityLink(
+          type: type,
+          label: label.isEmpty ? type.label : label,
+          url: url,
+        ),
+      );
+    }
+    const order = [
+      AppCommunityType.website,
+      AppCommunityType.github,
+      AppCommunityType.group,
+      AppCommunityType.channel,
+    ];
+    return [
+      for (final type in order)
+        ...links.values.where((link) => link.type == type),
+    ];
   }
 
   Map<String, dynamic> _softwareMetadata(Document document) {

@@ -135,7 +135,6 @@ class AppDetailMetadata extends StatelessWidget {
             : app.environments.join(' · '),
       if (app.isClient) ...{
         '支持平台': app.platforms.isEmpty ? null : app.platforms.join(' · '),
-        '主导开发': detail.facts['主导开发'],
         '内核': app.core.isNotEmpty ? app.core : detail.facts['代理内核'],
         '代码状态': app.source.isNotEmpty ? app.source : detail.facts['代码状态'],
       },
@@ -144,6 +143,7 @@ class AppDetailMetadata extends StatelessWidget {
     return DetailMetadata(
       values: values,
       compact: compact,
+      showBottomBorder: detail.screenshots.isEmpty,
       tooltips: {
         if (app.starNote != null) 'GitHub Star': app.starNote!,
         if (app.ratingNote != null) '评分数': app.ratingNote!,
@@ -157,10 +157,12 @@ class DetailMetadata extends StatelessWidget {
     super.key,
     required this.values,
     this.compact = false,
+    this.showBottomBorder = true,
     this.tooltips = const {},
   });
   final Map<String, String?> values;
   final bool compact;
+  final bool showBottomBorder;
   final Map<String, String> tooltips;
 
   @override
@@ -170,7 +172,10 @@ class DetailMetadata extends StatelessWidget {
     final line = BorderSide(color: colors.outlineVariant.withValues(alpha: .5));
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(top: line, bottom: line),
+        border: Border(
+          top: line,
+          bottom: showBottomBorder ? line : BorderSide.none,
+        ),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -284,6 +289,45 @@ class AppDetailReleaseInfo extends StatelessWidget {
   );
 }
 
+class AppCommunityLinks extends StatelessWidget {
+  const AppCommunityLinks({super.key, required this.links});
+  final List<AppCommunityLink> links;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        for (final link in links)
+          Tooltip(
+            message: link.url,
+            child: OutlinedButton.icon(
+              onPressed: () => openLink(context, link.url),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: colors.surfaceContainer,
+                foregroundColor: colors.onSurfaceVariant,
+                textStyle: const TextStyle(fontSize: 14),
+              ),
+              icon: Icon(switch (link.type) {
+                AppCommunityType.website => Icons.language_outlined,
+                AppCommunityType.github => Icons.code_rounded,
+                AppCommunityType.group => Icons.group_outlined,
+                AppCommunityType.channel => Icons.campaign_outlined,
+              }, size: 18),
+              label: Text(
+                links.where((other) => other.type == link.type).length > 1
+                    ? link.label
+                    : link.type.label,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class DetailSection extends StatelessWidget {
   const DetailSection({
     super.key,
@@ -394,55 +438,52 @@ class _AppScreenshotGalleryState extends State<AppScreenshotGallery> {
   }
 
   @override
-  Widget build(BuildContext context) => DetailSection(
-    title: '预览',
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxWidth < 600
-            ? (MediaQuery.sizeOf(context).height * .42).clamp(180.0, 320.0)
-            : 320.0;
-        final colors = Theme.of(context).colorScheme;
-        return SizedBox(
-          height: height,
-          child: ListView.separated(
-            controller: scroll,
-            scrollDirection: Axis.horizontal,
-            itemCount: widget.urls.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 16),
-            itemBuilder: (context, index) => ClipPath.shape(
-              shape: surfaceShape(12),
-              child: Material(
-                color: colors.surfaceContainer,
-                child: InkWell(
-                  onTap: () => _preview(index),
-                  child: ContentImage(
-                    imageUrl: widget.urls[index],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final height = constraints.maxWidth < 600
+          ? (MediaQuery.sizeOf(context).height * .42).clamp(180.0, 320.0)
+          : 320.0;
+      final colors = Theme.of(context).colorScheme;
+      return SizedBox(
+        height: height,
+        child: ListView.separated(
+          controller: scroll,
+          scrollDirection: Axis.horizontal,
+          itemCount: widget.urls.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 16),
+          itemBuilder: (context, index) => ClipPath.shape(
+            shape: surfaceShape(12),
+            child: Material(
+              color: colors.surfaceContainer,
+              child: InkWell(
+                onTap: () => _preview(index),
+                child: ContentImage(
+                  imageUrl: widget.urls[index],
+                  height: height,
+                  fit: BoxFit.contain,
+                  imageBuilder: (context, provider) => Image(
+                    image: provider,
                     height: height,
                     fit: BoxFit.contain,
-                    imageBuilder: (context, provider) => Image(
-                      image: provider,
-                      height: height,
-                      fit: BoxFit.contain,
-                      semanticLabel: '应用截图 ${index + 1}',
-                    ),
-                    placeholder: (_, _) => SizedBox(
-                      width: height * .6,
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                    errorWidget: (_, _, _) => SizedBox(
-                      width: height * .6,
-                      child: const Center(
-                        child: Icon(Icons.broken_image_outlined),
-                      ),
+                    semanticLabel: '应用截图 ${index + 1}',
+                  ),
+                  placeholder: (_, _) => SizedBox(
+                    width: height * .6,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (_, _, _) => SizedBox(
+                    width: height * .6,
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        );
-      },
-    ),
+        ),
+      );
+    },
   );
 
   void _preview(int index) => showDialog<void>(

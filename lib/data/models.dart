@@ -203,12 +203,33 @@ class CatalogRelease {
   final List<DownloadLink> assets;
 }
 
+enum AppCommunityType {
+  group('TG 群组'),
+  channel('TG 频道'),
+  website('官网'),
+  github('GitHub');
+
+  const AppCommunityType(this.label);
+  final String label;
+}
+
+class AppCommunityLink {
+  const AppCommunityLink({
+    required this.type,
+    required this.label,
+    required this.url,
+  });
+  final AppCommunityType type;
+  final String label, url;
+}
+
 class AppDetails {
   const AppDetails({
     required this.app,
     this.version,
     this.versionLabel = '版本',
     this.officialActions = const [],
+    this.communityLinks = const [],
     this.updatedAt,
     this.description = '',
     this.changelog = '',
@@ -224,6 +245,7 @@ class AppDetails {
   final String versionLabel;
   // Resource actions retain their published labels and always open officially.
   final List<DownloadLink> officialActions;
+  final List<AppCommunityLink> communityLinks;
   final String? version, updatedAt, officialUrl, releaseUrl;
   final String description, changelog;
   final List<String> screenshots, notices;
