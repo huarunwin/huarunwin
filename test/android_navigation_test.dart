@@ -14,6 +14,7 @@ import 'package:huarunwin/ui/app_download_button.dart';
 import 'package:huarunwin/ui/app_library_page.dart';
 import 'package:huarunwin/ui/compact_navigation.dart';
 import 'package:huarunwin/ui/page_components.dart';
+import 'package:huarunwin/ui/settings.dart';
 import 'package:huarunwin/ui/site_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -362,7 +363,13 @@ void main() {
         expect(find.byType(CompactNavigation), findsOneWidget);
         await select(tester, '设置');
         expect(find.text('设置'), findsAtLeastNWidgets(2));
-        expect(find.text('应用库'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(SettingsPage),
+            matching: find.text('应用库'),
+          ),
+          findsOneWidget,
+        );
         await select(tester, label);
         expect(index(tester), selected);
       }
