@@ -10,6 +10,7 @@ import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/ui/app_download_button.dart';
 import 'package:huarunwin/ui/catalog_controls.dart';
+import 'package:huarunwin/ui/compact_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _platforms = {
@@ -236,7 +237,14 @@ void main() {
         await preferences.setBool('catalogGrid', false);
         await launch(tester);
         expect(selection(tester), 'Windows');
-        await tester.tap(find.text(size.width >= 900 ? '偏好设置' : '设置'));
+        await tester.tap(
+          size.width >= 900
+              ? find.text('偏好设置')
+              : find.descendant(
+                  of: find.byType(CompactNavigation),
+                  matching: find.bySemanticsLabel('设置'),
+                ),
+        );
         await tester.pumpAndSettle();
         expect(find.text('恢复默认平台筛选'), findsNothing);
         await tester.ensureVisible(find.text('高级设置'));
@@ -257,7 +265,10 @@ void main() {
         await tester.tap(
           size.width >= 900
               ? find.byKey(const ValueKey('nav-applications'))
-              : find.bySemanticsLabel('发现'),
+              : find.descendant(
+                  of: find.byType(CompactNavigation),
+                  matching: find.bySemanticsLabel('发现'),
+                ),
         );
         await tester.pumpAndSettle();
         expect(selection(tester), 'macOS');

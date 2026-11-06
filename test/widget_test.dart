@@ -138,11 +138,21 @@ void main() {
       tester.widget<CompactNavigation>(navigation).selectedIndex,
       1,
     );
-    await tester.tap(find.text('发现'));
+    await tester.tap(
+      find.descendant(
+        of: navigation,
+        matching: find.bySemanticsLabel('发现'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Mac Example'), findsOneWidget);
     expect(find.text('Android Example'), findsNothing);
-    await tester.tap(find.text('设置'));
+    await tester.tap(
+      find.descendant(
+        of: navigation,
+        matching: find.bySemanticsLabel('设置'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('应用目录'), findsNothing);
     expect(find.text('帮助与反馈'), findsOneWidget);

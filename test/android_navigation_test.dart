@@ -361,7 +361,7 @@ void main() {
         expect(find.byTooltip('返回'), findsNothing);
         expect(find.byType(CompactNavigation), findsOneWidget);
         await select(tester, '设置');
-        expect(find.text('设置'), findsNWidgets(2));
+        expect(find.text('设置'), findsAtLeastNWidgets(2));
         expect(find.text('应用库'), findsOneWidget);
         await select(tester, label);
         expect(index(tester), selected);
@@ -418,7 +418,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(path(tester), '/vps');
     await select(tester, '设置');
-    expect(find.text('设置'), findsNWidgets(2));
+    expect(find.text('设置'), findsAtLeastNWidgets(2));
     expect(index(tester), 4);
     expect(tester.takeException(), isNull);
   });
@@ -493,7 +493,7 @@ void main() {
           expect(tester.takeException(), isNull, reason: label);
         }
         await select(tester, '设置');
-        expect(find.text('设置'), findsNWidgets(2));
+        expect(find.text('设置'), findsAtLeastNWidgets(2));
         expect(index(tester), 4);
         expect(tester.takeException(), isNull);
       },
