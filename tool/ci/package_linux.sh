@@ -17,7 +17,7 @@ output="$PWD/build/release/packages"
 stage="$PWD/build/release/linux-amd64"
 for required in \
   "$bundle/huarunwin" \
-  "$bundle/data/app.so" \
+  "$bundle/lib/libapp.so" \
   "$bundle/data/icudtl.dat" \
   "$bundle/data/flutter_assets" \
   "$bundle/lib/libflutter_linux_gtk.so"; do
