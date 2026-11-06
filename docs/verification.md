@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-07 Linux 发布包与导航回归
+
+修正自定义 `CompactNavigation` 替换 Material `NavigationBar` 后遗留的测试定位，补充 Linux 发布包在独立 Ubuntu job 中的下载与启动验收。GitHub Actions [run 48](https://github.com/huarunwin/huarunwin/actions/runs/42263610165) 使用 Flutter 3.47.6，567 项 Flutter 测试、Android、Linux amd64、Linux 包 smoke test、macOS 两种架构及 Windows 两种架构全部通过；release job 成功。
+
+Linux smoke test 从同次运行的 `package-linux-amd64` artifact 下载 `HuarunWin-0.7.0-pre.48-linux-amd64.tar.gz`，在 Ubuntu 24.04 amd64 安装 GTK、EGL、GLES 与 Xvfb 运行库后解压，并在虚拟 X11 显示中启动 `huarunwin` 进程通过 20 秒存活检查。`pre` 预发布 Release 已包含 Linux amd64 tar.gz 及其他平台附件。
+
 ## 2026-10-24 新增 tag 同步 debug 更新信息
 
 同步客户端与 Hub 的项目约定和发布文档：新增正式 tag 时，一起维护 Hub 的 `debug.releases` 日志，将 `debug.publishedVersion` 设为去掉 tag 的 `v` 前缀后的版本，并在推送 tag 前提交推送 Hub 信息。正式渠道指针继续独立维护，固定 `pre` 仍使用完整预发布版本。补齐当前 `0.7.0` 的 debug 日志和指针，正式渠道保留 `0.6.0`。
