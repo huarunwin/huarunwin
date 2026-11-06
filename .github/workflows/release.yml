@@ -279,8 +279,35 @@ jobs:
           compression-level: 0
           overwrite: true
 
+  linux-smoke:
+    needs: linux
+    if: github.event_name != 'pull_request'
+    name: Linux package smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: package-linux-amd64
+          path: build/release/packages
+      - name: Install Linux runtime and display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-0t64 liblzma5 xvfb
+      - name: Extract and launch the downloaded Linux package
+        run: |
+          archive="$(find build/release/packages -type f -name '*-linux-amd64.tar.gz' -print -quit)"
+          test -n "$archive"
+          bash tool/ci/test_linux_package.sh "$archive"
+
   release:
-    needs: [build, macos, android, windows, linux]
+    needs: [build, macos, android, windows, linux, linux-smoke]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

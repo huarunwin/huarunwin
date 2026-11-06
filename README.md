@@ -42,10 +42,11 @@
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
 | Android | `arm64`、`armv7`、`x64` APK | 大多数手机选择 `arm64`；其余按设备 ABI 选择。 |
+| Linux | `amd64` tar.gz | 解压后运行 `huarunwin`，需要系统提供 GTK 3 运行库。 |
 | macOS 13 及以上 | `arm64`、`amd64` DMG | Apple Silicon 选择 `arm64`，Intel 选择 `amd64`。 |
 | Windows | `amd64`、`arm64` 安装版 EXE／便携 ZIP | x64 需 Windows 10 1809 及以上，ARM64 需 Windows 11；ZIP 完整解压后运行。 |
 
-流水线配置支持以上三类安装包，各版本以 Release 实际附件为准。Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
+流水线配置支持以上四类安装包，各版本以 Release 实际附件为准。Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
 
 ## 常见问题排查
 
