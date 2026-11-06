@@ -368,7 +368,7 @@ void main() {
             of: find.byType(SettingsPage),
             matching: find.text('应用库'),
           ),
-          findsOneWidget,
+          findsNothing,
         );
         await select(tester, label);
         expect(index(tester), selected);
