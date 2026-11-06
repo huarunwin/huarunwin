@@ -64,14 +64,28 @@ def package(architecture):
              "MACOS_ARCH": architecture})
 
 
+def package_linux():
+    info = json.loads((ROOT / "build/release/metadata.json").read_text())
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    flags = ("--release", "--build-name", info["build_name"], "--build-number", info["build_number"],
+             f'--dart-define=HUARUNWIN_VERSION={info["app_version"]}',
+             f'--dart-define=HUARUNWIN_UPDATE_CHANNEL={info["update_channel"]}')
+    flutter("build", "linux", *flags)
+    run("bash", ROOT / "tool/ci/package_linux.sh",
+        env={**os.environ, "ASSET_STEM": info["asset_stem"]})
+
+
 def main():
     os.chdir(ROOT)
     command = sys.argv[1] if len(sys.argv) >= 2 else ""
     if command == "package" and len(sys.argv) == 3:
         package(sys.argv[2])
         return
+    if command == "package-linux" and len(sys.argv) == 2:
+        package_linux()
+        return
     if len(sys.argv) != 2:
-        raise ValueError("Usage: python tool/ci/build.py setup|deps|verify|package <arm64|amd64>")
+        raise ValueError("Usage: python tool/ci/build.py setup|deps|verify|package <arm64|amd64>|package-linux")
     if command == "setup":
         setup()
     elif command == "deps":
@@ -80,7 +94,7 @@ def main():
         flutter("analyze")
         flutter("test")
     else:
-        raise ValueError("Usage: python tool/ci/build.py setup|deps|verify|package <arm64|amd64>")
+        raise ValueError("Usage: python tool/ci/build.py setup|deps|verify|package <arm64|amd64>|package-linux")
 
 
 if __name__ == "__main__":

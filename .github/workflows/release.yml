@@ -1,5 +1,5 @@
 name: Build and release
-run-name: Android / macOS / Windows · ${{ github.ref_name }} · ${{ github.run_number }}
+run-name: Android / Linux / macOS / Windows · ${{ github.ref_name }} · ${{ github.run_number }}
 
 on:
   push:
@@ -230,8 +230,53 @@ jobs:
           compression-level: 0
           overwrite: true
 
+  linux:
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || github.ref == 'refs/heads/dev' || (github.ref_type == 'tag' && github.ref_name != 'pre')
+    name: Linux amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate formal tag Hub changelog
+        run: python3 tool/ci/release.py validate
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+          cache: ${{ github.ref_type != 'tag' }}
+      - name: Verify the pinned Flutter SDK
+        run: python3 tool/ci/build.py setup
+      - name: Install dependencies
+        run: python3 tool/ci/build.py deps
+      - name: Enable Linux desktop target
+        run: flutter config --enable-linux-desktop
+      - name: Compile Linux application
+        if: github.event_name == 'pull_request'
+        run: flutter build linux --debug --no-pub
+      - name: Resolve release version
+        if: github.event_name != 'pull_request'
+        run: python3 tool/ci/release.py metadata
+      - name: Build and package Linux
+        if: github.event_name != 'pull_request'
+        run: python3 tool/ci/build.py package-linux
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: package-linux-amd64
+          path: build/release/packages/*-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
   release:
-    needs: [build, macos, android, windows]
+    needs: [build, macos, android, windows, linux]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

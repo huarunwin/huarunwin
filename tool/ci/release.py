@@ -20,7 +20,8 @@ SEMVER = VERSION + r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
 PACKAGES = ("macos-arm64.dmg", "macos-amd64.dmg",
             "windows-amd64-setup.exe", "windows-amd64.zip",
             "windows-arm64-setup.exe", "windows-arm64.zip", "android-armeabi-v7a.apk",
-            "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json")
+            "android-arm64-v8a.apk", "android-x86_64.apk", "android-signing.json",
+            "linux-amd64.tar.gz")
 
 
 def validate_channel(data):
@@ -183,6 +184,9 @@ def release_notes(info, run_url):
             ("APK", "ARMv7", "android-armeabi-v7a.apk", "43A047"),
             ("APK", "x64", "android-x86_64.apk", "66BB6A"),
         )),
+        ("Linux", "", (
+            ("tar.gz", "amd64", "linux-amd64.tar.gz", "FCC624"),
+        )),
         ("Windows", "", (
             ("Setup", "x64", "windows-amd64-setup.exe", "0078D4"),
             ("Portable", "x64", "windows-amd64.zip", "408CBF"),
@@ -236,6 +240,7 @@ macOS 安装包目前使用 ad-hoc 签名，尚未接入 Apple Developer ID 签�
             "| 平台 | 下载 |\n| --- | --- |\n" + "\n".join(rows)
             + "\n\nWindows：x64 适用于 Windows 10 1809 及以上，ARM64 适用于 Windows 11。"
             "Setup 为安装版，Portable 需完整解压后运行 `huarunwin.exe`。\n"
+            "Linux：amd64 下载 tar.gz 后解压，运行其中的 `huarunwin`；需要系统已安装 GTK 3 运行库。\n"
             + macos_notes
             + f'\n源码：`{info["sha"]}` · [构建记录]({run_url})\n\n'
             "证书指纹见 android-signing.json 附件，文件校验值见 .sha256 附件。")

@@ -37,18 +37,19 @@ def identity(ref="refs/heads/dev", *, updates=None, **extra):
 
 
 class MetadataTests(unittest.TestCase):
-    def test_dev_is_fixed_pre_with_android_macos_and_windows_packages(self):
+    def test_dev_is_fixed_pre_with_android_linux_macos_and_windows_packages(self):
         info = identity()
         self.assertEqual((info["tag"], info["prerelease"], info["version"]), ("pre", True, "0.1.0-pre.42"))
         self.assertEqual(info["build_name"], "0.1.0")
         self.assertEqual(info["update_channel"], "debug")
-        self.assertEqual(len(info["assets"]), 11)
+        self.assertEqual(len(info["assets"]), 12)
         self.assertEqual([Path(name).suffix for name in info["assets"]],
                          [".dmg", ".dmg", ".exe", ".zip", ".exe", ".zip",
-                          ".apk", ".apk", ".apk", ".json", ".sha256"])
+                          ".apk", ".apk", ".apk", ".json", ".gz", ".sha256"])
         for architecture in ("amd64", "arm64"):
             for suffix in ("-setup.exe", ".zip"):
                 self.assertIn(f'HuarunWin-0.1.0-pre.42-windows-{architecture}{suffix}', info["assets"])
+        self.assertIn("HuarunWin-0.1.0-pre.42-linux-amd64.tar.gz", info["assets"])
 
     def test_semantic_tag_overrides_pubspec_version(self):
         info = identity("refs/tags/v2.3.4")
