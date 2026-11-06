@@ -114,7 +114,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(CompactNavigation),
-        matching: find.text(label),
+        matching: find.bySemanticsLabel(label),
       ),
     );
     await tester.pumpAndSettle();

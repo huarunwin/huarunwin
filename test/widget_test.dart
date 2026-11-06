@@ -110,28 +110,32 @@ void main() {
     expect(find.text('Android Example'), findsNothing);
     tester.view.physicalSize = const Size(700, 844);
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byType(NavigationDestination), findsNWidgets(3));
+    final navigation = find.byType(CompactNavigation);
+    expect(navigation, findsOneWidget);
+    expect(
+      tester.widget<CompactNavigation>(navigation).destinations,
+      hasLength(3),
+    );
     expect(tester.takeException(), isNull);
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('设置'),
+        of: navigation,
+        matching: find.bySemanticsLabel('设置'),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('外观'), findsOneWidget);
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('应用库'),
+        of: navigation,
+        matching: find.bySemanticsLabel('应用库'),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('应用库为空'), findsOneWidget);
     expect(find.byTooltip('返回'), findsNothing);
     expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      tester.widget<CompactNavigation>(navigation).selectedIndex,
       1,
     );
     await tester.tap(find.text('发现'));
@@ -143,7 +147,7 @@ void main() {
     expect(find.text('应用目录'), findsNothing);
     expect(find.text('帮助与反馈'), findsOneWidget);
     expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      tester.widget<CompactNavigation>(navigation).selectedIndex,
       2,
     );
     await tester.tap(find.text('深色'));

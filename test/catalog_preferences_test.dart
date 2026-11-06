@@ -257,10 +257,7 @@ void main() {
         await tester.tap(
           size.width >= 900
               ? find.byKey(const ValueKey('nav-applications'))
-              : find.descendant(
-                  of: find.byKey(const ValueKey('android-navigation-bar')),
-                  matching: find.text('发现'),
-                ),
+              : find.bySemanticsLabel('发现'),
         );
         await tester.pumpAndSettle();
         expect(selection(tester), 'macOS');

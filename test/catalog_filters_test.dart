@@ -12,6 +12,7 @@ import 'package:huarunwin/ui/page_components.dart';
 import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/ui/catalog_controls.dart';
+import 'package:huarunwin/ui/compact_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const examples = [
@@ -480,7 +481,7 @@ void main() {
       tester,
     ) async {
       await mount(tester, const Size(620, 880));
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(CompactNavigation), findsOneWidget);
       expect(find.byKey(const ValueKey('catalog-filter-button')), findsNothing);
 
       void expectSingleRow() {

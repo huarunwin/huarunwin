@@ -14,6 +14,7 @@ import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/ui/app_download_button.dart';
 import 'package:huarunwin/ui/catalog_controls.dart';
+import 'package:huarunwin/ui/compact_navigation.dart';
 import 'package:huarunwin/ui/detail.dart';
 import 'package:huarunwin/ui/site_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -645,7 +646,7 @@ void main() {
 
       tester.view.physicalSize = const Size(600, 900);
       await tester.pumpAndSettle();
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(CompactNavigation), findsOneWidget);
       expect(find.byKey(const ValueKey('nav-type-rule-config')), findsNothing);
       expect(find.byTooltip('应用类型：规则与配置'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('catalog-type-menu')));
