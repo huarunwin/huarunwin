@@ -90,23 +90,30 @@ class LinuxInstaller {
     LinuxProcessRunner? run,
     LinuxProcessStarter? start,
     Future<String> Function(String)? readText,
+    Iterable<String>? launcherDirectories,
   }) : home = home ?? Platform.environment['HOME'],
        run = run ?? _run,
        start = start ?? _start,
-       readText = readText ?? ((path) => File(path).readAsString());
+       readText = readText ?? ((path) => File(path).readAsString()),
+       launcherDirectories = launcherDirectories?.toList();
 
   final String? home;
   final LinuxProcessRunner run;
   final LinuxProcessStarter start;
   final Future<String> Function(String) readText;
+  final List<String>? launcherDirectories;
   Future<LinuxSystemInfo>? _system;
+
+  bool get _isFlatpak =>
+      File('/.flatpak-info').existsSync() ||
+      Platform.environment['FLATPAK_ID'] != null;
 
   static Future<ProcessResult> _run(String executable, List<String> args) =>
       Process.run(
         executable,
         args,
         runInShell: false,
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(minutes: 10));
   static Future<void> _start(String executable, List<String> args) async {
     await Process.start(
       executable,
@@ -120,9 +127,15 @@ class LinuxInstaller {
   Future<LinuxSystemInfo> _readSystem() async {
     var release = '', machine = '';
     try {
-      release = await readText('/etc/os-release');
+      release = await readText(
+        _isFlatpak ? '/run/host/os-release' : '/etc/os-release',
+      );
     } catch (_) {
-      /* A portable AppImage remains an option. */
+      try {
+        release = await readText('/etc/os-release');
+      } catch (_) {
+        /* A portable AppImage remains an option. */
+      }
     }
     try {
       final result = await run('uname', ['-m']);
@@ -137,6 +150,7 @@ class LinuxInstaller {
   /// identity or proves that the package is installed.
   Future<List<InstalledApplication>> installedApplications() async {
     final kind = (await systemInfo()).packageKind;
+    final launchers = await _linuxLaunchers();
     final (String command, List<String> arguments) = switch (kind) {
       'deb' => (
         'dpkg-query',
@@ -168,28 +182,47 @@ class LinuxInstaller {
     for (final line in result.stdout.toString().split('\n')) {
       final fields = line.trim().split(kind == 'pkg.tar.zst' ? ' ' : '\t');
       if (kind == 'pkg.tar.zst') {
-        if (fields.length != 2 || !_packageToken(fields[0])) continue;
+        if (fields.length != 2 ||
+            !_packageToken(fields[0]) ||
+            !_versionToken(fields[1])) {
+          continue;
+        }
+        final launcher = _linuxLauncherFor(fields[0], launchers);
+        final launcherName = launcher?.$1.trim();
         applications.add(
           InstalledApplication(
+            path: launcher?.$2 ?? '',
             uninstallId: 'arch:${fields[0]}',
             version: fields[1],
-            names: [fields[0]],
+            names: [
+              fields[0],
+              if (launcherName != null && launcherName.isNotEmpty)
+                launcherName,
+            ],
           ),
         );
       } else {
         if (fields.length < 3 ||
             !_packageToken(fields[0]) ||
             !_packageToken(fields[1]) ||
+            !_versionToken(fields[2]) ||
             kind == 'deb' && (fields.length != 4 || fields[3] != 'installed')) {
           continue;
         }
+        final launcher = _linuxLauncherFor(fields[0], launchers);
+        final launcherName = launcher?.$1.trim();
         applications.add(
           InstalledApplication(
+            path: launcher?.$2 ?? '',
             uninstallId:
                 '${kind == 'deb' ? 'deb' : 'rpm'}:${fields[0]}:${fields[1]}'
                 '${kind == 'rpm' ? ':${fields[2]}' : ''}',
             version: fields[2],
-            names: [fields[0]],
+            names: [
+              fields[0],
+              if (launcherName != null && launcherName.isNotEmpty)
+                launcherName,
+            ],
           ),
         );
       }
@@ -200,8 +233,129 @@ class LinuxInstaller {
   static bool _packageToken(String value) =>
       RegExp(r'^[A-Za-z0-9][A-Za-z0-9+_.-]*$').hasMatch(value);
 
+  static bool _versionToken(String value) =>
+      value.trim().isNotEmpty && !RegExp(r'[\s\x00]').hasMatch(value);
+
+  Future<List<(String name, String path, String id)>> _linuxLaunchers() async {
+    final roots =
+        launcherDirectories ??
+        [
+          '/usr/share/applications',
+          '/usr/local/share/applications',
+          if (home case final userHome?)
+            p.join(userHome, '.local', 'share', 'applications'),
+        ];
+    final launchers = <(String, String, String)>[];
+    for (final root in roots) {
+      final directory = Directory(root);
+      if (!await directory.exists()) continue;
+      try {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (!entity.path.toLowerCase().endsWith('.desktop') ||
+              await FileSystemEntity.type(entity.path, followLinks: false) !=
+                  FileSystemEntityType.file) {
+            continue;
+          }
+          String text;
+          try {
+            text = await File(entity.path).readAsString();
+          } catch (_) {
+            continue;
+          }
+          final entry = _desktopEntry(text);
+          if (entry == null) continue;
+          final executable = await _desktopExecutable(entry.$2);
+          if (executable != null) {
+            launchers.add((
+              entry.$1,
+              executable,
+              p.basenameWithoutExtension(entity.path),
+            ));
+          }
+        }
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return launchers;
+  }
+
+  (String, String)? _desktopEntry(String text) {
+    var inEntry = false;
+    String? type, name, exec;
+    for (final rawLine in text.split('\n')) {
+      final line = rawLine.trim();
+      if (line.startsWith('[') && line.endsWith(']')) {
+        inEntry = line == '[Desktop Entry]';
+        continue;
+      }
+      if (!inEntry || line.isEmpty || line.startsWith('#')) continue;
+      final separator = line.indexOf('=');
+      if (separator <= 0) continue;
+      final key = line.substring(0, separator);
+      final value = line.substring(separator + 1).trim();
+      switch (key) {
+        case 'Type':
+          type = value;
+        case 'Name':
+          name = value;
+        case 'Exec':
+          exec = value;
+      }
+    }
+    if (type != 'Application' || name == null || exec == null) return null;
+    return (name!, exec!);
+  }
+
+  String? _desktopExecutableToken(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return null;
+    if (text.startsWith('"')) {
+      final end = text.indexOf('"', 1);
+      return end > 1 ? text.substring(1, end) : null;
+    }
+    if (text.startsWith("'")) {
+      final end = text.indexOf("'", 1);
+      return end > 1 ? text.substring(1, end) : null;
+    }
+    return text.split(RegExp(r'\s+')).first;
+  }
+
+  Future<String?> _desktopExecutable(String value) async {
+    final token = _desktopExecutableToken(value);
+    if (token == null) return null;
+    if (p.isAbsolute(token) && await File(token).exists()) return token;
+    return _executable(token);
+  }
+
+  (String name, String path)? _linuxLauncherFor(
+    String packageName,
+    List<(String name, String path, String id)> launchers,
+  ) {
+    String normalize(String value) =>
+        value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+    final target = normalize(packageName);
+    for (final launcher in launchers) {
+      if (normalize(launcher.$1) == target ||
+          normalize(p.basename(launcher.$2)) == target ||
+          normalize(launcher.$3) == target) {
+        return (launcher.$1, launcher.$2);
+      }
+    }
+    return null;
+  }
+
   Future<String?> _executable(String name) async {
-    for (final root in ['/usr/bin', '/bin', '/usr/local/bin']) {
+    final roots = <String>[
+      '/usr/bin',
+      '/bin',
+      '/usr/local/bin',
+      if (home case final userHome?) p.join(userHome, '.local', 'bin'),
+      ...?Platform.environment['PATH']
+          ?.split(Platform.isWindows ? ';' : ':')
+          .where((value) => value.isNotEmpty),
+    ];
+    for (final root in roots.toSet()) {
       final path = p.join(root, name);
       if (await File(path).exists()) return path;
     }
@@ -225,12 +379,14 @@ class LinuxInstaller {
       case 'rpm':
         final dnf = await _executable('dnf');
         executable = dnf ?? await _executable('zypper');
+        final packageName = parts.length > 1 ? parts[1] : '';
+        final architecture = parts.length > 2 ? parts[2] : '';
         arguments = [
           'remove',
           '--',
           dnf != null
-              ? '${parts[1]}-$version.${parts[2]}'
-              : '${parts[1]}.${parts[2]}=$version',
+              ? '$packageName-$version.$architecture'
+              : '$packageName.$architecture=$version',
         ];
       case 'arch':
         executable = await _executable('pacman');
@@ -279,6 +435,11 @@ class LinuxInstaller {
       ? 'pkg.tar.zst'
       : p.extension(path).replaceFirst('.', '').toLowerCase();
 
+  /// Installs a Linux package using the same ordered strategies as Komi Store.
+  ///
+  /// The first attempts are direct, argument-vector based `pkexec` calls. A
+  /// terminal command is only opened after those methods fail, so Ubuntu's
+  /// normal path is `pkexec apt install -y <file>` rather than App Center.
   Future<void> openPackage(String path) async {
     await _regularFile(path);
     final format = kind(path);
@@ -288,17 +449,23 @@ class LinuxInstaller {
         message: '请使用对应的安装入口处理此文件。',
       );
     }
-    final system = await systemInfo();
-    if (format != 'zip' &&
-        system.packageKind != null &&
-        format != system.packageKind) {
-      throw PlatformException(
-        code: 'package_kind',
-        message:
-            '当前系统优先使用 ${system.packageKind!.toUpperCase()}，请选择对应安装包或 AppImage；不会自动转换软件包。',
-      );
+    if (format == 'zip') {
+      await _openUri(Uri.file(path));
+      return;
     }
-    await _openUri(Uri.file(path));
+    if (_isFlatpak) {
+      await _openFlatpakPackage(path, format);
+      return;
+    }
+    final system = await systemInfo();
+    switch (format) {
+      case 'deb':
+        await _installDeb(path, system.packageKind);
+      case 'rpm':
+        await _installRpm(path);
+      case 'pkg.tar.zst':
+        await _installPacman(path, system.packageKind);
+    }
   }
 
   Future<void> reveal(String path) async {
@@ -319,24 +486,199 @@ class LinuxInstaller {
     );
   }
 
+  Future<void> _openFlatpakPackage(String path, String format) async {
+    try {
+      final result = await run('xdg-open', [path]);
+      if (result.exitCode == 0) return;
+    } catch (_) {
+      /* Fall through to an actionable error. */
+    }
+    throw PlatformException(
+      code: 'open_package',
+      message: '${format.toUpperCase()} 已交给宿主系统，但未能打开系统安装器；请在文件管理器中手动安装。',
+    );
+  }
+
+  Future<bool> _tryRun(String executable, List<String> arguments) async {
+    try {
+      return (await run(executable, arguments)).exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _shellQuote(String value) => "'${value.replaceAll("'", "'\\''")}'";
+
+  Future<void> _installDeb(String path, String? packageKind) async {
+    if (packageKind == 'rpm') {
+      await _openTerminal(
+        'alien',
+        "if ! command -v alien >/dev/null 2>&1; then "
+            "sudo dnf install -y alien rpm-build 2>/dev/null || "
+            "sudo yum install -y alien rpm-build 2>/dev/null || "
+            "sudo zypper install -y alien rpm-build 2>/dev/null; fi; "
+            'TMPDIR="\$(mktemp -d)" && cp ${_shellQuote(path)} "\$TMPDIR/package.deb" '
+            '&& cd "\$TMPDIR" && sudo alien -r -c package.deb '
+            '&& sudo rpm -ivh --nodeps --force ./*.rpm; '
+            'status=\$?; cd /; rm -rf "\$TMPDIR"; exit \$status',
+      );
+      return;
+    }
+    if (await _tryRun('pkexec', ['apt', 'install', '-y', path])) return;
+    if (await _tryRun('pkexec', [
+      'sh',
+      '-c',
+      "dpkg -i ${_shellQuote(path)} || apt-get install -f -y",
+    ])) {
+      return;
+    }
+    if (await _tryRun('gdebi-gtk', [path])) return;
+    await _openTerminal(
+      'deb',
+      "sudo dpkg -i ${_shellQuote(path)} && sudo apt-get install -f -y",
+    );
+  }
+
+  Future<void> _installRpm(String path) async {
+    if (await _tryRun('pkexec', [
+      'dnf',
+      'install',
+      '-y',
+      '--nogpgcheck',
+      path,
+    ])) {
+      return;
+    }
+    if (await _tryRun('pkexec', [
+      'yum',
+      'install',
+      '-y',
+      '--nogpgcheck',
+      path,
+    ])) {
+      return;
+    }
+    if (await _tryRun('pkexec', [
+      'zypper',
+      'install',
+      '-y',
+      '--no-gpg-checks',
+      path,
+    ])) {
+      return;
+    }
+    if (await _tryRun('pkexec', ['rpm', '-ivh', '--nosignature', path])) {
+      return;
+    }
+    await _openTerminal(
+      'rpm',
+      'sudo dnf install -y --nogpgcheck ${_shellQuote(path)} 2>/dev/null || '
+          'sudo yum install -y --nogpgcheck ${_shellQuote(path)} 2>/dev/null || '
+          'sudo zypper install -y --no-gpg-checks ${_shellQuote(path)} 2>/dev/null || '
+          'sudo rpm -ivh --nosignature ${_shellQuote(path)}',
+    );
+  }
+
+  Future<void> _installPacman(String path, String? packageKind) async {
+    if (packageKind != 'pkg.tar.zst') {
+      await _openTerminal(
+        'pacman-incompatible',
+        "echo 'Arch packages (.pkg.tar.zst) can only be installed on Arch-based distributions.'; "
+            "echo 'Please download the .deb, .rpm, or .AppImage variant.'; read",
+      );
+      throw PlatformException(
+        code: 'package_kind',
+        message: 'Arch 软件包只能安装在 Arch 系统，请选择 DEB、RPM 或 AppImage。',
+      );
+    }
+    if (await _tryRun('pkexec', ['pacman', '-U', '--noconfirm', path])) return;
+    await _openTerminal('pacman', 'sudo pacman -U ${_shellQuote(path)}');
+  }
+
+  Future<void> _openTerminal(String kind, String command) async {
+    final terminals = [
+      (
+        'gnome-terminal',
+        [
+          '--',
+          'bash',
+          '-c',
+          '$command; status=\$?; echo; read -r; exit \$status',
+        ],
+      ),
+      (
+        'konsole',
+        [
+          '-e',
+          'bash',
+          '-c',
+          '$command; status=\$?; echo; read -r; exit \$status',
+        ],
+      ),
+      (
+        'xfce4-terminal',
+        ['-e', 'bash -c "$command; status=\$?; echo; read -r; exit \$status"'],
+      ),
+      (
+        'alacritty',
+        [
+          '-e',
+          'bash',
+          '-c',
+          '$command; status=\$?; echo; read -r; exit \$status',
+        ],
+      ),
+      (
+        'kitty',
+        ['bash', '-c', '$command; status=\$?; echo; read -r; exit \$status'],
+      ),
+      (
+        'tilix',
+        ['-e', 'bash -c "$command; status=\$?; echo; read -r; exit \$status"'],
+      ),
+      (
+        'mate-terminal',
+        ['-e', 'bash -c "$command; status=\$?; echo; read -r; exit \$status"'],
+      ),
+      (
+        'xterm',
+        [
+          '-e',
+          'bash',
+          '-c',
+          '$command; status=\$?; echo; read -r; exit \$status',
+        ],
+      ),
+    ];
+    for (final (terminal, arguments) in terminals) {
+      try {
+        await start(terminal, arguments);
+        return;
+      } on ProcessException {
+        continue;
+      }
+    }
+    throw PlatformException(
+      code: 'install_unavailable',
+      message: '未找到可用的终端，请在文件管理器中手动安装 $kind 软件包。',
+    );
+  }
+
   Future<String> _root({bool create = true}) async {
     final userHome = home;
     if (userHome == null || !p.isAbsolute(userHome)) {
       throw PlatformException(code: 'home', message: '无法确认用户目录，不能安装 AppImage。');
     }
     final canonicalHome = await Directory(userHome).resolveSymbolicLinks();
-    var current = canonicalHome;
-    for (final component in ['Applications', 'HuarunWin']) {
-      current = p.join(current, component);
-      final type = await FileSystemEntity.type(current, followLinks: false);
-      if (type == FileSystemEntityType.notFound && create) {
-        await Directory(current).create();
-      } else if (type != FileSystemEntityType.directory) {
-        throw PlatformException(
-          code: 'install_path',
-          message: '用户应用目录包含符号链接或其他文件，请先处理后重试。',
-        );
-      }
+    final current = p.join(canonicalHome, 'Applications');
+    final type = await FileSystemEntity.type(current, followLinks: false);
+    if (type == FileSystemEntityType.notFound && create) {
+      await Directory(current).create();
+    } else if (type != FileSystemEntityType.directory) {
+      throw PlatformException(
+        code: 'install_path',
+        message: '用户应用目录包含符号链接或其他文件，请先处理后重试。',
+      );
     }
     return current;
   }
@@ -398,35 +740,45 @@ class LinuxInstaller {
         message: '安装包 SHA-256 不匹配，请重新下载。',
       );
     }
-    final folder = await Directory(await _root()).createTemp('app-');
+    final root = await _root();
+    var target = p.join(root, p.basename(source));
+    if (p.normalize(target) != p.normalize(source)) {
+      var suffix = 1;
+      while (await File(target).exists()) {
+        target = p.join(
+          root,
+          '${p.basenameWithoutExtension(source)}_$suffix${p.extension(source)}',
+        );
+        suffix++;
+      }
+    }
+    final copied = p.normalize(target) != p.normalize(source);
     try {
-      final target = p.join(folder.path, 'Application.AppImage');
-      await File(source).copy(target);
+      if (copied) await File(source).copy(target);
       if (await compute(packageSha256, target) != digest) {
         throw PlatformException(code: 'checksum', message: '安装包在复制期间已变化，请重试。');
       }
       await _validateAppImage(target, system.architecture);
-      final mode = await run('chmod', ['700', target]);
+      final mode = await run('chmod', ['+x', target]);
       if (mode.exitCode != 0) {
         throw PlatformException(
           code: 'permission',
           message: '无法授予 AppImage 执行权限。',
         );
       }
+      await start(target, const []);
+      if (copied) await File(source).delete();
       return target;
     } catch (_) {
-      await folder.delete(recursive: true);
+      if (copied && await File(target).exists()) await File(target).delete();
       rethrow;
     }
   }
 
   Future<void> openAppImage(String path) async {
     final root = await _root();
-    final parent = p.dirname(path);
-    if (!p.isWithin(root, path) ||
-        p.dirname(parent) != root ||
-        await FileSystemEntity.type(parent, followLinks: false) !=
-            FileSystemEntityType.directory) {
+    if (p.dirname(path) != root ||
+        !p.basename(path).toLowerCase().endsWith('.appimage')) {
       throw PlatformException(
         code: 'install_path',
         message: '应用不在受管理的用户安装目录内，请重新安装。',
@@ -443,16 +795,31 @@ class LinuxInstaller {
     }
   }
 
+  Future<void> openInstalledApplication(String path) async {
+    if (!p.isAbsolute(path) ||
+        await FileSystemEntity.type(path, followLinks: true) !=
+            FileSystemEntityType.file) {
+      throw PlatformException(
+        code: 'launch',
+        message: '无法确认已安装应用的启动文件，请刷新后重试。',
+      );
+    }
+    try {
+      await start(path, const []);
+    } catch (_) {
+      throw PlatformException(
+        code: 'launch',
+        message: '应用未能启动，请确认系统启动项仍然有效。',
+      );
+    }
+  }
+
   Future<void> uninstallAppImage(String path) async {
     final root = await _root(create: false);
-    final parent = p.dirname(path);
     if (!p.isAbsolute(path) ||
         p.normalize(path) != path ||
-        p.dirname(parent) != root ||
-        !p.basename(parent).startsWith('app-') ||
-        p.basename(path) != 'Application.AppImage' ||
-        await FileSystemEntity.type(parent, followLinks: false) !=
-            FileSystemEntityType.directory ||
+        p.dirname(path) != root ||
+        !p.basename(path).toLowerCase().endsWith('.appimage') ||
         await File(path).resolveSymbolicLinks() != path) {
       throw PlatformException(
         code: 'install_path',
@@ -467,14 +834,6 @@ class LinuxInstaller {
         code: 'trash',
         message: '无法移到系统回收站，请使用文件管理器处理；不会永久删除应用。',
       );
-    }
-    // Remove only the now-empty task folder, preserving any unexpected files.
-    try {
-      if (await Directory(parent).list().isEmpty) {
-        await Directory(parent).delete();
-      }
-    } on FileSystemException {
-      // The app has already moved to Trash; an empty folder is harmless.
     }
   }
 }

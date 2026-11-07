@@ -442,6 +442,8 @@ class NativeInstaller {
       linux.installAppImage(path, expectedSha256: expectedSha256);
   Future<void> openLinuxPackage(String path) => linux.openPackage(path);
   Future<void> openAppImage(String path) => linux.openAppImage(path);
+  Future<void> openLinuxApplication(String path) =>
+      linux.openInstalledApplication(path);
   Future<void> revealLinux(String path) => linux.reveal(path);
   Future<String> install(
     String package, {

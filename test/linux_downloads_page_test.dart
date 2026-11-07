@@ -6,13 +6,7 @@ import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/services/android_package.dart';
 import 'package:huarunwin/ui/downloads_page.dart';
 
-class LinuxPageInstaller extends NativeInstaller {
-  final opened = <String>[];
-  @override
-  Future<void> openAppImage(String path) async {
-    opened.add(path);
-  }
-}
+class LinuxPageInstaller extends NativeInstaller {}
 
 class LinuxPageDownloads extends DownloadManager {
   LinuxPageDownloads(super.directory)
@@ -32,14 +26,14 @@ class LinuxPageDownloads extends DownloadManager {
     installs++;
     task.state = DownloadState.installed;
     task.installedPath =
-        '/home/fixture/Applications/HuarunWin/app-a/Application.AppImage';
+        '/home/fixture/Applications/fixture.AppImage';
     notifyListeners();
   }
 }
 
 void main() {
   testWidgets(
-    'Linux AppImage installation requires confirmation and opens only on request',
+    'Linux AppImage installation requires confirmation and delegates immediate launch',
     (tester) async {
       final manager = LinuxPageDownloads(Directory.systemTemp);
       addTearDown(() {
@@ -66,7 +60,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('安装应用'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('~/Applications/HuarunWin'), findsOneWidget);
+      expect(find.textContaining('~/Applications'), findsOneWidget);
+      expect(find.textContaining('立即启动'), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(manager.installs, 0);
@@ -75,11 +70,6 @@ void main() {
       await tester.tap(find.text('开始安装'));
       await tester.pumpAndSettle();
       expect(manager.installs, 1);
-      final installer = manager.installer as LinuxPageInstaller;
-      expect(installer.opened, isEmpty);
-      await tester.tap(find.text('打开应用'));
-      await tester.pumpAndSettle();
-      expect(installer.opened, [task.installedPath]);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.linux),

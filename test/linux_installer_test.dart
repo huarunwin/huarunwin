@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huarunwin/data/models.dart';
+import 'package:huarunwin/services/app_download_status.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/services/linux_installer.dart';
 
@@ -39,13 +40,14 @@ void main() {
   late LinuxInstaller installer;
   late List<(String, List<String>)> commands;
   late List<String> started;
-  var chmodStatus = 0, openStatus = 0;
+  var chmodStatus = 0, packageStatus = 0, openStatus = 0;
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('huarun-linux-');
     directory = Directory(await directory.resolveSymbolicLinks());
     commands = [];
     started = [];
     chmodStatus = 0;
+    packageStatus = 0;
     openStatus = 0;
     installer = LinuxInstaller(
       home: directory.path,
@@ -56,6 +58,8 @@ void main() {
           1,
           exe == 'chmod'
               ? chmodStatus
+              : exe == 'pkexec' || exe == 'gdebi-gtk'
+              ? packageStatus
               : exe == 'xdg-open'
               ? openStatus
               : 0,
@@ -124,22 +128,24 @@ void main() {
     );
   });
   test(
-    'AppImage copies to a unique user directory and never runs during install',
+    'AppImage moves to ~/Applications, gets executable permission, and starts',
     () async {
       final source = await image();
+      final sourceBytes = await source.readAsBytes();
       final first = await installer.installAppImage(source.path);
-      final second = await installer.installAppImage(source.path);
+      final secondSource = await image();
+      final second = await installer.installAppImage(secondSource.path);
       expect(first, isNot(second));
       expect(
         first,
-        startsWith(p.join(directory.path, 'Applications', 'HuarunWin', 'app-')),
+        p.join(directory.path, 'Applications', 'Source App.AppImage'),
       );
-      expect(await File(first).readAsBytes(), await source.readAsBytes());
-      expect(commands.where((v) => v.$1 == 'chmod').first.$2, ['700', first]);
-      expect(started, isEmpty);
+      expect(await File(first).readAsBytes(), sourceBytes);
+      expect(commands.where((v) => v.$1 == 'chmod').first.$2, ['+x', first]);
+      expect(started, [first, second]);
+      expect(await source.exists(), isFalse);
       await installer.openAppImage(first);
-      expect(started, [first]);
-      expect(await source.exists(), isTrue);
+      expect(started, [first, second, first]);
     },
   );
   for (final entry in [(183, 2, true), (62, 1, true), (62, 2, false)]) {
@@ -175,20 +181,25 @@ void main() {
       );
     },
   );
-  test('failed chmod cleans only its new temporary installation', () async {
-    final source = await image();
-    final previous = await installer.installAppImage(source.path);
-    chmodStatus = 1;
-    await expectLater(
-      installer.installAppImage(source.path),
-      throwsA(isA<PlatformException>()),
-    );
-    expect(await File(previous).exists(), isTrue);
-    expect(
-      await Directory('${directory.path}/Applications/HuarunWin').list().length,
-      1,
-    );
-  });
+  test(
+    'failed chmod cleans only its new installation and preserves the source',
+    () async {
+      final source = await image();
+      final previous = await installer.installAppImage(source.path);
+      final retry = await image();
+      chmodStatus = 1;
+      await expectLater(
+        installer.installAppImage(retry.path),
+        throwsA(isA<PlatformException>()),
+      );
+      expect(await File(previous).exists(), isTrue);
+      expect(
+        await Directory('${directory.path}/Applications').list().length,
+        1,
+      );
+      expect(await retry.exists(), isTrue);
+    },
+  );
   test(
     'symlinks cannot redirect the managed application directory',
     () async {
@@ -205,26 +216,34 @@ void main() {
         ? 'Creating symbolic links needs Windows privileges.'
         : false,
   );
-  test('system packages use a URI argument, retain files, and never convert formats', () async {
+  test('system packages follow Komi Store order and retain files', () async {
     final source = await File('${directory.path}/A \$package; name.deb')
         .writeAsString('fixture');
     await installer.openPackage(source.path);
-    expect(commands.last.$1, 'xdg-open');
-    expect(commands.last.$2, [Uri.file(source.path).toString()]);
+    final apt = commands.firstWhere((v) => v.$1 == 'pkexec');
+    expect(apt.$2, ['apt', 'install', '-y', source.path]);
+    expect(commands.where((v) => v.$1 == 'xdg-open'), isEmpty);
     final foreign = await File('${directory.path}/foreign.rpm')
         .writeAsString('fixture');
-    await expectLater(
-      installer.openPackage(foreign.path),
-      throwsA(isA<PlatformException>()),
-    );
-    expect(commands.where((v) => v.$1 == 'xdg-open').length, 1);
-    openStatus = 1;
-    await expectLater(
-      installer.openPackage(source.path),
-      throwsA(isA<PlatformException>()),
-    );
+    await installer.openPackage(foreign.path);
+    expect(commands.where((v) => v.$1 == 'pkexec').length, 2);
     expect(await source.exists(), isTrue);
     expect(started, isEmpty);
+    expect(openStatus, 0);
+  });
+  test('DEB fallback opens a terminal only after apt and gdebi fail', () async {
+    final source = await File('${directory.path}/fallback.deb')
+        .writeAsString('fixture');
+    packageStatus = 1;
+    await installer.openPackage(source.path);
+    expect(
+      commands
+          .where((v) => v.$1 == 'pkexec' || v.$1 == 'gdebi-gtk')
+          .map((v) => v.$1),
+      ['pkexec', 'pkexec', 'gdebi-gtk'],
+    );
+    expect(started.single, 'gnome-terminal');
+    expect(await source.exists(), isTrue);
   });
   test(
     'manager refresh and record deletion preserve the installed AppImage',
@@ -249,8 +268,8 @@ void main() {
       await manager.install(task);
       expect(task.state, DownloadState.installed);
       expect(task.installedPath, isNotNull);
-      expect(started, isEmpty);
-      await File(task.filePath).delete();
+      expect(started, [task.installedPath]);
+      expect(await File(task.filePath).exists(), isFalse);
       await manager.refresh();
       expect(task.state, DownloadState.installed);
       expect(task.packageAvailable, isFalse);
@@ -287,7 +306,7 @@ void main() {
   );
 
   test(
-    'AppImage applies actual owner-only permissions to the temporary copy',
+    'AppImage applies executable permissions to the installed copy',
     () async {
       final source = await image();
       final local = LinuxInstaller(
@@ -296,14 +315,75 @@ void main() {
         run: (exe, args) async => exe == 'uname'
             ? ProcessResult(1, 0, 'x86_64', '')
             : Process.run(exe, args, runInShell: false),
-        start: (_, _) async =>
-            fail('Installation must not execute the AppImage'),
+        start: (_, _) async {},
       );
       final installed = await local.installAppImage(source.path);
-      expect((await File(installed).stat()).mode & 511, 448);
+      expect((await File(installed).stat()).mode & 73, 73);
     },
     skip: Platform.isWindows,
   );
+
+  test('installed package launchers start their discovered executable', () async {
+    final executable = await File('${directory.path}/FlClash').writeAsString('x');
+    await installer.openInstalledApplication(executable.path);
+    expect(started, [executable.path]);
+  });
+
+  test('installed package launcher supplies an openable path and display name', () async {
+    final launcherDirectory = await Directory(
+      '${directory.path}/applications',
+    ).create();
+    final executable = await File('${directory.path}/FlClash').writeAsString('x');
+    await File('${launcherDirectory.path}/flclash.desktop').writeAsString('''
+[Desktop Entry]
+Type=Application
+Name=FlClash
+Exec=${executable.path}
+''');
+    final local = LinuxInstaller(
+      home: directory.path,
+      launcherDirectories: [launcherDirectory.path],
+      readText: (_) async => 'ID=ubuntu',
+      run: (exe, args) async => ProcessResult(
+        1,
+        0,
+        exe == 'uname'
+            ? 'x86_64\n'
+            : exe == 'dpkg-query'
+            ? 'flclash\tamd64\t0.8.0-1\tinstalled\n'
+            : '',
+        '',
+      ),
+    );
+    final apps = await local.installedApplications();
+    expect(apps, hasLength(1));
+    expect(apps.single.path, executable.path);
+    expect(apps.single.names, containsAll(['flclash', 'FlClash']));
+  });
+
+  test('distribution package revisions remain comparable to catalog versions', () {
+    expect(
+      const AppDownloadStatus(
+        version: '1:0.8.0-1ubuntu2',
+        uninstallId: 'deb:flclash:amd64',
+      ).comparableVersion,
+      '0.8.0',
+    );
+    expect(
+      const AppDownloadStatus(
+        version: '0.8.0-3.fc41',
+        uninstallId: 'rpm:flclash:x86_64:0:0.8.0-3.fc41',
+      ).comparableVersion,
+      '0.8.0',
+    );
+    expect(
+      const AppDownloadStatus(
+        version: '0.8.0-beta-1',
+        uninstallId: 'arch:flclash',
+      ).comparableVersion,
+      '0.8.0-beta',
+    );
+  });
 
   test('Linux system handoff persists without claiming installation', () async {
     final manager = DownloadManager(

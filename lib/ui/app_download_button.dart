@@ -274,7 +274,11 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
         await widget.manager.installer.openAndroidApp(packageName);
       } else if (local.installedPath case final path?) {
         if (platform == 'Linux') {
-          await widget.manager.installer.openAppImage(path);
+          if (local.uninstallId != null) {
+            await widget.manager.installer.openLinuxApplication(path);
+          } else {
+            await widget.manager.installer.openAppImage(path);
+          }
         } else {
           await widget.manager.installer.openApp(path);
         }

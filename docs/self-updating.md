@@ -52,7 +52,7 @@ macOS 新构建使用 `华润赢.app`，应用身份仍为 `win.huarun.huarunwin
 
 Windows ZIP 应包含唯一的 `huarunwin.exe`、`flutter_windows.dll` 和 `data/flutter_assets`，可带同目录插件 DLL；只替换主程序、DLL 与 data，在程序同卷目录保存旧文件备份，失败尝试恢复。程序版本资源的 `CompanyName` 为 `win.huarun`，`InternalName`／`ProductName` 为 `huarunwin`，`ProductVersion`（忽略 `+` 构建元数据）须匹配完整目标版本。EXE 使用 Inno Setup 安装器，版本资源字段仅去掉编译器填充的尾部 ASCII 空格后，厂商、产品名及完整文本版本仍须精确匹配；安装器身份另以 `OriginalFilename: huarunwin-setup.exe` 和 `FileDescription: HuarunWin Setup` 核对，不将 Inno 的内部名称当作主程序名称。便携 ZIP 中的主程序继续严格检查 `InternalName: huarunwin`。MSI 要求 `ProductName: huarunwin`、`Manufacturer: win.huarun`；MSIX 要求身份 `win.huarun.huarunwin`，系统包的数字版本须匹配目标基础版本。当前程序已有有效 Authenticode 签名时，新包须有效且证书指纹相同。便携构建发布完整 ZIP，不用单个裸 EXE 替代运行目录；安装器交接成功仅记为结果未确认。当前脚本通过 Windows 自带的 Windows PowerShell 运行，写出 UTF-8 BOM 保留中文脚本编码。
 
-Linux 系统包需要本机相应的 `dpkg-deb`／`rpm`／`bsdtar` 读取身份，随后通过系统桌面工具安装，保留权限确认，不执行 root shell。AppImage 备份原文件并在原目录原子替换；目录不可写或当前客户端不是 AppImage 启动时明确失败，不猜测其他安装路径。AppImage 的来源身份依赖受信任 Hub／发布页提供的摘要，不声称 ELF 标记本身能证明应用身份。
+Linux 系统包需要本机相应的 `dpkg-deb`／`rpm`／`bsdtar` 读取身份，随后按 Komi Store 顺序尝试发行版包管理器的 `pkexec` 安装，失败后打开终端回退；系统包安装仍保留权限确认，不把交接结果当作已安装。AppImage 备份原文件并在原目录原子替换；目录不可写或当前客户端不是 AppImage 启动时明确失败，不猜测其他安装路径。AppImage 的来源身份依赖受信任 Hub／发布页提供的摘要，不声称 ELF 标记本身能证明应用身份。
 
 macOS 在 `/Applications` 内更新时复用已启用的管理员助手；尚未启用且目录不可写时首次由系统授权安装助手。替换成功后迁移客户端签名信任，常驻助手代码保持原授权版本。开发目录等可写位置继续普通权限更新，其他提权位置拒绝并提示移到“应用程序”；手动换签名或升级助手实现可能需在操作中重新确认系统授权。详见[管理员助手](installation.md#mac-管理员助手)。此改动不更改 Hub 的更新字段、版本、渠道或下载地址。
 

@@ -246,7 +246,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                             : _platform == 'Windows'
                             ? '下载或导入 EXE / MSI / MSIX 安装包，通过系统安装器完成安装；ZIP 需手动解压。'
                             : _platform == 'Linux'
-                            ? '下载或导入 AppImage、DEB、RPM、Arch 包或 ZIP。AppImage 安装到用户目录，软件包交由系统工具处理。'
+                            ? '下载或导入 AppImage、DEB、RPM、Arch 包或 ZIP。AppImage 会移动到 ~/Applications 并立即启动，软件包按 Komi Store 顺序安装。'
                             : Platform.isIOS
                             ? '在应用详情页选择安装包后，由系统浏览器完成下载。'
                             : '在应用详情页选择安装包，即可开始下载。',
@@ -990,7 +990,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
         builder: (context) => AlertDialog(
           title: Text('安装 ${task.appName}'),
           content: const Text(
-            'AppImage 将复制到 ~/Applications/HuarunWin 下的独立目录，并授予当前用户执行权限。原安装包与其他已安装应用会保留。安装后点击“打开应用”启动。',
+            'AppImage 将移动到 ~/Applications，授予执行权限并立即启动。若同名文件已存在，会自动生成不重复的文件名。',
           ),
           actions: [
             DialogActionsRow(

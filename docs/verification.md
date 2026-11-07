@@ -6,6 +6,12 @@
 
 Linux smoke test 从同次运行的 `package-linux-amd64` artifact 下载 `HuarunWin-0.7.0-pre.48-linux-amd64.tar.gz`，在 Ubuntu 24.04 amd64 安装 GTK、EGL、GLES 与 Xvfb 运行库后解压，并在虚拟 X11 显示中启动 `huarunwin` 进程通过 20 秒存活检查。`pre` 预发布 Release 已包含 Linux amd64 tar.gz 及其他平台附件。
 
+## 2026-11-07 Linux 安装流程对齐 Komi Store
+
+Linux 安装器改为按 Komi Store 的顺序处理本地安装包：AppImage 移动到用户 `~/Applications`、授予执行权限并立即启动，同名文件自动编号；Ubuntu 的 DEB 依次尝试 `pkexec apt install -y`、依赖修复和 `gdebi-gtk`，失败后在终端回退；RPM 依次尝试 dnf、yum、zypper、rpm，Arch 包仅在 Arch 系统使用 pacman。安装包路径始终作为参数传递，原包在系统包交接失败时保留。下载页、安装文档及项目约定同步更新，页面测试改为验证新的立即启动说明。
+
+使用项目锁定的 Flutter 3.47.6 在 Linux 环境通过 `fvm flutter analyze --no-pub`，并通过 Linux 安装器、Linux 下载页和下载可靠性定向测试；Linux 安装器测试共 17 项，组合定向回归共 22 项。Ubuntu 24.04 x86_64 Release 构建成功并启动华润赢；使用同一 FlClash DEB 在 Ubuntu 中完成实际 `apt` 安装，`dpkg` 状态为 `install ok installed`，安装路径为 `/opt/FlClash`，随后以普通用户启动程序进程成功。`pkexec` 的真实授权窗口未能通过 VirtualBox `guestcontrol` 会话附着到 GNOME 的 polkit 会话，返回 `Not authorized`；因此授权弹窗本身未记为通过，系统包实际安装结果由同一包管理器命令单独核验。未修改 Hub 或网站仓库，未提交或推送。
+
 ## 2026-10-24 新增 tag 同步 debug 更新信息
 
 同步客户端与 Hub 的项目约定和发布文档：新增正式 tag 时，一起维护 Hub 的 `debug.releases` 日志，将 `debug.publishedVersion` 设为去掉 tag 的 `v` 前缀后的版本，并在推送 tag 前提交推送 Hub 信息。正式渠道指针继续独立维护，固定 `pre` 仍使用完整预发布版本。补齐当前 `0.7.0` 的 debug 日志和指针，正式渠道保留 `0.6.0`。
@@ -1014,7 +1020,6 @@ macOS 在 Apple Silicon 上实际启动 Release，检查宽屏及折叠侧栏的
 本轮没有连接 Android 真机；Android 页面行为由 Flutter Widget 测试覆盖，原生安装／重签／改包等由模拟器 instrumentation 覆盖，未将其写成真机逐页验收。Intel Mac 仅验证编译架构，未在 Intel 硬件运行；未重复进行真实管理员认证或替换用户已安装应用。构建中的第三方弃用／SDK 工具版本提示不影响本轮检查通过。两小时策略使用受控的持久化时间验证，没有实际等待两小时。
 
 日志和安装包保留在忽略的 `build/qa-2026-10-23/`、`build/app/outputs/flutter-apk/` 与 `build/macos/Build/Products/Release/`；所改 Dart 文件格式及 `git diff --check` 通过。未修改 Hub 发布信息，本轮结果为本地验证，不代表旧 tag 的远端工作流已重新通过。
-
 
 ## 2026-10-24 下载目录参照 Komi Store
 

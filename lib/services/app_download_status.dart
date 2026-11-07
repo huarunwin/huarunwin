@@ -26,15 +26,21 @@ class AppDownloadStatus {
   String? get identity => installedPackage ?? installedPath ?? uninstallId;
   String? get comparableVersion {
     final value = version;
-    // Distribution epochs/revisions are not upstream prerelease identifiers.
-    // Keep the real version for display without claiming a false update.
-    if (value != null &&
-        uninstallId != null &&
-        ['deb:', 'rpm:', 'arch:'].any(uninstallId!.startsWith) &&
-        RegExp('[-:]').hasMatch(value)) {
-      return null;
+    if (value == null || value.trim().isEmpty) return null;
+    // dpkg, rpm and pacman append a distribution epoch/revision to the
+    // upstream version. Keep the raw value for display, but compare the
+    // upstream portion with the version published by the catalog. This also
+    // preserves prereleases such as 1.2.3-beta-1 as 1.2.3-beta.
+    if (uninstallId != null &&
+        ['deb:', 'rpm:', 'arch:'].any(uninstallId!.startsWith)) {
+      var normalized = value.trim();
+      final epoch = normalized.indexOf(':');
+      if (epoch >= 0) normalized = normalized.substring(epoch + 1);
+      final revision = normalized.lastIndexOf('-');
+      if (revision > 0) normalized = normalized.substring(0, revision);
+      return normalized;
     }
-    return value;
+    return value.trim();
   }
 
   factory AppDownloadStatus.fromApplication(InstalledApplication app) =>

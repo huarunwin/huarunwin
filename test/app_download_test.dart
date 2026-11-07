@@ -76,6 +76,7 @@ class TestResolver extends MacDownloadResolver {
 
 class TestInstaller extends NativeInstaller {
   List<InstalledApplication> apps = [];
+  final openedLinux = <String>[];
   bool failLookup = false;
   int lookups = 0;
 
@@ -94,6 +95,8 @@ class TestInstaller extends NativeInstaller {
     packageKind: 'deb',
     distribution: 'Ubuntu Fixture',
   );
+  @override
+  Future<void> openLinuxApplication(String path) async => openedLinux.add(path);
 }
 
 class TestDownloads extends DownloadManager {
@@ -705,6 +708,14 @@ void main() {
     names: const ['Example'],
   );
 
+  InstalledApplication linuxLocalVersion(String version) =>
+      InstalledApplication(
+        path: '/opt/Example/Example',
+        uninstallId: 'deb:example:amd64',
+        version: version,
+        names: const ['Example'],
+      );
+
   Future<void> showButton(
     WidgetTester tester, {
     AppDetails details = const AppDetails(app: app, version: 'v0.9.1'),
@@ -752,6 +763,47 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.macOS),
     );
   }
+
+  testWidgets(
+    'Linux installed package opens and offers the same update flow',
+    (tester) async {
+      final installer = downloads.installer as TestInstaller;
+      installer.apps = [linuxLocalVersion('0.9.0-1')];
+      resolver.linuxPackages = const [
+        DownloadLink(
+          url: 'https://example.com/example-linux-arm64.deb',
+          label: 'Linux DEB',
+          platform: 'Linux',
+          architecture: 'arm64',
+          kind: 'deb',
+        ),
+      ];
+      await showButton(
+        tester,
+        selected: 'Linux',
+        details: const AppDetails(
+          app: app,
+          version: '0.9.1',
+          platformVersions: {'Linux': '0.9.1'},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('更新'), findsOneWidget);
+      await tester.tap(find.text('更新'));
+      await tester.pumpAndSettle();
+      expect(downloads.requested, hasLength(1));
+      expect(downloads.requested.single.kind, 'deb');
+
+      installer.apps = [linuxLocalVersion('0.9.1')];
+      downloads.installedApps.invalidate();
+      await tester.pumpAndSettle();
+      expect(find.text('打开'), findsOneWidget);
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+      expect(installer.openedLinux, ['/opt/Example/Example']);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
 
   for (final version in ['0.9.1', '0.10.0', 'unknown']) {
     testWidgets(

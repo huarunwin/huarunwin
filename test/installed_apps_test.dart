@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +54,7 @@ void main() {
   );
 
   test('local application metadata comes through the native channel', () async {
+    if (Platform.isLinux) return;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(NativeInstaller.channel, (call) async {

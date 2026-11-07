@@ -895,7 +895,11 @@ class _AppLibraryPageState extends State<AppLibraryPage>
         await widget.manager.installer.openAndroidApp(package);
       } else if (installed.installedPath case final path?) {
         if (_platform == 'Linux') {
-          await widget.manager.installer.openAppImage(path);
+          if (installed.uninstallId != null) {
+            await widget.manager.installer.openLinuxApplication(path);
+          } else {
+            await widget.manager.installer.openAppImage(path);
+          }
         } else {
           await widget.manager.installer.openApp(path);
         }
