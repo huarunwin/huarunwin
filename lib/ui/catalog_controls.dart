@@ -454,7 +454,9 @@ class CompactCatalogMenu<T> extends StatelessWidget {
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
-    final width = text.width + 30;
+    // Round up so a menu laid out at its content width always leaves room for
+    // the dropdown arrow instead of missing it by a fraction of a pixel.
+    final width = (text.width + 30).ceilToDouble();
     text.dispose();
     return width < 44 ? 44 : width;
   }
@@ -721,6 +723,7 @@ class CatalogSortControls extends StatelessWidget {
     required this.onPeriodChanged,
     required this.onMetricChanged,
     this.trailing,
+    this.buttonWidths,
   });
 
   final CatalogSort sort;
@@ -731,15 +734,22 @@ class CatalogSortControls extends StatelessWidget {
   final ValueChanged<CatalogStarMetric> onMetricChanged;
   final Widget? trailing;
 
-  double compactWidthOf(BuildContext context) =>
-      (usesMobileDesign(context)
-          ? CompactCatalogMenu.widthOf(context, sort.label)
-          : CatalogSortTabs.compactWidthOf(context)) +
-      (sort == CatalogSort.stars
-          ? CompactCatalogMenu.widthOf(context, starPeriod.label) +
-                CompactCatalogMenu.widthOf(context, starMetric.label) +
-                12
-          : 0);
+  /// Optional per-button widths for the compact row: index 0 is the sort
+  /// menu, then the star period and metric menus when sorting by stars.
+  final List<double>? buttonWidths;
+
+  double compactWidthOf(BuildContext context, {List<double>? buttonWidths}) {
+    double widthOf(int index, String label) =>
+        buttonWidths?[index] ?? CompactCatalogMenu.widthOf(context, label);
+    if (!usesMobileDesign(context)) {
+      return CatalogSortTabs.compactWidthOf(context);
+    }
+    var width = widthOf(0, sort.label);
+    if (sort == CatalogSort.stars) {
+      width += widthOf(1, starPeriod.label) + widthOf(2, starMetric.label) + 12;
+    }
+    return width;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -805,7 +815,9 @@ class CatalogSortControls extends StatelessWidget {
                 children: [
                   if (usesMobileDesign(context))
                     SizedBox(
-                      width: CompactCatalogMenu.widthOf(context, sort.label),
+                      width:
+                          buttonWidths?[0] ??
+                          CompactCatalogMenu.widthOf(context, sort.label),
                       child: CompactCatalogMenu<CatalogSort>(
                         key: const ValueKey('catalog-sort-menu'),
                         label: sort.label,
@@ -822,17 +834,21 @@ class CatalogSortControls extends StatelessWidget {
                     CatalogSortTabs(selected: sort, onChanged: onSortChanged),
                   if (sort == CatalogSort.stars) ...[
                     SizedBox(
-                      width: CompactCatalogMenu.widthOf(
-                        context,
-                        starPeriod.label,
-                      ),
+                      width:
+                          buttonWidths?[1] ??
+                          CompactCatalogMenu.widthOf(
+                            context,
+                            starPeriod.label,
+                          ),
                       child: period,
                     ),
                     SizedBox(
-                      width: CompactCatalogMenu.widthOf(
-                        context,
-                        starMetric.label,
-                      ),
+                      width:
+                          buttonWidths?[2] ??
+                          CompactCatalogMenu.widthOf(
+                            context,
+                            starMetric.label,
+                          ),
                       child: metric,
                     ),
                   ],

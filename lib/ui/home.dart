@@ -952,31 +952,76 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Per-button widths that fill the compact sort row: every button keeps its
+  /// content width and shares the leftover space equally, so labels with more
+  /// characters stay wider while every button gains the same left and right
+  /// spacing. A lone sort button instead matches the filter row's button
+  /// width, or its content plus one character of air per side when the label
+  /// is longer. Null when the row cannot hold the computed widths.
+  List<double>? _sortButtonFillWidths(double rowWidth, double reserved) {
+    final contents = [
+      CompactCatalogMenu.widthOf(context, sort.label),
+      if (sort == CatalogSort.stars) ...[
+        CompactCatalogMenu.widthOf(context, starPeriod.label),
+        CompactCatalogMenu.widthOf(context, starMetric.label),
+      ],
+    ];
+    if (contents.length == 1) {
+      final base = _usesClientFilters ? (rowWidth - 6 * 4) / 5 : 120.0;
+      final content = contents.single;
+      final width = content + 26 > base ? content + 26 : base;
+      return width <= rowWidth - reserved ? [width] : null;
+    }
+    final extra =
+        rowWidth -
+        reserved -
+        6 * (contents.length - 1) -
+        contents.fold<double>(0, (sum, width) => sum + width);
+    if (extra <= 0) return null;
+    final share = extra / contents.length;
+    return [for (final content in contents) content + share];
+  }
+
   Widget _resultToolbar(int count, bool useGrid) {
     final controller = widget.controller;
     final showCacheStatus =
         !usesMobileDesign(context) && controller.snapshot?.cached == true;
     final countLabel = '$count 款应用${showCacheStatus ? ' · 已缓存' : ''}';
-    CatalogSortControls sorting({Widget? trailing}) => CatalogSortControls(
-      sort: sort,
-      starPeriod: starPeriod,
-      starMetric: starMetric,
-      onSortChanged: (value) => _changeFilters(() => sort = value),
-      onPeriodChanged: (value) => _changeFilters(() => starPeriod = value),
-      onMetricChanged: (value) => _changeFilters(() => starMetric = value),
-      trailing: trailing,
-    );
+    CatalogSortControls sorting({Widget? trailing, List<double>? buttonWidths}) =>
+        CatalogSortControls(
+          sort: sort,
+          starPeriod: starPeriod,
+          starMetric: starMetric,
+          onSortChanged: (value) => _changeFilters(() => sort = value),
+          onPeriodChanged: (value) => _changeFilters(() => starPeriod = value),
+          onMetricChanged: (value) => _changeFilters(() => starMetric = value),
+          trailing: trailing,
+          buttonWidths: buttonWidths,
+        );
     if (MediaQuery.sizeOf(context).width < 600) {
       return LayoutBuilder(
         builder: (context, constraints) {
           final count = CatalogResultCount(countLabel);
+          final rowWidth = constraints.maxWidth;
+          final fillInline = _sortButtonFillWidths(
+            rowWidth,
+            count.widthOf(context) + 8,
+          );
           final inlineCount =
-              sorting().compactWidthOf(context) + count.widthOf(context) + 8 <=
-              constraints.maxWidth;
+              fillInline != null ||
+              sorting().compactWidthOf(context) +
+                  count.widthOf(context) +
+                  8 <=
+                  rowWidth;
+          final buttonWidths = fillInline ??
+              (inlineCount ? null : _sortButtonFillWidths(rowWidth, 0));
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              sorting(trailing: inlineCount ? count : null),
+              sorting(
+                trailing: inlineCount ? count : null,
+                buttonWidths: buttonWidths,
+              ),
               if (!inlineCount) ...[
                 const SizedBox(height: 8),
                 Align(alignment: Alignment.centerRight, child: count),
