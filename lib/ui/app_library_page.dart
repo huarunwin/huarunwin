@@ -517,6 +517,20 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     },
   );
 
+  /// Both compact library dropdowns share one content-measured width: the
+  /// status and sort buttons stay the same size in every selection and are
+  /// never inflated by a fixed minimum.
+  double _compactMenuWidth(BuildContext context) {
+    final labels = <String>[
+      '状态',
+      for (final section in LibrarySection.values) section.label,
+      for (final sort in _LibrarySort.values) _sortLabel(sort),
+    ];
+    return labels
+        .map((label) => CompactCatalogMenu.widthOf(context, label))
+        .reduce((a, b) => a > b ? a : b);
+  }
+
   Widget _sectionMenu(List<LibraryItem> items, {required bool compact}) {
     final label = _section == LibrarySection.all ? '状态' : _section.label;
     final tooltip = '应用状态：${_section.label}';
@@ -526,9 +540,8 @@ class _AppLibraryPageState extends State<AppLibraryPage>
     void select(LibrarySection value) => setState(() => _section = value);
 
     if (compact) {
-      final width = CompactCatalogMenu.widthOf(context, label);
       return SizedBox(
-        width: width < 120 ? 120 : width,
+        width: _compactMenuWidth(context),
         child: CompactCatalogMenu<LibrarySection>(
           key: const ValueKey('library-status-menu'),
           label: label,
@@ -567,7 +580,7 @@ class _AppLibraryPageState extends State<AppLibraryPage>
       onGridChanged: (_) {},
       sort: compact
           ? SizedBox(
-              width: CompactCatalogMenu.widthOf(context, label),
+              width: _compactMenuWidth(context),
               child: CompactCatalogMenu<_LibrarySort>(
                 key: const ValueKey('library-sort-menu'),
                 label: label,
