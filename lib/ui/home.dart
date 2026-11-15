@@ -58,9 +58,6 @@ class _HomePageState extends State<HomePage> {
   CatalogSort sort = CatalogSort.comprehensive;
   CatalogStarPeriod starPeriod = CatalogStarPeriod.week;
   CatalogStarMetric starMetric = CatalogStarMetric.count;
-  String get _sortNotice => sort == CatalogSort.stars
-      ? catalogStarNotice(period: starPeriod, metric: starMetric)
-      : sort.notice;
   String? _expandedSidebarGroup = 'applications';
   late bool _sidebarExpanded;
   int _mobileTab = 0;
@@ -987,17 +984,19 @@ class _HomePageState extends State<HomePage> {
     final showCacheStatus =
         !usesMobileDesign(context) && controller.snapshot?.cached == true;
     final countLabel = '$count 款应用${showCacheStatus ? ' · 已缓存' : ''}';
-    CatalogSortControls sorting({Widget? trailing, List<double>? buttonWidths}) =>
-        CatalogSortControls(
-          sort: sort,
-          starPeriod: starPeriod,
-          starMetric: starMetric,
-          onSortChanged: (value) => _changeFilters(() => sort = value),
-          onPeriodChanged: (value) => _changeFilters(() => starPeriod = value),
-          onMetricChanged: (value) => _changeFilters(() => starMetric = value),
-          trailing: trailing,
-          buttonWidths: buttonWidths,
-        );
+    CatalogSortControls sorting({
+      Widget? trailing,
+      List<double>? buttonWidths,
+    }) => CatalogSortControls(
+      sort: sort,
+      starPeriod: starPeriod,
+      starMetric: starMetric,
+      onSortChanged: (value) => _changeFilters(() => sort = value),
+      onPeriodChanged: (value) => _changeFilters(() => starPeriod = value),
+      onMetricChanged: (value) => _changeFilters(() => starMetric = value),
+      trailing: trailing,
+      buttonWidths: buttonWidths,
+    );
     if (MediaQuery.sizeOf(context).width < 600) {
       return LayoutBuilder(
         builder: (context, constraints) {
@@ -1009,11 +1008,10 @@ class _HomePageState extends State<HomePage> {
           );
           final inlineCount =
               fillInline != null ||
-              sorting().compactWidthOf(context) +
-                  count.widthOf(context) +
-                  8 <=
+              sorting().compactWidthOf(context) + count.widthOf(context) + 8 <=
                   rowWidth;
-          final buttonWidths = fillInline ??
+          final buttonWidths =
+              fillInline ??
               (inlineCount ? null : _sortButtonFillWidths(rowWidth, 0));
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1068,7 +1066,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _sortValue(CatalogApp app) => switch (sort) {
-    CatalogSort.comprehensive => '',
     CatalogSort.updated =>
       widget.controller.updateDates[app.key]?.toIso8601String().substring(
             0,
@@ -1077,29 +1074,28 @@ class _HomePageState extends State<HomePage> {
           (widget.controller.updateDates.containsKey(app.key)
               ? '日期未记录'
               : '日期未读取'),
-    CatalogSort.stars => _starValue(app),
-    CatalogSort.ratings => '评分数：${app.ratingCount ?? '—'}',
+    _ => '',
   };
 
-  String _starValue(CatalogApp app) {
-    final count = starPeriod.count(app);
-    if (starMetric == CatalogStarMetric.count) {
-      return '${starPeriod.label}新增 Star：${count ?? '—'}';
-    }
-    final total = app.starCount;
-    final share = count != null && total != null && total > 0
-        ? '${(count / total * 100).toStringAsFixed(1)}%'
-        : '—';
-    return '${starPeriod.label}新增比例：$share';
-  }
+  // The website shows the 7-day change whenever a baseline exists, so the
+  // default view keeps it for those apps too; rating sorting keeps both
+  // columns even when only the count is published (an em dash marks a
+  // missing 7-day baseline instead of hiding the field).
+  bool _showTrailingMetrics(CatalogApp app) =>
+      sort != CatalogSort.comprehensive || app.ratingChange7Days != null;
 
-  Widget _sortMetadata(CatalogApp app) => Tooltip(
-    message: sort == CatalogSort.stars
-        ? '$_sortNotice${app.starNote == null ? '' : '\n${app.starNote}'}'
-        : sort == CatalogSort.ratings
-        ? app.ratingNote ?? _sortNotice
-        : _sortNotice,
-    child: Text(
+  Widget _sortMetadata(CatalogApp app) {
+    if (sort == CatalogSort.stars) {
+      return OpenSourceGrowthMetrics(app: app, period: starPeriod);
+    }
+    if (sort == CatalogSort.ratings ||
+        (sort == CatalogSort.comprehensive && app.ratingChange7Days != null)) {
+      return StoreRatingMetrics(
+        app: app,
+        ratingSort: sort == CatalogSort.ratings,
+      );
+    }
+    return Text(
       _sortValue(app),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -1107,8 +1103,8 @@ class _HomePageState extends State<HomePage> {
         fontSize: 11,
         color: Theme.of(context).colorScheme.primary,
       ),
-    ),
-  );
+    );
+  }
 
   String _appSubtitle(CatalogApp app) => [
     app.type.label,
@@ -1163,7 +1159,10 @@ class _HomePageState extends State<HomePage> {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    if (sort != CatalogSort.comprehensive) _sortMetadata(app),
+                    if (_showTrailingMetrics(app)) ...[
+                      const SizedBox(height: 6),
+                      _sortMetadata(app),
+                    ],
                   ],
                 ),
               ),
@@ -1329,8 +1328,8 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ],
-                  if (sort != CatalogSort.comprehensive) ...[
-                    const SizedBox(height: 12),
+                  if (_showTrailingMetrics(app)) ...[
+                    const SizedBox(height: 18),
                     _sortMetadata(app),
                   ],
                 ],
@@ -1443,7 +1442,10 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ],
               ),
-              if (sort != CatalogSort.comprehensive) _sortMetadata(app),
+              if (_showTrailingMetrics(app)) ...[
+                const SizedBox(height: 6),
+                _sortMetadata(app),
+              ],
             ],
           ),
         ),
@@ -1522,7 +1524,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               if (bounded) const Spacer() else const SizedBox(height: 20),
-              if (sort != CatalogSort.comprehensive) ...[
+              if (_showTrailingMetrics(app)) ...[
                 _sortMetadata(app),
                 const SizedBox(height: 8),
               ],

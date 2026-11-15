@@ -65,6 +65,7 @@ class CatalogApp {
     this.stars7Days,
     this.stars30Days,
     this.ratingCount,
+    this.ratingChange7Days,
     this.starNote,
     this.ratingNote,
     this.withdrawn = false,
@@ -79,8 +80,42 @@ class CatalogApp {
   final String? icon;
   final String? sourceCategory, priceCategory, starNote, ratingNote;
   final int? starCount, starsToday, stars7Days, stars30Days, ratingCount;
+  // Signed net change of the public store rating count over the last 7 days.
+  final int? ratingChange7Days;
   final List<String> platforms;
   final bool withdrawn;
+
+  /// Groups an exact published count the same way the website does.
+  static String groupDigits(int value) {
+    final digits = value.abs().toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  String? get starCountLabel {
+    final total = starCount;
+    return total == null ? null : groupDigits(total);
+  }
+
+  String? get ratingCountLabel {
+    final count = ratingCount;
+    return count == null ? null : groupDigits(count);
+  }
+
+  String? get ratingChangeLabel {
+    final change = ratingChange7Days;
+    if (change == null) return null;
+    final sign = change > 0
+        ? '+'
+        : change < 0
+        ? '-'
+        : '';
+    return '$sign${groupDigits(change)}';
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -104,6 +139,7 @@ class CatalogApp {
     'stars7Days': stars7Days,
     'stars30Days': stars30Days,
     'ratingCount': ratingCount,
+    'ratingChange7Days': ratingChange7Days,
     'starNote': starNote,
     'ratingNote': ratingNote,
     'withdrawn': withdrawn,
@@ -133,6 +169,7 @@ class CatalogApp {
     stars7Days: json['stars7Days'] as int?,
     stars30Days: json['stars30Days'] as int?,
     ratingCount: json['ratingCount'] as int?,
+    ratingChange7Days: json['ratingChange7Days'] as int?,
     starNote: json['starNote'] as String?,
     ratingNote: json['ratingNote'] as String?,
     withdrawn: json['withdrawn'] == true,

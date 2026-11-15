@@ -13,6 +13,7 @@ import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
 import 'package:huarunwin/ui/catalog_controls.dart';
 import 'package:huarunwin/ui/compact_navigation.dart';
+import 'package:huarunwin/ui/components.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const examples = [
@@ -122,6 +123,217 @@ void main() {
     expect(apps[2].priceCategory, '付费');
     expect(filterCatalog(apps, price: '免费'), isEmpty);
     expect(CatalogApp.fromJson(apps.first.toJson()).stars7Days, 1234);
+  });
+
+  test(
+    '7-day store rating changes read signed values from either card block',
+    () {
+      final apps = SiteHtmlParser().catalog('''
+      <article class="app-card"><a href="/apps/change"><h2>Change</h2></a>
+        <dl class="card-app-store-metrics" title="App Store US 商店：99,017；观察时间：2026-11-14">
+          <div><dt>7日评分变化</dt><dd>+1,234</dd></div>
+          <div><dt>评分数</dt><dd>99,017</dd></div>
+        </dl>
+        <dl class="card-mobile-store-metrics">
+          <div><dt>评分数</dt><dd>99,017</dd></div>
+          <div><dt>7日变化</dt><dd>+1,234</dd></div>
+        </dl>
+      </article>
+      <article class="app-card"><a href="/apps/negative"><h2>Negative</h2></a>
+        <dl class="card-app-store-metrics">
+          <div><dt>7日评分变化</dt><dd>-3</dd></div>
+          <div><dt>评分数</dt><dd>1,030</dd></div>
+        </dl>
+      </article>
+      <article class="app-card"><a href="/apps/zero"><h2>Zero</h2></a>
+        <dl class="card-mobile-store-metrics">
+          <div><dt>7日变化</dt><dd>0</dd></div>
+          <div><dt>评分数</dt><dd>105</dd></div>
+        </dl>
+      </article>
+      <article class="app-card"><a href="/apps/percent"><h2>Percent</h2></a>
+        <dl class="card-app-store-metrics">
+          <div><dt>7日评分变化</dt><dd>+2.4%</dd></div>
+          <div><dt>评分数</dt><dd>12,357</dd></div>
+        </dl>
+      </article>
+      <article class="app-card"><a href="/apps/missing"><h2>Missing</h2></a>
+        <dl class="card-app-store-metrics">
+          <div><dt>7日评分变化</dt><dd data-missing="true">—</dd></div>
+          <div><dt>评分数</dt><dd>12,357</dd></div>
+        </dl>
+      </article>''');
+      // Desktop and mobile blocks are duplicates, never a sum.
+      expect(apps[0].ratingCount, 99017);
+      expect(apps[0].ratingCountLabel, '99,017');
+      expect(apps[0].ratingChange7Days, 1234);
+      expect(apps[0].ratingChangeLabel, '+1,234');
+      expect(apps[0].ratingNote, contains('App Store US'));
+      expect(apps[1].ratingChange7Days, -3);
+      expect(apps[1].ratingChangeLabel, '-3');
+      expect(apps[2].ratingChange7Days, 0);
+      expect(apps[2].ratingChangeLabel, '0');
+      expect(apps[3].ratingChange7Days, isNull);
+      expect(apps[3].ratingCount, 12357);
+      expect(apps[4].ratingChange7Days, isNull);
+      expect(CatalogApp.fromJson(apps[0].toJson()).ratingChange7Days, 1234);
+      final detail = SiteHtmlParser().detail(
+        '<article class="detail-page"><h1 id="detail-title">Change</h1></article>',
+        apps[0],
+      );
+      expect(detail.app.ratingChange7Days, 1234);
+    },
+  );
+
+  testWidgets(
+    'store rating metrics keep the change column when baseline is unknown',
+    (tester) async {
+      Future<void> metrics(CatalogApp app, {bool ratingSort = false}) async =>
+          tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: StoreRatingMetrics(app: app, ratingSort: ratingSort),
+              ),
+            ),
+          );
+      await metrics(
+        const CatalogApp(
+          id: 'change',
+          name: 'Change',
+          url: 'https://huarun.win/apps/change',
+          ratingCount: 99017,
+          ratingChange7Days: 192,
+          ratingNote: 'App Store US 商店：99,017',
+        ),
+      );
+      expect(find.text('7日评分变化'), findsOneWidget);
+      expect(find.text('+192'), findsOneWidget);
+      expect(find.text('评分数'), findsOneWidget);
+      expect(find.text('99,017'), findsOneWidget);
+      // The footer shows plain figures, with no hover note for the source.
+      expect(find.byType(Tooltip), findsNothing);
+      // Every published figure stays neutral: the footer carries no colour.
+      final scheme = Theme.of(tester.element(find.text('+192'))).colorScheme;
+      expect(
+        tester.widget<Text>(find.text('+192')).style!.color,
+        scheme.onSurface,
+      );
+      expect(
+        tester.widget<Text>(find.text('99,017')).style!.color,
+        scheme.onSurface,
+      );
+      await metrics(
+        const CatalogApp(
+          id: 'count',
+          name: 'Count',
+          url: 'https://huarun.win/apps/count',
+          ratingCount: 12357,
+        ),
+      );
+      expect(find.text('7日评分变化'), findsNothing);
+      expect(find.text('12,357'), findsOneWidget);
+      // Rating sorting keeps the field visible instead of dropping it: the
+      // website may publish only a count when no 7-day baseline exists.
+      await metrics(
+        const CatalogApp(
+          id: 'count-rating-sort',
+          name: 'Count',
+          url: 'https://huarun.win/apps/count',
+          ratingCount: 12357,
+        ),
+        ratingSort: true,
+      );
+      expect(find.text('7日评分变化'), findsOneWidget);
+      expect(find.text('—'), findsOneWidget);
+      expect(find.text('12,357'), findsOneWidget);
+      // The unknown baseline stays an em dash without any hover explanation.
+      expect(find.byType(Tooltip), findsNothing);
+      // Rating sorting keeps the field but never colours the count.
+      expect(
+        tester.widget<Text>(find.text('12,357')).style!.color,
+        scheme.onSurface,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('open source growth metrics show period gain, share and total', (
+    tester,
+  ) async {
+    const app = CatalogApp(
+      id: 'growth',
+      name: 'Growth',
+      url: 'https://huarun.win/apps/growth',
+      starCount: 158424,
+      starsToday: 4,
+      stars7Days: 1528,
+      stars30Days: 7287,
+      starNote: 'GitHub 观察时间：2026-11-14',
+    );
+    Future<void> metrics({
+      CatalogApp item = app,
+      CatalogStarPeriod period = CatalogStarPeriod.week,
+      double width = 600,
+    }) async => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: width,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: OpenSourceGrowthMetrics(app: item, period: period),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await metrics();
+    expect(find.text('7 日新增'), findsOneWidget);
+    expect(find.text('7 日新增占比'), findsOneWidget);
+    expect(find.text('总 Star'), findsOneWidget);
+    expect(find.text('+1,528'), findsOneWidget);
+    // A share is a composition, not a growth rate: no plus sign.
+    expect(find.text('1.0%'), findsOneWidget);
+    expect(find.text('+1.0%'), findsNothing);
+    expect(find.text('158,424'), findsOneWidget);
+    expect(find.byType(Tooltip), findsNothing);
+    // All three figures stay neutral; no sort column is colour-coded.
+    final scheme = Theme.of(tester.element(find.text('+1,528'))).colorScheme;
+    for (final value in ['+1,528', '1.0%', '158,424']) {
+      expect(
+        tester.widget<Text>(find.text(value)).style!.color,
+        scheme.onSurface,
+      );
+    }
+    // The period drives both the gain and the share; the total stays published.
+    await metrics(period: CatalogStarPeriod.month);
+    expect(find.text('30 日新增'), findsOneWidget);
+    expect(find.text('30 日新增占比'), findsOneWidget);
+    expect(find.text('+7,287'), findsOneWidget);
+    expect(find.text('4.6%'), findsOneWidget);
+    expect(find.text('158,424'), findsOneWidget);
+    // Unknown values stay visible instead of becoming zeros.
+    await metrics(
+      item: const CatalogApp(
+        id: 'unknown',
+        name: 'Unknown',
+        url: 'https://huarun.win/apps/unknown',
+      ),
+    );
+    expect(find.text('—'), findsNWidgets(3));
+    // Narrow cards keep all three figures with short captions, without an
+    // extra info affordance at the end of the row.
+    await metrics(width: 200);
+    expect(find.text('7日'), findsOneWidget);
+    expect(find.text('占比'), findsOneWidget);
+    expect(find.text('Star'), findsOneWidget);
+    expect(find.text('+1,528'), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline_rounded), findsNothing);
+    // Neither the sorting notice nor the published title is shown on cards.
+    expect(find.byType(Tooltip), findsNothing);
+    expect(find.textContaining('网站原始标题'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   test('combined filters use authoritative core membership, not the multi-core label', () {
@@ -340,12 +552,16 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('star-period-today')));
       await tester.pumpAndSettle();
-      expect(find.text('今日新增 Star：0'), findsOneWidget);
+      expect(find.text('今日新增'), findsWidgets);
+      expect(find.text('+4'), findsOneWidget);
+      expect(find.text('0.0%'), findsOneWidget);
       await tester.tap(period);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('star-period-month')));
       await tester.pumpAndSettle();
-      expect(find.text('30 日新增 Star：80'), findsOneWidget);
+      expect(find.text('30 日新增'), findsWidgets);
+      expect(find.text('+80'), findsOneWidget);
+      expect(find.text('80.0%'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('Multi Example')).dy,
         lessThan(tester.getTopLeft(find.text('Single Example')).dy),
@@ -355,7 +571,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('star-metric-share')));
       await tester.pumpAndSettle();
-      expect(find.text('30 日新增比例：100.0%'), findsOneWidget);
+      expect(find.text('100.0%'), findsOneWidget);
+      expect(find.text('80.0%'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('Single Example')).dy,
         lessThan(tester.getTopLeft(find.text('Multi Example')).dy),
@@ -372,7 +589,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('sort-stars')));
       await tester.pumpAndSettle();
       expect(find.byTooltip('新增 Star 周期：30 日'), findsOneWidget);
-      expect(find.byTooltip('新增 Star 排序依据：新增比例'), findsOneWidget);
+      expect(find.byTooltip('新增 Star 排序依据：新增占比'), findsOneWidget);
       tester.view.physicalSize = const Size(620, 980);
       await tester.pumpAndSettle();
       expect(period.hitTestable(), findsOneWidget);
@@ -698,7 +915,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('sort-ratings')));
       await tester.pumpAndSettle();
-      expect(find.text('评分数：0'), findsOneWidget);
+      expect(find.text('评分数'), findsWidgets);
+      expect(find.text('0'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),

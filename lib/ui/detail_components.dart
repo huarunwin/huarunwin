@@ -121,9 +121,11 @@ class AppDetailMetadata extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = detail.app;
     final values = <String, String?>{
-      if (compact && app.starCount != null)
-        'GitHub Star': app.starCount.toString(),
-      if (compact && app.ratingCount != null) '评分数': app.ratingCount.toString(),
+      if (compact && app.starCountLabel != null)
+        'GitHub Star': app.starCountLabel!,
+      if (compact && app.ratingChangeLabel != null)
+        '7日评分变化': app.ratingChangeLabel!,
+      if (compact && app.ratingCountLabel != null) '评分数': app.ratingCountLabel!,
       if (!compact) ...{
         '应用类型': app.type.label,
         detail.versionLabel: detail.version,
@@ -146,7 +148,10 @@ class AppDetailMetadata extends StatelessWidget {
       showBottomBorder: detail.screenshots.isEmpty,
       tooltips: {
         if (app.starNote != null) 'GitHub Star': app.starNote!,
-        if (app.ratingNote != null) '评分数': app.ratingNote!,
+        if (app.ratingNote != null) ...{
+          '7日评分变化': app.ratingNote!,
+          '评分数': app.ratingNote!,
+        },
       },
     );
   }
@@ -164,6 +169,11 @@ class DetailMetadata extends StatelessWidget {
   final bool compact;
   final bool showBottomBorder;
   final Map<String, String> tooltips;
+
+  // Published counts may be grouped (99,110) or signed (+192); both stay in
+  // the larger statistic style instead of becoming plain information text.
+  static bool _isNumeric(String value) =>
+      int.tryParse(value.replaceAll(',', '')) != null;
 
   @override
   Widget build(BuildContext context) {
@@ -231,8 +241,7 @@ class DetailMetadata extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 style: compact
                                     ? TextStyle(
-                                        fontSize:
-                                            int.tryParse(entry.value!) != null
+                                        fontSize: _isNumeric(entry.value!)
                                             ? 18
                                             : 14,
                                         height: 1.3,

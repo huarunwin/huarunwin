@@ -8,13 +8,6 @@ enum CatalogSort {
 
   const CatalogSort(this.label);
   final String label;
-
-  String get notice => switch (this) {
-    comprehensive => '',
-    updated => '按版本或配置更新时间排序，未记录日期的应用排在末尾。',
-    stars => catalogStarNotice(),
-    ratings => '按公开的商店评分数排序，仅显示有数据的应用；不是评分高低或去重人数。',
-  };
 }
 
 enum CatalogStarPeriod {
@@ -34,19 +27,11 @@ enum CatalogStarPeriod {
 
 enum CatalogStarMetric {
   count('新增数'),
-  share('新增比例');
+  share('新增占比');
 
   const CatalogStarMetric(this.label);
   final String label;
 }
-
-String catalogStarNotice({
-  CatalogStarPeriod period = CatalogStarPeriod.week,
-  CatalogStarMetric metric = CatalogStarMetric.count,
-}) =>
-    '按${period == CatalogStarPeriod.today ? '今日' : '近 ${period.label}'}新增 Star${metric == CatalogStarMetric.share ? '占总 Star 的比例' : '数'}排序，仅显示有所选周期精确数据的开源客户端和其他应用。'
-    '${period == CatalogStarPeriod.today ? '今日指最近一次采集对应的 GitHub 日期，并非本地当天的实时统计。' : ''}'
-    '${metric == CatalogStarMetric.share ? '新增比例按新增 Star ÷ 总 Star 计算，使用未四舍五入的比例。' : ''}';
 
 const catalogCorePaths = {
   'Mihomo': 'mihomo',

@@ -87,9 +87,27 @@ class SiteHtmlParser {
       final price = text(priceNode);
       final priceNote = text(card.querySelector('.card-action-subtext'));
       final stars = card.querySelector('dl[aria-label="GitHub Star 统计"]');
-      final ratings = card.querySelector(
+      // Desktop and mobile cards repeat the same store statistics. Use the
+      // first exact value from either block; never add duplicates together.
+      final storeMetrics = card.querySelectorAll(
         '.card-app-store-metrics, .card-mobile-store-metrics',
       );
+      int? storeMetric(List<String> labels, {bool signed = false}) {
+        for (final node in storeMetrics) {
+          final value = _metricCount(node, labels, allowSigned: signed);
+          if (value != null) return value;
+        }
+        return null;
+      }
+
+      String? storeNote;
+      for (final node in storeMetrics) {
+        final title = node.attributes['title'];
+        if (title != null && title.isNotEmpty) {
+          storeNote = title;
+          break;
+        }
+      }
       apps['${type.value}:$id'] = CatalogApp(
         id: id,
         type: type,
@@ -143,9 +161,10 @@ class SiteHtmlParser {
           '30 日新增',
           '30日新增',
         ]),
-        ratingCount: _metricCount(ratings, const ['评分数']),
+        ratingCount: storeMetric(const ['评分数']),
+        ratingChange7Days: storeMetric(const ['7日评分变化', '7日变化'], signed: true),
         starNote: stars?.attributes['title'],
-        ratingNote: ratings?.attributes['title'],
+        ratingNote: storeNote,
         withdrawn:
             card.classes.contains('app-card-withdrawn') ||
             card.attributes['data-withdrawn'] == 'true',
@@ -157,7 +176,11 @@ class SiteHtmlParser {
     return apps.values.toList();
   }
 
-  static int? _metricCount(Element? metrics, List<String> labels) {
+  static int? _metricCount(
+    Element? metrics,
+    List<String> labels, {
+    bool allowSigned = false,
+  }) {
     if (metrics == null) return null;
     for (final label in metrics.querySelectorAll('dt')) {
       if (!labels.contains(text(label))) continue;
@@ -165,9 +188,13 @@ class SiteHtmlParser {
       if (value == null || value.attributes['data-missing'] == 'true') continue;
       final raw = text(value);
       // Read exact counts only: percentages, abbreviated values and missing
-      // markers must never silently become a count or a zero.
-      if (!RegExp(r'^\+?(?:\d+|\d{1,3}(?:,\d{3})+)$').hasMatch(raw)) continue;
-      return int.tryParse(raw.replaceAll(',', '').replaceFirst('+', ''));
+      // markers must never silently become a count or a zero. A 7-day net
+      // change is the one signed value; the website publishes +N, 0 or -N.
+      final pattern = allowSigned
+          ? r'^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)$'
+          : r'^\+?(?:\d+|\d{1,3}(?:,\d{3})+)$';
+      if (!RegExp(pattern).hasMatch(raw)) continue;
+      return int.tryParse(raw.replaceAll(',', ''));
     }
     return null;
   }
@@ -321,6 +348,7 @@ class SiteHtmlParser {
       stars7Days: summary.stars7Days,
       stars30Days: summary.stars30Days,
       ratingCount: summary.ratingCount,
+      ratingChange7Days: summary.ratingChange7Days,
       starNote: summary.starNote,
       ratingNote: summary.ratingNote,
       withdrawn: withdrawn,
