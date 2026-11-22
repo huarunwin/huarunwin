@@ -1077,10 +1077,9 @@ class _HomePageState extends State<HomePage> {
     _ => '',
   };
 
-  // The website shows the 7-day change whenever a baseline exists, so the
-  // default view keeps it for those apps too; rating sorting keeps both
-  // columns even when only the count is published (an em dash marks a
-  // missing 7-day baseline instead of hiding the field).
+  // The website only renders a 7-day change when a baseline exists, so the
+  // default view keeps that statistic row for those apps; rating sorting
+  // still shows the published count on its own for apps without a baseline.
   bool _showTrailingMetrics(CatalogApp app) =>
       sort != CatalogSort.comprehensive || app.ratingChange7Days != null;
 
@@ -1090,20 +1089,15 @@ class _HomePageState extends State<HomePage> {
     }
     if (sort == CatalogSort.ratings ||
         (sort == CatalogSort.comprehensive && app.ratingChange7Days != null)) {
-      return StoreRatingMetrics(
-        app: app,
-        ratingSort: sort == CatalogSort.ratings,
+      return StoreRatingMetrics(app: app);
+    }
+    if (sort == CatalogSort.updated) {
+      return UpdateDateMetric(
+        value: _sortValue(app),
+        hasDate: widget.controller.updateDates[app.key] != null,
       );
     }
-    return Text(
-      _sortValue(app),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   String _appSubtitle(CatalogApp app) => [
@@ -1121,72 +1115,94 @@ class _HomePageState extends State<HomePage> {
       !app.withdrawn && app.isClient && app.platforms.isNotEmpty;
 
   Widget _appListItem(CatalogApp app) {
+    final metrics = _showTrailingMetrics(app) ? _sortMetadata(app) : null;
+    final action = _hasDownloadAction(app)
+        ? AppDownloadButton(
+            app: app,
+            selectedPlatform: platform,
+            compact: true,
+            loadDetails: () async =>
+                (await widget.controller.repository.detail(app)).details,
+            manager: widget.downloads,
+            onStarted: _showDownloads,
+          )
+        : Pill(
+            app.withdrawn
+                ? '已下架'
+                : app.price.isEmpty
+                ? '查看详情'
+                : app.price,
+            accent: !app.withdrawn && app.priceCategory == '免费',
+          );
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _showDetails(app),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              AppIcon(app, size: 58),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      app.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // In list view the figures sit immediately left of the action
+              // and share its vertical centre, instead of adding a fourth
+              // line under the description. Reserve the icon, the gaps and
+              // the action so a narrow window or a large system text size
+              // still lets the metrics fall back to equal columns.
+              final scale = MediaQuery.textScalerOf(context).scale(1);
+              const leading = 58.0 + 18.0 + 16.0 + 16.0;
+              final room =
+                  (constraints.hasBoundedWidth ? constraints.maxWidth : 900.0) -
+                  leading -
+                  120.0 * scale;
+              final preferred = 3 * 84.0 * scale + 2 * 14.0;
+              final metricsWidth = room.clamp(0.0, preferred);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  AppIcon(app, size: 58),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          app.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          app.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          [
+                            _appSubtitle(app),
+                            _appEnvironment(app),
+                          ].where((s) => s.isNotEmpty).join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      app.description,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (metrics != null) ...[
+                    const SizedBox(width: 16),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: metricsWidth),
+                      child: metrics,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      [
-                        _appSubtitle(app),
-                        _appEnvironment(app),
-                      ].where((s) => s.isNotEmpty).join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (_showTrailingMetrics(app)) ...[
-                      const SizedBox(height: 6),
-                      _sortMetadata(app),
-                    ],
                   ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              if (_hasDownloadAction(app))
-                AppDownloadButton(
-                  app: app,
-                  selectedPlatform: platform,
-                  compact: true,
-                  loadDetails: () async =>
-                      (await widget.controller.repository.detail(app)).details,
-                  manager: widget.downloads,
-                  onStarted: _showDownloads,
-                )
-              else
-                Pill(
-                  app.withdrawn
-                      ? '已下架'
-                      : app.price.isEmpty
-                      ? '查看详情'
-                      : app.price,
-                  accent: !app.withdrawn && app.priceCategory == '免费',
-                ),
-            ],
+                  const SizedBox(width: 16),
+                  action,
+                ],
+              );
+            },
           ),
         ),
       ),

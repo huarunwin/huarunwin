@@ -1126,3 +1126,51 @@ macOS 在 Apple Silicon 上实际启动 Release，检查宽屏及折叠侧栏的
 用户截图指出开源热度排序下统计区悬停时弹出的深灰横幅不必要：它由排序口径说明（`catalogStarNotice`／`CatalogSort.notice`）拼接网站 `title` 原文（`starNote`）构成，长文本会撑成横跨内容区、遮住卡片的浮层。按同一方向移除目录卡片上全部解释性悬停提示：`OpenSourceGrowthMetrics` 与 `StoreRatingMetrics` 去掉 `Tooltip` 包装及 `note` 参数，`_sortMetadata` 里的日期文字也不再包 Tooltip；`_sortNotice`、`CatalogSort.notice` 与 `catalogStarNotice` 随之成为死代码并删除。数值、标签、中性色、列间留白、上间距与缺失值 `—` 占位均不变；`starNote`／`ratingNote` 字段、HTML 解析、缓存和详情元信息栏的悬停说明保留，未改动数据来源。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步约定。
 
 `fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（575 项全部通过）与 `git diff --check` 通过。组件测试把 Tooltip 文案断言改为确认统计区不存在 Tooltip，并移除 `note` 用例。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 31 of 2199 libraries in 5,443ms`；抓取窗口核对：开源热度／7 日／新增数下 181 款应用，三列统计正常、数值中性、无竖线，深灰横幅不再出现。本轮未构建 Release，未做其他平台或真机验证；详情元信息栏的悬停说明本次未改动，也未重新核对。
+
+## 2026-11-15 卡片统计与下载按钮合成一行
+
+按用户截图意见把桌面网格卡片底部两行（统计行、平台＋按钮行）合成一行：三列统计占左侧，下载状态按钮占右侧固定 64 dp 槽；支持平台／运行环境并入标题副标题，不再单独占行。固定宽度槽保证按钮文案在「下载／更新／打开／查看详情」之间变化时，各卡片统计列边界仍对齐。统计组件相应适配窄统计区：数值由 `FittedBox` 等比缩小而不省略，开源热度短标签字号 13→12 dp、列间留白 8→6 dp，商店评分两列在窄于 230 dp 时改用「7日变化」短标签与 6 dp 留白。宽屏列表、窄屏移动与紧凑卡片保持原有按钮位置；尝试把宽屏列表也改并排时，固定 150 dp 的列表卡片与 1.5 倍大字号短窗口会出现 5.5～14 px 溢出，因此回退该布局，不为它抬高卡片高度。
+
+`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（575 项全部通过）与 `git diff --check` 通过。组件测试新增 130 dp 窄统计区断言：短标签保留、数值文本完整且不带省略、数值位于 `FittedBox` 内。macOS Debug 会话热重载后，直接按窗口 ID 抓图一度拿到被遮挡窗口的冻结旧帧，改抓全屏截图确认改动已生效；最终窗口图显示开源热度／7 日／新增数下 181 款应用，三列统计与「下载／更新／打开」同行、数值完整、无溢出条纹。本轮未构建 Release，未做其他平台或真机验证。
+
+## 2026-11-15 收小卡片统计数值字号
+
+用户截图指出统计列与「下载」按钮合成一行后，三个粗体数值相对按钮文字与上方灰标签偏大。把 `lib/ui/components.dart` 的统计数值从常规 14 dp／窄统计区 12 dp 收为 13 dp／11 dp，`_metricColumn` 的默认参数同步；标签 11 dp、半粗字重、中性色、`FittedBox` 等比缩小、列间留白与固定 64 dp 按钮槽均不变。开源热度三列与商店评分两列共用同一组字号，切换排序不出现两种尺寸。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步字号约定。
+
+`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（575 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 26 of 2199 libraries in 2,770ms`；改前、改后全屏截图按同一坐标裁出第一张卡片统计行并上下拼接放大对比：改后数值收小一档、标签尺寸一致，`+1,528`／`1.0%`／`158,424` 完整无省略、无溢出条纹，与「下载」按钮的重量关系更均衡。本轮未构建 Release，未做其他平台或真机验证。
+
+## 2026-11-15 撤回统计与按钮并排，恢复两行卡片底部
+
+用户认为三列统计与下载按钮合成一行并不合适，要求统计行回到下载按钮上方单独一行，并恢复按钮左侧原来的「支持平台／运行环境」文字。把 `lib/ui/home.dart` 的桌面网格卡片 `_appCard` 精确还原为已提交版本的两行结构：副标题不再拼接平台信息；`if (_showTrailingMetrics(app))` 的统计行重新单独成行并保留 8 dp 下间距；下面一行恢复「平台文字 + 下载状态按钮」（无界布局分两行、有界布局为左文字右按钮的 `Row`）；删除不再使用的 `_metricsFooter` 与固定 64 dp 按钮槽。还原后 `git diff -- lib/ui/home.dart` 为空，即与已提交版本完全一致。字号调整、中性色、纯留白、上间距、`FittedBox` 等比缩小、窄统计区短标签与组件测试断言均保留。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步回两行约定。
+
+`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（575 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 2 of 2199 libraries in 699ms`；当前窗口显示综合排序下的两列商店统计，截屏确认统计行（如「7日评分变化 +5／评分数 1,030」）单独成行，其下一行左侧为 `iOS · Mac · tvOS` 平台文字、右侧为价格／下载按钮，副标题不再含平台文字，数值完整且无溢出条纹；与并排版局部截图上下拼接对比确认结构差异。本轮未构建 Release，未做其他平台或真机验证。
+
+## 2026-11-15 统计列改为固定宽度、固定间距、左对齐
+
+用户按窄窗口截图（开源热度／7 日／新增数、181 款应用）指出三列按 `Expanded` 等分铺满，列宽随卡片宽度变化，建议每列固定宽度加固定间距且左对齐。把 `lib/ui/components.dart` 的 `_metricColumn` 从 `Expanded` 改为 `SizedBox(width:)`，新增 `_metricColumnWidth`：首选列宽常规 84 dp／窄统计区 68 dp，乘 `MediaQuery.textScalerOf(context).scale(1)` 跟随系统字号，再以 `(available - gap × (columns - 1)) / columns` 为上限，空间不足时回退等分；间距沿用常规 14 dp／窄统计区 6 dp，`Row` 默认左对齐不铺满，右侧留白。开源热度三列与商店评分两列（按实际列数计算）统一，`_metricColumn` 的调用点全部传入列宽。字号、中性色、`FittedBox` 等比缩小、短标签、Tooltip 规则与卡片两行底部布局均不变。`test/catalog_filters_test.dart` 新增 600 dp 宽容器下三列起点间距 98 dp、右侧留白的断言。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步列宽约定。
+
+`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（575 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 26 of 2199 libraries in 741ms`。为复现用户截图，尝试用 AppleScript `System Events` 调整窗口尺寸被系统自动化权限拒绝（-10004），改用 Swift `AXUIElement` 设置窗口尺寸成功；把 Debug 窗口临时调至 460 × 900 后切到窄屏单列布局，截屏确认三列靠左聚拢、间距均匀、右侧留白，`+1,528`／`1.0%`／`158,424` 完整无省略、无溢出条纹，随后把窗口尺寸恢复为 460 × 1005。用户原截图与改后截图按统计行同坐标裁切并上下拼接对比，确认列位置从铺满变为靠左。本轮未构建 Release，未做其他平台或真机验证。
+
+## 2026-11-15 宽屏列表统计移到下载按钮左侧并居中
+
+用户按列表模式截图指出：红框里的三列统计仍在卡片左下方，应该放到「下载」按钮左侧并与按钮居中对齐。只改 `lib/ui/home.dart` 的 `_appListItem`：把统计行从左侧 `Column`（标题／描述／平台之下）移出，作为 `Row` 中紧挨操作按钮左侧的独立子项，`crossAxisAlignment.center` 让统计组与按钮垂直居中；左侧文字列改为 `mainAxisSize.min` 由 `Row` 居中。用 `LayoutBuilder` 按图标、两处间距与按钮预留宽度（随系统字号缩放）算出统计组的有界上限，窄窗口或大字号时由 `_metricColumnWidth` 回退等分，不改变固定 150 dp 的列表卡片高度。`lib/ui/components.dart` 的两个统计 `Row` 增加 `mainAxisSize: MainAxisSize.min`，使两列商店统计也能紧贴按钮而不占满预留宽度；固定列宽、间距、左对齐、字号、中性色、`FittedBox` 等比缩小、窄区短标签全部不变。桌面网格卡片的两行底部、窄屏移动与紧凑卡片结构均未改动；宽屏列表不再有「统计行上方 6 dp」这段间距。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步新的布局约定与上间距例外。
+
+`test/catalog_filters_test.dart` 新增两项断言：1240 × 900 列表视图下统计组右缘紧邻按钮左侧、两者垂直中心对齐、三列起点仍为 98 dp 间距；940 × 600 配合 1.5 倍字号的窄窗口同样保持同一行且无溢出。`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（577 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 2 of 2199 libraries in 9,740ms`；按窗口 ID 抓取实际画面，确认 Clash Verge Rev／FlClash／v2rayN／bowel 四张列表卡片的统计组都在「下载／更新／打开」左侧并垂直居中，`+1,528`／`1.0%`／`158,424` 完整无省略、无溢出条纹；改前改后同坐标裁切上下拼接对比确认位置变化。副作用：左侧文字列变窄，描述与平台行会按单行省略号截断。本轮未构建 Release，未做其他平台或真机验证，未提交或推送。
+
+## 2026-11-15 窄屏缺失 7 日评分变化时省略占位列
+
+用户按窄窗口（评分数排序、41 款应用）截图指出：红框里的「7日评分变化 —」是网站没有发布 7 天基线时评分数排序保留的占位列，窄屏下应整列不显示，只显示「评分数」并左移。改 `lib/ui/components.dart` 的 `StoreRatingMetrics`：把 `showChange` 计算移入 `LayoutBuilder`，新增 `narrowWindow`（`MediaQuery.sizeOf(context).width < compactLayoutBreakpoint`）判定；只有当 `change != null`，或宽屏且统计区不窄（`>= 230 dp`）的评分数排序，才保留这一列。窄屏窗口或窄统计区在 `count != null && change == null` 时列数变为 1，配合上一轮的 `mainAxisSize.min` 与固定列宽左对齐，「评分数」自然回到统计区起点，向左移动约 98 dp。真实有变化数据的应用（如 `+60`）仍显示两列；宽屏列表的占位列不变。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步例外约定。
+
+`test/catalog_filters_test.dart` 把原用例改名为「宽屏保留、窄屏省略」，新增 460 × 900 窄窗口断言（`7日评分变化` 与 `—` 均不出现、评分数左移超过 90 dp）和 130 dp 窄统计区断言（同样只剩评分数）；宽屏评分数排序仍保留 `—` 占位列的原断言不变。`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（577 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 1 of 2199 libraries in 6,287ms`；用 Swift `AXUIElement` 把窗口临时调至 460 × 900 复现用户截图（评分数排序、41 款应用），截屏确认 V2Box／Shadowrocket／incy 只剩「评分数 99,110／12,357／7,304」且贴左，无 `—` 占位；再把窗口调回 992 × 979，确认 V2Box／Shadowrocket／incy 仍显示「7日评分变化 — + 评分数」，Potatso 的 `+60` 正常，统计组仍在下载按钮左侧；最后把窗口尺寸恢复为 612 × 937。用户原截图与改后窄窗口截屏左右拼接对比确认变化。本轮未构建 Release，未做其他平台或真机验证，未提交或推送。
+
+## 2026-11-15 宽屏缺失 7 日评分变化时也隐藏占位列
+
+用户按宽屏（评分数排序、41 款应用）截图指出：V2Box／Shadowrocket／incy 的「7日评分变化 —」仍是网站没有发布 7 天基线时保留的占位列，宽屏也应直接隐藏。把 `StoreRatingMetrics` 统一为「只展示网站确实发布的数值」：`showChange` 恒等于 `change != null`，不再按排序方式、窗口宽度或统计区宽度保留 `—`；删除已无用的 `ratingSort` 构造参数、`MediaQuery` 窄屏判定与 `—` 的 `onSurfaceVariant` 着色，`home.dart` 的调用点与注释同步简化。列数按真实字段计算，配合 `mainAxisSize.min` 与固定列宽左对齐，只剩「评分数」时该列位于统计组起点；在宽屏列表中统计组整体紧贴下载按钮左侧，因此「评分数」仍与有变化值卡片的第二列保持同一横向位置，跨卡片对齐稳定。有真实变化值的应用仍显示两列。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步为全宽度统一约定。
+
+`test/catalog_filters_test.dart` 把用例改名为「无发布值时隐藏变化列」，宽屏 800 dp 断言改为「7日评分变化」「—」均不出现、评分数保持中性色且相对两列布局左移超过 90 dp；保留 460 × 900 窄窗口与 130 dp 窄统计区的回归断言，以及有真实值时窄区两列、`FittedBox` 不省略的断言。`fvm dart format`、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（577 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 26 of 2199 libraries in 4,007ms`；用 Swift `AXUIElement` 把窗口调至 992 × 905，截屏确认 V2Box／Shadowrocket／incy 只剩「评分数 99,110／12,357／7,304」、无 `—` 占位，Potatso `+60` 与 Streisand `+6` 仍显示两列；再调至 460 × 900 确认窄屏规则一致，最后恢复 612 × 937。用户原截图与改后宽屏截屏按同一卡片区域裁切上下拼接对比确认变化。本轮未构建 Release，未做其他平台或真机验证，未提交或推送。
+
+## 2026-11-15 最近更新日期改用统计列样式
+
+用户按窄屏「最近更新／248 款应用」截图指出：卡片底部的更新日期仍是品牌蓝 11 dp 单行小字，应像评分数统计一样收敛。在 `lib/ui/components.dart` 新增 `UpdateDateMetric`，复用 `_metricColumn` 与 `_metricColumnWidth`：`更新日期` 灰色 11 dp 标签 + 13 dp 半粗中性色数值，单列 84 dp（窄统计区 68 dp）固定宽度、左对齐，`FittedBox` 等比缩小而不省略；`lib/ui/home.dart` 的 `_sortMetadata` 在最近更新排序时改用它，删除原来的品牌蓝 `Text`。`日期未读取`／`日期未记录` 占位文字继续由 `_sortValue` 提供，但按 `updateDates[app.key] == null` 改用 `onSurfaceVariant` 弱化，不新增悬停说明，也不隐藏或补造日期。`AGENTS.md`、`docs/features.md`、`docs/architecture.md` 同步约定。
+
+`test/catalog_filters_test.dart` 新增组件断言（标签与数值、中性色而非 `primary`、半粗 13 dp、左对齐且右边界在列宽内、无 Tooltip、窄统计区不省略、占位文字弱化），并在桌面「最近更新」流程断言里补充标签与颜色检查。`fvm dart format`（仅本次改动文件）、`fvm dart analyze`（仅 `lib/services/linux_installer.dart` 两处既有警告）、全量 `fvm flutter test`（578 项全部通过）与 `git diff --check` 通过。向现有 macOS Debug 会话发送热重载信号，回显 `Reloaded 37 of 2199 libraries in 788ms`；窗口当时已处于用户截图相同的 460 × 900「最近更新／248 款应用」状态，截屏确认 V2Fly Domain List Community／Custom OpenClash Rules 的日期由蓝色单行变为「更新日期 + 2026-11-15」两行，宽屏 992 × 905 下列表卡片的日期组仍在「查看详情／下载」按钮左侧并垂直居中，无溢出；窗口最后恢复为窄屏 460 dp。用户原截图与改后截屏按日期区域裁切上下拼接对比确认变化。本轮未构建 Release，未做其他平台或真机验证，未提交或推送。

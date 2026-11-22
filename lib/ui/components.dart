@@ -62,20 +62,39 @@ Future<void> openLink(
   }
 }
 
+/// A fixed column width keeps the footer a compact, left aligned group: the
+/// figures no longer spread out when a card gets wider. The preferred width
+/// follows the system text size, and is capped by the space actually available
+/// so narrow cards and large text fall back to equal columns instead of
+/// overflowing.
+double _metricColumnWidth(
+  BuildContext context, {
+  required double availableWidth,
+  required int columns,
+  required double gap,
+  required double preferred,
+}) {
+  final scaled = preferred * MediaQuery.textScalerOf(context).scale(1);
+  if (!availableWidth.isFinite) return scaled;
+  final max = (availableWidth - gap * (columns - 1)) / columns;
+  final cap = max > 0 ? max : 0.0;
+  return scaled < cap ? scaled : cap;
+}
+
 /// One labelled statistic in the compact card footer style: a small caption
-/// above a single exact value. Store and GitHub statistics share this shape.
-/// Equal flex keeps column edges aligned across cards even when values differ
-/// in length (an em dash versus a six-digit count, for example). Adjacent
-/// columns are grouped by whitespace alone, without divider lines.
+/// above a single exact value. Store and GitHub statistics share this shape,
+/// and adjacent columns are grouped by whitespace alone, without dividers.
 Widget _metricColumn(
   BuildContext context, {
   required String label,
   required String value,
+  required double width,
   Color? valueColor,
-  double fontSize = 14,
+  double fontSize = 13,
 }) {
   final colors = Theme.of(context).colorScheme;
-  return Expanded(
+  return SizedBox(
+    width: width,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -91,15 +110,21 @@ Widget _metricColumn(
           ),
         ),
         const SizedBox(height: 3),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: fontSize,
-            height: 1.25,
-            fontWeight: FontWeight.w600,
-            color: valueColor ?? colors.onSurface,
+        // A narrow column scales its value down instead of showing an
+        // ellipsis: the published figure stays exact and complete even when
+        // the card shares this footer with the download action.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: fontSize,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+              color: valueColor ?? colors.onSurface,
+            ),
           ),
         ),
       ],
@@ -107,45 +132,101 @@ Widget _metricColumn(
   );
 }
 
-/// Public store statistics in the same two-column shape as the website card.
+/// The published update date uses the same labelled column as the store and
+/// GitHub statistics: a small caption above one exact, neutral value. Dates
+/// the website did not publish keep their status text but stay muted, so a
+/// pending load is still distinguishable from an unrecorded date.
+class UpdateDateMetric extends StatelessWidget {
+  const UpdateDateMetric({super.key, required this.value, this.hasDate = true});
+
+  final String value;
+  final bool hasDate;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tight = constraints.hasBoundedWidth && constraints.maxWidth < 230;
+        final width = _metricColumnWidth(
+          context,
+          availableWidth: constraints.maxWidth,
+          columns: 1,
+          gap: 0,
+          preferred: tight ? 68.0 : 84.0,
+        );
+        return _metricColumn(
+          context,
+          label: '更新日期',
+          value: value,
+          width: width,
+          fontSize: tight ? 11.0 : 13.0,
+          valueColor: hasDate
+              ? null
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        );
+      },
+    );
+  }
+}
+
+/// Public store statistics in the same column style as the website card.
 ///
 /// The 7-day value is a signed net change (`+N`, `0` or `-N`); a missing
 /// baseline stays unknown instead of becoming a zero. Both columns use exact
-/// published counts. Rating sorting can keep the change column visible with an
-/// em dash when the website has no 7-day baseline for this snapshot, so the
-/// field is not silently dropped. All published figures stay neutral: the card
-/// footer carries no colour coding or hover explanation, and the current sort
-/// is already visible in the sort controls.
+/// published counts. When the website published no 7-day change, the whole
+/// column is omitted at every width, leaving only the count at the left edge:
+/// an em dash would reserve space for a figure that never existed. All
+/// published figures stay neutral: the card footer carries no colour coding
+/// or hover explanation, and the current sort is visible in the sort controls.
 class StoreRatingMetrics extends StatelessWidget {
-  const StoreRatingMetrics({
-    super.key,
-    required this.app,
-    this.ratingSort = false,
-  });
+  const StoreRatingMetrics({super.key, required this.app});
 
   final CatalogApp app;
-  final bool ratingSort;
 
   @override
   Widget build(BuildContext context) {
     final change = app.ratingChangeLabel;
     final count = app.ratingCountLabel;
     if (change == null && count == null) return const SizedBox.shrink();
-    final showChange = change != null || (ratingSort && count != null);
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        if (showChange)
-          _metricColumn(
-            context,
-            label: '7日评分变化',
-            value: change ?? '—',
-            valueColor: change == null ? colors.onSurfaceVariant : null,
-          ),
-        if (showChange && count != null) const SizedBox(width: 14),
-        if (count != null) _metricColumn(context, label: '评分数', value: count),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tight = constraints.hasBoundedWidth && constraints.maxWidth < 230;
+        // The figure is one step smaller than body text: readable without
+        // outweighing the caption above it or the action on the card.
+        final fontSize = tight ? 11.0 : 13.0;
+        final gap = tight ? 6.0 : 14.0;
+        final columns = (change != null ? 1 : 0) + (count != null ? 1 : 0);
+        final width = _metricColumnWidth(
+          context,
+          availableWidth: constraints.maxWidth,
+          columns: columns,
+          gap: gap,
+          preferred: tight ? 68.0 : 84.0,
+        );
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (change != null)
+              _metricColumn(
+                context,
+                label: tight ? '7日变化' : '7日评分变化',
+                value: change,
+                width: width,
+                fontSize: fontSize,
+              ),
+            if (change != null && count != null) SizedBox(width: gap),
+            if (count != null)
+              _metricColumn(
+                context,
+                label: '评分数',
+                value: count,
+                width: width,
+                fontSize: fontSize,
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -191,9 +272,19 @@ class OpenSourceGrowthMetrics extends StatelessWidget {
         // Very narrow cards keep all three figures but use short captions and
         // tighter gaps instead of ellipsizing values.
         final tight = constraints.hasBoundedWidth && constraints.maxWidth < 230;
-        final fontSize = tight ? 13.0 : 14.0;
-        final gap = tight ? 8.0 : 14.0;
+        // The figure is one step smaller than body text: readable without
+        // outweighing the caption above it or the action on the card.
+        final fontSize = tight ? 11.0 : 13.0;
+        final gap = tight ? 6.0 : 14.0;
+        final width = _metricColumnWidth(
+          context,
+          availableWidth: constraints.maxWidth,
+          columns: 3,
+          gap: gap,
+          preferred: tight ? 68.0 : 84.0,
+        );
         return Row(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             _metricColumn(
@@ -202,6 +293,7 @@ class OpenSourceGrowthMetrics extends StatelessWidget {
                   ? period.label.replaceAll(' ', '')
                   : '${period.label}新增',
               value: gain,
+              width: width,
               fontSize: fontSize,
               valueColor: count == null ? colors.onSurfaceVariant : null,
             ),
@@ -210,6 +302,7 @@ class OpenSourceGrowthMetrics extends StatelessWidget {
               context,
               label: tight ? '占比' : '${period.label}新增占比',
               value: shareLabel,
+              width: width,
               fontSize: fontSize,
               valueColor: share == null ? colors.onSurfaceVariant : null,
             ),
@@ -218,6 +311,7 @@ class OpenSourceGrowthMetrics extends StatelessWidget {
               context,
               label: tight ? 'Star' : '总 Star',
               value: totalLabel,
+              width: width,
               fontSize: fontSize,
               valueColor: total == null ? colors.onSurfaceVariant : null,
             ),

@@ -11,6 +11,7 @@ import 'package:huarunwin/main.dart';
 import 'package:huarunwin/ui/page_components.dart';
 import 'package:huarunwin/services/app_controller.dart';
 import 'package:huarunwin/services/downloads.dart';
+import 'package:huarunwin/ui/app_download_button.dart';
 import 'package:huarunwin/ui/catalog_controls.dart';
 import 'package:huarunwin/ui/compact_navigation.dart';
 import 'package:huarunwin/ui/components.dart';
@@ -185,27 +186,96 @@ void main() {
     },
   );
 
+  testWidgets('update date uses the same labelled column as published stats', (
+    tester,
+  ) async {
+    Future<void> metric({
+      required String value,
+      bool hasDate = true,
+      double width = 600,
+    }) async => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: width,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: UpdateDateMetric(value: value, hasDate: hasDate),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await metric(value: '2026-11-15');
+    expect(find.text('更新日期'), findsOneWidget);
+    expect(find.text('2026-11-15'), findsOneWidget);
+    final scheme = Theme.of(tester.element(find.text('2026-11-15')))
+        .colorScheme;
+    final date = tester.widget<Text>(find.text('2026-11-15'));
+    // The date is a published figure, not a highlighted sort criterion.
+    expect(date.style!.color, scheme.onSurface);
+    expect(date.style!.color, isNot(scheme.primary));
+    expect(date.style!.fontWeight, FontWeight.w600);
+    expect(date.style!.fontSize, 13);
+    expect(find.byType(Tooltip), findsNothing);
+    // Fixed, left aligned column: the value starts at the caption's edge and
+    // stays inside its width rather than stretching across the card.
+    expect(
+      tester.getRect(find.text('2026-11-15')).left,
+      tester.getRect(find.text('更新日期')).left,
+    );
+    expect(tester.getRect(find.text('2026-11-15')).right, lessThan(90));
+
+    // A date the website did not publish keeps its status text but stays muted.
+    await metric(value: '日期未读取', hasDate: false);
+    expect(find.text('日期未读取'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('日期未读取')).style!.color,
+      scheme.onSurfaceVariant,
+    );
+    expect(tester.widget<Text>(find.text('日期未读取')).overflow, isNull);
+
+    // A narrow statistics area keeps the caption and scales the value.
+    await metric(value: '2026-11-15', width: 130);
+    expect(find.text('更新日期'), findsOneWidget);
+    expect(find.text('2026-11-15'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('2026-11-15')).overflow, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'store rating metrics keep the change column when baseline is unknown',
+    'store rating metrics hide the change column when no value is published',
     (tester) async {
-      Future<void> metrics(CatalogApp app, {bool ratingSort = false}) async =>
+      Future<void> metrics(CatalogApp app, {double width = 800}) async =>
           tester.pumpWidget(
             MaterialApp(
               home: Scaffold(
-                body: StoreRatingMetrics(app: app, ratingSort: ratingSort),
+                body: SizedBox(
+                  width: width,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: StoreRatingMetrics(app: app),
+                  ),
+                ),
               ),
             ),
           );
-      await metrics(
-        const CatalogApp(
-          id: 'change',
-          name: 'Change',
-          url: 'https://huarun.win/apps/change',
-          ratingCount: 99017,
-          ratingChange7Days: 192,
-          ratingNote: 'App Store US 商店：99,017',
-        ),
+      const withChange = CatalogApp(
+        id: 'change',
+        name: 'Change',
+        url: 'https://huarun.win/apps/change',
+        ratingCount: 99017,
+        ratingChange7Days: 192,
+        ratingNote: 'App Store US 商店：99,017',
       );
+      const countOnly = CatalogApp(
+        id: 'count',
+        name: 'Count',
+        url: 'https://huarun.win/apps/count',
+        ratingCount: 12357,
+      );
+      await metrics(withChange);
       expect(find.text('7日评分变化'), findsOneWidget);
       expect(find.text('+192'), findsOneWidget);
       expect(find.text('评分数'), findsOneWidget);
@@ -222,37 +292,53 @@ void main() {
         tester.widget<Text>(find.text('99,017')).style!.color,
         scheme.onSurface,
       );
-      await metrics(
-        const CatalogApp(
-          id: 'count',
-          name: 'Count',
-          url: 'https://huarun.win/apps/count',
-          ratingCount: 12357,
-        ),
-      );
+      final twoColumnCountLeft = tester.getRect(find.text('评分数')).left;
+      // A missing baseline drops the whole column on wide layouts too: no em
+      // dash placeholder, and the published count returns to the left edge.
+      await metrics(countOnly);
       expect(find.text('7日评分变化'), findsNothing);
+      expect(find.text('—'), findsNothing);
+      expect(find.text('评分数'), findsOneWidget);
       expect(find.text('12,357'), findsOneWidget);
-      // Rating sorting keeps the field visible instead of dropping it: the
-      // website may publish only a count when no 7-day baseline exists.
-      await metrics(
-        const CatalogApp(
-          id: 'count-rating-sort',
-          name: 'Count',
-          url: 'https://huarun.win/apps/count',
-          ratingCount: 12357,
-        ),
-        ratingSort: true,
-      );
-      expect(find.text('7日评分变化'), findsOneWidget);
-      expect(find.text('—'), findsOneWidget);
-      expect(find.text('12,357'), findsOneWidget);
-      // The unknown baseline stays an em dash without any hover explanation.
+      // No hover explanation is needed for a column that is not shown.
       expect(find.byType(Tooltip), findsNothing);
-      // Rating sorting keeps the field but never colours the count.
+      // The count stays neutral and moves one column to the left.
       expect(
         tester.widget<Text>(find.text('12,357')).style!.color,
         scheme.onSurface,
       );
+      expect(
+        tester.getRect(find.text('评分数')).left,
+        lessThan(twoColumnCountLeft - 90),
+      );
+      // Narrow windows follow the same rule.
+      final wideCountLeft = tester.getRect(find.text('评分数')).left;
+      tester.view.physicalSize = const Size(460, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await metrics(countOnly, width: 400);
+      expect(find.text('7日评分变化'), findsNothing);
+      expect(find.text('—'), findsNothing);
+      expect(find.text('评分数'), findsOneWidget);
+      expect(find.text('12,357'), findsOneWidget);
+      expect(tester.getRect(find.text('评分数')).left, closeTo(wideCountLeft, 1));
+      // A narrow statistics area in a wide window follows the same rule.
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      await tester.pump();
+      await metrics(countOnly, width: 130);
+      expect(find.text('7日变化'), findsNothing);
+      expect(find.text('—'), findsNothing);
+      expect(find.text('评分数'), findsOneWidget);
+      expect(find.text('12,357'), findsOneWidget);
+      // A published change stays visible even when the area is narrow:
+      // short captions stay and values scale instead of being ellipsized.
+      await metrics(withChange, width: 130);
+      expect(find.text('7日变化'), findsOneWidget);
+      expect(find.text('+192'), findsOneWidget);
+      expect(find.text('99,017'), findsOneWidget);
+      expect(tester.widget<Text>(find.text('99,017')).overflow, isNull);
       expect(tester.takeException(), isNull);
     },
   );
@@ -297,6 +383,14 @@ void main() {
     expect(find.text('1.0%'), findsOneWidget);
     expect(find.text('+1.0%'), findsNothing);
     expect(find.text('158,424'), findsOneWidget);
+    // Fixed columns keep a steady rhythm and leave the rest of a wide row
+    // empty instead of stretching to fill the card: 84 dp + 14 dp gap.
+    final firstLeft = tester.getRect(find.text('7 日新增')).left;
+    final secondLeft = tester.getRect(find.text('7 日新增占比')).left;
+    final thirdLeft = tester.getRect(find.text('总 Star')).left;
+    expect(secondLeft - firstLeft, closeTo(98, 1));
+    expect(thirdLeft - secondLeft, closeTo(98, 1));
+    expect(tester.getRect(find.text('158,424')).right, lessThan(320));
     expect(find.byType(Tooltip), findsNothing);
     // All three figures stay neutral; no sort column is colour-coded.
     final scheme = Theme.of(tester.element(find.text('+1,528'))).colorScheme;
@@ -333,6 +427,18 @@ void main() {
     // Neither the sorting notice nor the published title is shown on cards.
     expect(find.byType(Tooltip), findsNothing);
     expect(find.textContaining('网站原始标题'), findsNothing);
+    // With the download button beside the figures, the statistics area can be
+    // much narrower: short captions stay and long values scale, never clip.
+    await metrics(width: 130);
+    expect(find.text('7日'), findsOneWidget);
+    expect(find.text('占比'), findsOneWidget);
+    expect(find.text('Star'), findsOneWidget);
+    expect(find.text('158,424'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('158,424')).overflow, isNull);
+    expect(
+      find.ancestor(of: find.text('158,424'), matching: find.byType(FittedBox)),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -514,6 +620,95 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.detailCalls, 1);
       expect(find.text('2026-10-01'), findsOneWidget);
+      expect(find.text('更新日期'), findsWidgets);
+      final dateScheme = Theme.of(tester.element(find.text('2026-10-01')))
+          .colorScheme;
+      expect(
+        tester.widget<Text>(find.text('2026-10-01')).style!.color,
+        dateScheme.onSurface,
+      );
+      expect(
+        tester.widget<Text>(find.text('2026-10-01')).style!.color,
+        isNot(dateScheme.primary),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'desktop list view keeps the figures beside a centred download action',
+    (tester) async {
+      await mount(tester, const Size(1240, 900));
+      await tester.tap(find.byTooltip('列表视图'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('catalog-sort-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sort-stars')));
+      await tester.pumpAndSettle();
+
+      final stats = find.byType(OpenSourceGrowthMetrics).first;
+      final card = find.ancestor(of: stats, matching: find.byType(Card)).first;
+      final button = find.descendant(
+        of: card,
+        matching: find.byType(AppDownloadButton),
+      );
+      expect(button, findsOneWidget);
+      final statsRect = tester.getRect(stats);
+      final buttonRect = tester.getRect(button);
+      // One row: the compact left-aligned group sits immediately before the
+      // action, and both share the same vertical centre in the list card.
+      expect(statsRect.right, lessThan(buttonRect.left));
+      expect(buttonRect.left - statsRect.right, lessThan(40));
+      expect(statsRect.center.dy, closeTo(buttonRect.center.dy, 2));
+      final first = find.descendant(of: stats, matching: find.text('7 日新增'));
+      final second = find.descendant(of: stats, matching: find.text('7 日新增占比'));
+      final third = find.descendant(of: stats, matching: find.text('总 Star'));
+      expect(first, findsOneWidget);
+      expect(second, findsOneWidget);
+      expect(third, findsOneWidget);
+      expect(
+        tester.getRect(second).left - tester.getRect(first).left,
+        closeTo(98, 1),
+      );
+      expect(
+        tester.getRect(third).left - tester.getRect(second).left,
+        closeTo(98, 1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'desktop list view keeps the same row when text grows on a narrow window',
+    (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await mount(tester, const Size(940, 600));
+      await tester.tap(find.byTooltip('列表视图'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('catalog-sort-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sort-stars')));
+      await tester.pumpAndSettle();
+
+      final stats = find.byType(OpenSourceGrowthMetrics).first;
+      final card = find.ancestor(of: stats, matching: find.byType(Card)).first;
+      final button = find.descendant(
+        of: card,
+        matching: find.byType(AppDownloadButton),
+      );
+      expect(button, findsOneWidget);
+      expect(
+        tester.getRect(stats).right,
+        lessThan(tester.getRect(button).left),
+      );
+      expect(
+        tester.getRect(stats).center.dy,
+        closeTo(tester.getRect(button).center.dy, 2),
+      );
+      // Large text falls back to equal columns instead of overflowing the
+      // fixed-height list card.
+      expect(find.text('7 日新增'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );
