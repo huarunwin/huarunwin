@@ -304,7 +304,7 @@ class LinuxInstaller {
       }
     }
     if (type != 'Application' || name == null || exec == null) return null;
-    return (name!, exec!);
+    return (name, exec);
   }
 
   String? _desktopExecutableToken(String value) {
