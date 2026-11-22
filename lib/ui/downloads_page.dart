@@ -605,7 +605,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   _platform == 'Android' &&
                   task.canInstallPackageOn('Android', selected))
                 OutlinedButton.icon(
-                  onPressed: () => _repack(task, selected),
+                  onPressed: () =>
+                      _installAndroid(task, selected, requireResigning: true),
                   icon: const Icon(Icons.edit_note_rounded, size: 18),
                   label: const Text('修改包名／重新签名'),
                 ),
@@ -935,35 +936,88 @@ class _DownloadsPageState extends State<DownloadsPage> {
     }
   }
 
-  Future<void> _repack(DownloadTask task, DownloadPackage package) async {
+  Future<void> _installAndroid(
+    DownloadTask task,
+    DownloadPackage package, {
+    bool requireResigning = false,
+  }) async {
+    final manager = widget.manager;
+    var installTask = task;
+    var selected = package;
     try {
-      final info = await widget.manager.inspectApk(task, package: package);
+      final info = await manager.inspectApk(task, package: selected);
       if (!mounted) return;
+      // Renaming can target a different installed app. Check the signed output below.
+      if (!requireResigning && info.isDowngrade) {
+        await _showAndroidDowngrade(task, info.downgradeMessage);
+        return;
+      }
       final selection = await showAdaptiveForm<AndroidInstallSelection>(
         context: context,
         enableDrag: false,
         builder: (_) => AndroidInstallDialog(
           task: task,
-          package: package,
+          package: selected,
           info: info,
-          installer: widget.manager.installer,
-          repackOnly: true,
+          installer: manager.installer,
+          requireResigning: requireResigning,
         ),
       );
-      if (!mounted || selection?.resignKey == null) return;
-      await widget.manager.resignForInstallation(
-        task,
-        selection!.resignKey!,
-        package: package,
-        packageName: selection.resignPackageName,
-      );
-      if (mounted) _message('副本已生成，源包已保留。');
+      if (selection == null || !mounted) return;
+      if (!task.canInstallPackageOn('Android', selected) ||
+          (requireResigning && selection.resignKey == null)) {
+        return;
+      }
+      if (selection.resignKey case final key?) {
+        installTask = await manager.resignForInstallation(
+          task,
+          key,
+          package: selected,
+          packageName: selection.resignPackageName,
+        );
+        selected = DownloadPackage.resigned;
+        final resignedInfo = await manager.inspectApk(
+          installTask,
+          package: selected,
+        );
+        if (resignedInfo.isDowngrade) {
+          if (mounted) {
+            await _showAndroidDowngrade(
+              installTask,
+              resignedInfo.downgradeMessage,
+            );
+          }
+          return;
+        }
+      }
+      if (selection.method == AndroidInstallMethod.other) {
+        await manager.handOff(installTask, package: selected);
+        if (mounted &&
+            installTask.androidInstallErrorDetails['code'] ==
+                'version_downgrade') {
+          await _showAndroidDowngrade(
+            installTask,
+            installTask.error ?? '无法覆盖安装旧版本。',
+          );
+        }
+      } else {
+        await manager.install(
+          installTask,
+          androidMethod: selection.method,
+          package: selected,
+        );
+      }
     } on PlatformException catch (error) {
-      if (mounted) _message(error.message ?? '生成副本失败，所选包已保留。');
+      if (!mounted) return;
+      if (error.code == 'version_downgrade') {
+        await _showAndroidDowngrade(installTask, error.message ?? '无法覆盖安装旧版本。');
+      } else {
+        _message(error.message ?? '无法检查或安装 APK，请重试。');
+      }
     } on FormatException catch (error) {
       if (mounted) _message(error.message);
     } catch (_) {
-      if (mounted) _message('生成副本失败，所选包已保留，请重试。');
+      if (mounted) _message('无法检查或安装 APK，请重试。');
     }
   }
 
@@ -1012,80 +1066,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
       return;
     }
     if (task.platform == 'Android') {
-      var installTask = task;
-      var selected = package ?? task.defaultPackage;
-      try {
-        final info = await widget.manager.inspectApk(task, package: selected);
-        if (!mounted) return;
-        if (info.isDowngrade) {
-          await _showAndroidDowngrade(task, info.downgradeMessage);
-          return;
-        }
-        final selection = await showAdaptiveForm<AndroidInstallSelection>(
-          context: context,
-          enableDrag: false,
-          builder: (_) => AndroidInstallDialog(
-            task: task,
-            package: selected,
-            info: info,
-            installer: widget.manager.installer,
-          ),
-        );
-        if (selection == null || !mounted) return;
-        if (!task.canInstallPackageOn('Android', selected)) return;
-        if (selection.resignKey case final key?) {
-          installTask = await widget.manager.resignForInstallation(
-            task,
-            key,
-            package: selected,
-            packageName: selection.resignPackageName,
-          );
-          if (!mounted) return;
-          selected = DownloadPackage.resigned;
-          final resignedInfo = await widget.manager.inspectApk(
-            installTask,
-            package: selected,
-          );
-          if (!mounted) return;
-          if (resignedInfo.isDowngrade) {
-            await _showAndroidDowngrade(
-              installTask,
-              resignedInfo.downgradeMessage,
-            );
-            return;
-          }
-        }
-        if (!mounted) return;
-        if (selection.method == AndroidInstallMethod.other) {
-          await widget.manager.handOff(installTask, package: selected);
-          if (mounted &&
-              installTask.androidInstallErrorDetails['code'] ==
-                  'version_downgrade') {
-            await _showAndroidDowngrade(
-              installTask,
-              installTask.error ?? '无法覆盖安装旧版本。',
-            );
-          }
-        } else {
-          await widget.manager.install(
-            installTask,
-            androidMethod: selection.method,
-            package: selected,
-          );
-        }
-      } on PlatformException catch (error) {
-        if (!mounted) return;
-        if (error.code == 'version_downgrade') {
-          await _showAndroidDowngrade(
-            installTask,
-            error.message ?? '无法覆盖安装旧版本。',
-          );
-        } else {
-          _message(error.message ?? '无法检查或安装 APK，请重试。');
-        }
-      } catch (_) {
-        if (mounted) _message('无法检查或安装 APK，请重试。');
-      }
+      await _installAndroid(task, package ?? task.defaultPackage);
       return;
     }
     final approved = await showDialog<bool>(

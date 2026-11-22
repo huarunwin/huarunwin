@@ -534,7 +534,13 @@ class _AppDownloadButtonState extends State<AppDownloadButton>
                 platforms: downloadApp.platforms,
               ),
               installer: widget.manager.installer,
-              suggestedPackageName: signingPreference?.resignedPackageName,
+              suggestedPackageName:
+                  signingPreference?.isRenamedPackage(
+                        DownloadPackage.resigned,
+                      ) ==
+                      true
+                  ? signingPreference!.resignedPackageName
+                  : null,
               suggestedSigningKey: signingPreference?.resignKey,
               preferences: ReleaseDownloadPreferences(
                 platform: target,

@@ -12,9 +12,11 @@ class AndroidSigningKeyDialog extends StatefulWidget {
     super.key,
     required this.installer,
     this.selected,
+    this.onKeyDeleted,
   });
   final NativeInstaller installer;
   final AndroidSigningKey? selected;
+  final ValueChanged<AndroidSigningKey>? onKeyDeleted;
 
   @override
   State<AndroidSigningKeyDialog> createState() =>
@@ -25,7 +27,8 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
   List<AndroidSigningKey> _keys = [];
   AndroidSigningKey? _selected;
   bool _loading = true, _working = false, _loaded = false;
-  String? _error;
+  String? _error, _notice;
+  final _feedback = GlobalKey();
 
   @override
   void initState() {
@@ -37,16 +40,24 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
     setState(() {
       _loading = true;
       _error = null;
+      _notice = null;
     });
     try {
       final keys = await widget.installer.apkSigningKeys();
       if (!mounted) return;
       setState(() {
-        _keys = keys;
+        _keys = keys.where((key) => !key.deleted).toList();
         _loaded = true;
-        _selected =
-            keys.where((key) => key.id == widget.selected?.id).firstOrNull ??
-            keys.firstOrNull;
+        final expected = widget.selected;
+        _selected = expected == null
+            ? _keys.firstOrNull
+            : _keys
+                  .where(
+                    (key) =>
+                        key.id == expected.id &&
+                        key.certificateSha256 == expected.certificateSha256,
+                  )
+                  .firstOrNull;
       });
     } catch (_) {
       if (mounted) setState(() => _error = '无法读取本机密钥，可重试或导入备份恢复。');
@@ -64,23 +75,17 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
     });
   }
 
-  Future<AndroidSigningKey?> _transfer({
-    AndroidSigningKey? key,
-    bool created = false,
-  }) => showAdaptiveForm<AndroidSigningKey>(
-    context: context,
-    enableDrag: false,
-    builder: (context) => AndroidSigningKeyTransferDialog(
-      installer: widget.installer,
-      signingKey: key,
-      newlyCreated: created,
-    ),
-  );
-
   Future<void> _manage({bool importing = false}) async {
     if (_working) return;
     setState(() => _working = true);
-    final key = await _transfer(key: importing ? null : _selected);
+    final key = await showAdaptiveForm<AndroidSigningKey>(
+      context: context,
+      enableDrag: false,
+      builder: (_) => AndroidSigningKeyTransferDialog(
+        installer: widget.installer,
+        signingKey: importing ? null : _selected,
+      ),
+    );
     if (!mounted) return;
     if (key != null) _remember(key);
     setState(() => _working = false);
@@ -98,17 +103,82 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
       _error = null;
     });
     try {
-      var key = await widget.installer.createApkSigningKey();
-      if (!mounted) return;
-      _remember(key);
-      if (key.exportable) {
-        key = await _transfer(key: key, created: true) ?? key;
-      }
+      final key = await widget.installer.createApkSigningKey();
       if (mounted) Navigator.pop(context, key);
     } catch (error) {
       if (mounted) setState(() => _error = _message(error, '无法创建签名密钥，请重试。'));
     } finally {
       if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<bool?> _confirmKeyDeletion(
+    AndroidSigningKey key,
+  ) => showAdaptiveForm<bool>(
+    context: context,
+    enableDrag: false,
+    builder: (context) => AdaptiveDialog(
+      title: '删除本机密钥？',
+      showDragHandle: false,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            '${key.label}（${key.isDefault ? '默认密钥' : '非默认密钥'}）\nSHA-256\n${key.certificateSha256}',
+          ),
+          const SizedBox(height: 16),
+          Text(
+            key.exportable
+                ? '以后要继续更新用它重签过的应用，需要导入同一把密钥的备份。请确认已妥善保存所需的备份文件和密码。'
+                : '这把旧密钥仅保存在本机，删除后无法恢复，也无法再用它给旧应用签署更新。',
+          ),
+        ],
+      ),
+      actions: DialogActionsRow(
+        destructive: true,
+        confirmLabel: '删除',
+        onCancel: () => Navigator.pop(context, false),
+        onConfirm: () => Navigator.pop(context, true),
+      ),
+    ),
+  );
+
+  Future<void> _deleteLocalKey(AndroidSigningKey key) async {
+    if (_working) return;
+    setState(() {
+      _working = true;
+      _error = _notice = null;
+    });
+    try {
+      if (widget.installer.isSigningKeyInUse(key)) {
+        throw PlatformException(
+          code: 'signing_key_busy',
+          message: '这把密钥正在用于重签，请在任务结束后再删除。',
+        );
+      }
+      final approved = await _confirmKeyDeletion(key);
+      if (approved != true || !mounted) return;
+      await widget.installer.deleteApkSigningKey(key);
+      if (!mounted) return;
+      setState(() {
+        _keys.removeWhere((entry) => entry.id == key.id);
+        _selected = null;
+        _notice = '已删除本机密钥「${key.label}」。';
+      });
+      widget.onKeyDeleted?.call(key);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _message(error, '删除未完成，请重试。'));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final feedback = _feedback.currentContext;
+          if (feedback != null) Scrollable.ensureVisible(feedback);
+        });
+      }
     }
   }
 
@@ -131,6 +201,17 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
               ),
             ),
             const SizedBox(height: 20),
+            if (_error != null || _notice != null)
+              Semantics(
+                key: _feedback,
+                liveRegion: true,
+                child: Text(
+                  _error ?? _notice!,
+                  style: _error == null
+                      ? null
+                      : TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.all(24),
@@ -139,13 +220,6 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
                 ),
               )
             else if (_error != null) ...[
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
               TextButton(
                 onPressed: _working ? null : _load,
                 child: const Text('重试读取密钥'),
@@ -188,11 +262,13 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
                   if (key.available && key.exportable)
                     PageRow(
                       key: const ValueKey('export-signing-key'),
-                      title: '导出密钥备份',
+                      title: key.lastExportedAt == null ? '导出密钥备份' : '已备份',
                       subtitle: key.lastExportedAt == null
                           ? '尚未在本机导出备份'
-                          : '上次导出：${_formatTime(key.lastExportedAt!)}',
-                      icon: Icons.save_alt_rounded,
+                          : '上次导出 ${_formatTime(key.lastExportedAt!)} · 可再次导出',
+                      icon: key.lastExportedAt == null
+                          ? Icons.save_alt_rounded
+                          : Icons.check_circle_outline_rounded,
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: _working ? null : _manage,
                     ),
@@ -216,6 +292,14 @@ class _AndroidSigningKeyDialogState extends State<AndroidSigningKeyDialog> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
+                  ),
+                  PageRow(
+                    key: const ValueKey('delete-signing-key'),
+                    title: '删除本机密钥',
+                    icon: Icons.delete_outline_rounded,
+                    onTap: _working || key.certificateSha256.isEmpty
+                        ? null
+                        : () => _deleteLocalKey(key),
                   ),
                 ],
               ),

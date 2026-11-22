@@ -59,7 +59,7 @@ class ApkSigningKeys(
         check(isDirectory || mkdir()) { "无法创建密钥目录。" }
     }
 
-    fun keys(): List<Map<String, Any>> {
+    fun keys(): List<Map<String, Any>> = synchronized(KEY_LOCK) {
         val legacy = store()
         val identities = legacy.aliases().toList().filter { it.startsWith(legacyPrefix) }
             .map { describe(it, legacy.getCertificate(it) as X509Certificate) }
@@ -74,15 +74,79 @@ class ApkSigningKeys(
             }
         val preferred = preferences.getString("preferred", null)
         val present = (portable + identities).map { it.getValue("id") as String }.toSet()
-        val known = preferences.getStringSet("known", emptySet()).orEmpty() + listOfNotNull(preferred)
-        val missing = (known - present).map { id ->
+        val remembered = preferences.getStringSet("known", emptySet()).orEmpty()
+        val known = remembered + listOfNotNull(preferred)
+        val missing = (known - present).mapNotNull { id ->
             val fingerprint = if (id.startsWith(PORTABLE_PREFIX)) id.removePrefix(PORTABLE_PREFIX)
                 else preferences.getString("certificate.$id", "").orEmpty()
-            mapOf("id" to id, "label" to if (id.startsWith(PORTABLE_PREFIX)) "个人密钥 ${fingerprint.take(8)}" else "本机密钥",
-                "certificateSha256" to fingerprint, "exportable" to id.startsWith(PORTABLE_PREFIX), "available" to false)
+            // A pending deletion stays visible for retry until all key files and metadata are cleared.
+            val deleted = id !in remembered && preferences.getString("deleted.$fingerprint", null) == id
+            if (deleted && id != preferred) null else unavailable(id, fingerprint, deleted)
         }
-        return (portable + identities + missing).sortedWith(compareBy<Map<String, Any>> { it["id"] != preferred }
+        (portable + identities + missing).map {
+            if (it["id"] == preferred) it + ("isDefault" to true) else it
+        }.sortedWith(compareBy<Map<String, Any>> { it["id"] != preferred }
             .thenBy { it["exportable"] != true }.thenByDescending { it["id"] as String })
+    }
+
+    private fun unavailable(id: String, fingerprint: String, deleted: Boolean): Map<String, Any> = buildMap {
+        val portable = id.startsWith(PORTABLE_PREFIX)
+        put("id", id); put("certificateSha256", fingerprint)
+        put("label", if (portable) "个人密钥 ${fingerprint.take(8)}" else "本机密钥")
+        put("exportable", portable); put("available", false)
+        if (deleted) put("deleted", true)
+    }
+
+    fun deletedSigner(fingerprint: String): Map<String, Any>? = synchronized(KEY_LOCK) {
+        val id = preferences.getString("deleted.$fingerprint", null) ?: return@synchronized null
+        val present = if (id.startsWith(PORTABLE_PREFIX)) file(id).isFile else store().containsAlias(id)
+        if (present) null else unavailable(id, fingerprint, true)
+    }
+
+    fun delete(id: String, fingerprint: String, expectedDefault: Boolean) = synchronized(KEY_LOCK) {
+        check(id !in signingUses) { "这把密钥正在用于重签，请在任务结束后再删除。" }
+        val target = if (id.startsWith(PORTABLE_PREFIX)) {
+            require(id == PORTABLE_PREFIX + fingerprint) { "签名密钥标识与证书不匹配。" }
+            file(id)
+        } else {
+            require(id.startsWith(legacyPrefix) && id != wrappingAlias) { "本机密钥标识无效。" }
+            null
+        }
+        val key = keys().singleOrNull { it["id"] == id && it["deleted"] != true }
+        require(key != null && fingerprint.isNotEmpty() && key["certificateSha256"] == fingerprint) {
+            "密钥已变化，请重新选择。"
+        }
+        require((key["isDefault"] == true) == expectedDefault) { "默认密钥已变化，请重新确认。" }
+        // Record the public identity before removing private material so an interrupted deletion
+        // still protects updates signed by this key. A surviving local key remains usable.
+        val known = preferences.getStringSet("known", emptySet()).orEmpty()
+        check(preferences.edit().putStringSet("known", known + id).putString("deleted.$fingerprint", id)
+            .putString("certificate.$id", fingerprint).commit()) { "无法记录密钥变更，请重试。" }
+        if (target != null) {
+            AtomicFile(target).delete()
+            val sidecars = listOf(File(target.path + ".new"), File(target.path + ".bak"))
+            check(!target.exists() && sidecars.all { !it.exists() || it.delete() }) {
+                "未能完整删除本机密钥，请重试。"
+            }
+        } else {
+            val store = store()
+            if (store.containsAlias(id)) store.deleteEntry(id)
+            check(!store.containsAlias(id)) { "未能删除本机密钥，请重试。" }
+        }
+        check(preferences.edit().putStringSet("known", known - id).remove("exported.$id").commit()) {
+            "本机密钥已删除，请刷新密钥列表。"
+        }
+    }
+
+    fun <T> whileSigning(id: String, operation: () -> T): T {
+        synchronized(KEY_LOCK) { signingUses[id] = (signingUses[id] ?: 0) + 1 }
+        try { return operation() }
+        finally {
+            synchronized(KEY_LOCK) {
+                val count = signingUses.getValue(id) - 1
+                if (count == 0) signingUses.remove(id) else signingUses[id] = count
+            }
+        }
     }
 
     // Called only after the user confirms signing. A missing known key must never be replaced.
@@ -166,10 +230,10 @@ class ApkSigningKeys(
                 .setProvider(provider).setIterationCount(210000), password).encoded
     }
 
-    fun exported(id: String, expectedCertificate: String): Map<String, Any> {
+    fun exported(id: String, expectedCertificate: String): Map<String, Any> = synchronized(KEY_LOCK) {
         val certificate = identity(id, expectedCertificate).certificate
         check(preferences.edit().putLong("exported.$id", System.currentTimeMillis()).commit()) { "备份已导出，但无法记录导出时间。" }
-        return describe(id, certificate)
+        describe(id, certificate)
     }
 
     fun import(input: InputStream, password: CharArray): Map<String, Any> {
@@ -205,11 +269,17 @@ class ApkSigningKeys(
     }
 
     private fun save(identity: Identity): Map<String, Any> = synchronized(KEY_LOCK) {
-        val id = PORTABLE_PREFIX + digest(identity.certificate.encoded)
+        val fingerprint = digest(identity.certificate.encoded)
+        val id = PORTABLE_PREFIX + fingerprint
         val target = file(id)
         if (target.exists()) {
             // A valid duplicate keeps its metadata; a verified backup can repair an unreadable local copy.
-            runCatching { identity(id).certificate }.getOrNull()?.let { return@synchronized describe(id, it) }
+            runCatching { identity(id).certificate }.getOrNull()?.let {
+                if (preferences.contains("deleted.$fingerprint")) {
+                    check(preferences.edit().remove("deleted.$fingerprint").commit()) { "无法恢复密钥记录，请重试。" }
+                }
+                return@synchronized describe(id, it)
+            }
         }
         val wrapping = store().getKey(wrappingAlias, null) as? SecretKey
             ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
@@ -234,7 +304,7 @@ class ApkSigningKeys(
         val stream = atomic.startWrite()
         try { stream.write(encrypted); atomic.finishWrite(stream) }
         catch (error: Exception) { atomic.failWrite(stream); throw error }
-        check(preferences.edit().putStringSet("known",
+        check(preferences.edit().remove("deleted.$fingerprint").putStringSet("known",
             preferences.getStringSet("known", emptySet()).orEmpty() + id).commit()) { "无法记录签名密钥，请重试。" }
         describe(id, identity.certificate)
     }
@@ -253,6 +323,7 @@ class ApkSigningKeys(
             SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(Date(id.removePrefix(legacyPrefix).substringBefore('.').toLong()))
         return buildMap {
             put("id", id); put("label", label); put("certificateSha256", fingerprint); put("exportable", portable)
+            if (id == preferences.getString("preferred", null)) put("isDefault", true)
             val exported = preferences.getLong("exported.$id", 0)
             if (exported > 0) put("lastExportedAt", exported)
         }
@@ -275,6 +346,7 @@ class ApkSigningKeys(
 
     companion object {
         private val KEY_LOCK = Any()
+        private val signingUses = mutableMapOf<String, Int>()
         private const val LEGACY_PREFIX = "win.huarun.apk.signing."
         private const val PORTABLE_PREFIX = "win.huarun.apk.portable."
         private const val MAX_BACKUP_BYTES = 1024 * 1024

@@ -82,6 +82,56 @@ class ApkSigningKeysTest {
         } finally { executor.shutdownNow() }
     }
 
+    @Test fun deletingDefaultChecksIdentityAndUseAndKeepsTheBackupAndUpdateIdentity() {
+        val original = keys.resolve()
+        val id = original.getValue("id") as String
+        val fingerprint = original.getValue("certificateSha256") as String
+        val backup = File(folder, "backup.p12").apply { writeBytes(keys.export(id, fingerprint, password)) }
+        val alternative = keys.create()
+        assertTrue(runCatching { keys.delete(id, "0".repeat(64), true) }.isFailure)
+        assertTrue(runCatching { keys.delete(id, fingerprint, false) }.isFailure)
+        keys.whileSigning(id) {
+            assertTrue(runCatching { ApkSigningKeys(first, firstAlias, legacyPrefix).delete(id, fingerprint, true) }.isFailure)
+        }
+        assertTrue(localFile(original).isFile)
+        keys.delete(id, fingerprint, true)
+        assertFalse(localFile(original).exists())
+        assertTrue(localFile(alternative).isFile)
+        assertTrue(backup.isFile)
+        val restarted = ApkSigningKeys(first, firstAlias, legacyPrefix)
+        val missingDefault = restarted.keys().first()
+        assertEquals(id, missingDefault["id"])
+        assertEquals(true, missingDefault["deleted"])
+        assertEquals(true, missingDefault["isDefault"])
+        assertTrue(runCatching { restarted.resolve() }.isFailure)
+        restarted.resolve(alternative["id"] as String, alternative["certificateSha256"] as String)
+        assertEquals(id, restarted.deletedSigner(fingerprint)?.get("id"))
+        assertFalse(restarted.keys().any { it["id"] == id })
+        backup.inputStream().use { assertEquals(id, restarted.import(it, password)["id"]) }
+        assertNull(restarted.deletedSigner(fingerprint))
+        assertEquals(fingerprint, restarted.resolve(id, fingerprint)["certificateSha256"])
+    }
+
+    @Test fun deletingLegacyKeyRemovesOnlyItsKeystoreAlias() {
+        val alias = legacyPrefix + System.currentTimeMillis()
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        try {
+            java.security.KeyPairGenerator.getInstance("RSA", "AndroidKeyStore").apply {
+                initialize(android.security.keystore.KeyGenParameterSpec.Builder(alias,
+                    android.security.keystore.KeyProperties.PURPOSE_SIGN or android.security.keystore.KeyProperties.PURPOSE_VERIFY)
+                    .setKeySize(2048).setDigests("SHA-256").setSignaturePaddings("PKCS1").build())
+            }.generateKeyPair()
+            val personal = keys.create()
+            val legacy = keys.keys().single { it["id"] == alias }
+            val fingerprint = legacy.getValue("certificateSha256") as String
+            keys.delete(alias, fingerprint, false)
+            assertFalse(store.containsAlias(alias))
+            assertTrue(store.containsAlias(firstAlias))
+            assertTrue(localFile(personal).isFile)
+            assertEquals(false, keys.deletedSigner(fingerprint)?.get("exportable"))
+        } finally { store.deleteEntry(alias) }
+    }
+
     @Test fun confirmedSelectionBecomesDefaultAndMissingKeyRequiresBackup() {
         val original = keys.resolve()
         val alternative = keys.create()

@@ -86,7 +86,7 @@ class _ReleaseDownloadDialogState extends State<ReleaseDownloadDialog> {
       return;
     }
     final key = _canResign && _signing.enabled
-        ? await _signing.confirm(context)
+        ? await _signing.confirm()
         : null;
     if (!mounted || _signing.enabled && key == null) return;
     Navigator.pop(

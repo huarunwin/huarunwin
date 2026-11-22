@@ -15,7 +15,7 @@ class ApkResigner(private val context: Context, private val signingKeys: ApkSign
 
     // Input/output paths have already been restricted to this task's managed directory.
     fun resign(input: File, output: File, keyId: String, expectedSource: String, expectedCertificate: String,
-               packageName: String? = null): Map<String, String> {
+               packageName: String? = null): Map<String, String> = signingKeys.whileSigning(keyId) {
         val temporary = File(output.parentFile, output.name + ".part")
         val rewritten = File(output.parentFile, output.name + ".unsigned")
         val folder = requireNotNull(output.absoluteFile.parentFile).canonicalFile
@@ -62,7 +62,7 @@ class ApkResigner(private val context: Context, private val signingKeys: ApkSign
             val hash = sha256(temporary)
             signingKeys.prefer(keyId, onlyIfUnset = true)
             check(temporary.renameTo(output)) { "无法保存重签 APK，请检查可用空间。" }
-            return mapOf("sha256" to hash, "certificateSha256" to expectedCertificate,
+            mapOf("sha256" to hash, "certificateSha256" to expectedCertificate,
                 "packageName" to outputInfo.packageName, "sourcePackageName" to sourceInfo.packageName)
         } finally {
             temporary.delete()

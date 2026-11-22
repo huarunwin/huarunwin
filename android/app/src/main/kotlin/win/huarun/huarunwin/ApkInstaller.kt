@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.zip.ZipFile
 
@@ -35,8 +36,10 @@ class ApkInstaller(
     )
     private class ApkFailure(val code: String, message: String, val details: Map<String, Any?>? = null) : Exception(message)
     private val worker = Executors.newSingleThreadExecutor()
-    private val resigner = ApkResigner(activity)
-    private val keyDocuments = ApkSigningKeyDocuments(activity, worker)
+    private val keyWorker = Executors.newSingleThreadExecutor()
+    private val signingKeys = ApkSigningKeys(activity)
+    private val resigner = ApkResigner(activity, signingKeys)
+    private val keyDocuments = ApkSigningKeyDocuments(activity, keyWorker, signingKeys)
     private var disposed = false
     private var pendingResult: MethodChannel.Result? = null
     private var uninstallResult: MethodChannel.Result? = null
@@ -56,9 +59,15 @@ class ApkInstaller(
         try {
             if (keyDocuments.handle(call, result)) return
             when (call.method) {
-                "apkSigningKeys" -> background(result) { resigner.keys() }
-                "createApkSigningKey" -> background(result) { resigner.createKey() }
-                "resolveApkSigningKey" -> background(result) {
+                "apkSigningKeys" -> background(result, keyWorker) { signingKeys.keys() }
+                "createApkSigningKey" -> background(result, keyWorker) { signingKeys.create() }
+                "deleteApkSigningKey" -> background(result, keyWorker) {
+                    signingKeys.delete(requireNotNull(call.argument<String>("keyId")),
+                        requireNotNull(call.argument<String>("expectedCertificateSha256")),
+                        requireNotNull(call.argument<Boolean>("expectedDefault")))
+                    null
+                }
+                "resolveApkSigningKey" -> background(result, keyWorker) {
                     resigner.resolveKey(call.argument<String>("keyId"), call.argument<String>("expectedCertificateSha256"))
                 }
                 "resignApk" -> background(result) {
@@ -83,7 +92,7 @@ class ApkInstaller(
                     val file = managedApk(call.argument<String>("path"))
                     val info = archiveInfo(file)
                     val abis = nativeAbis(file)
-                    val installed = installedInfo(info.packageName)
+                    val installed = installedWithSigners(info.packageName)
                     @Suppress("DEPRECATION")
                     val certificates = if (Build.VERSION.SDK_INT >= 28) {
                         info.signingInfo?.apkContentsSigners
@@ -94,6 +103,7 @@ class ApkInstaller(
                         "installedVersion" to installed?.versionName,
                         "versionCode" to versionCode(info),
                         "installedVersionCode" to installed?.let(::versionCode),
+                        "deletedInstalledSigningKey" to installed?.let { deletedSignerForUpdate(info, it) },
                         "minimumSdk" to info.applicationInfo?.minSdkVersion,
                         "nativeAbis" to abis.toList(),
                         "fileSha256" to sha256(file),
@@ -130,8 +140,7 @@ class ApkInstaller(
                     }
                     val name = archive?.packageName ?: requireNotNull(call.argument<String>("packageName"))
                     require(name.isNotBlank()) { "应用包名无效。" }
-                    val installed = installedInfo(name, if (Build.VERSION.SDK_INT >= 28)
-                        PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES)
+                    val installed = installedWithSigners(name)
                     mapOf(
                         "packageName" to name,
                         "version" to archive?.versionName,
@@ -149,7 +158,7 @@ class ApkInstaller(
                         val info = archiveInfo(file)
                         val expected = call.argument<String>("expectedSha256")
                         if (expected != null && sha256(file) != expected) throw ApkFailure("changed", "APK 在确认后已变化，请重新检查。")
-                        checkNotDowngrade(info)
+                        checkInstalledUpdate(info)
                         val choices = otherInstallers(viewIntent(file))
                         check(choices.isNotEmpty()) { "没有找到其他可用的安装器。" }
                         val intent = Intent.createChooser(choices.first(), "选择安装器").apply {
@@ -192,8 +201,8 @@ class ApkInstaller(
         } catch (error: Exception) { report(result, error) }
     }
 
-    private fun background(result: MethodChannel.Result, operation: () -> Any?) {
-        worker.execute {
+    private fun background(result: MethodChannel.Result, executor: ExecutorService = worker, operation: () -> Any?) {
+        executor.execute {
             try {
                 val value = operation()
                 activity.runOnUiThread { if (!disposed) result.success(value) }
@@ -219,6 +228,21 @@ class ApkInstaller(
     private fun certificateDigests(info: PackageInfo): List<String> =
         (if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures)
             .orEmpty().map { digest(it.toByteArray()) }
+
+    @Suppress("DEPRECATION")
+    private fun installedWithSigners(name: String) = installedInfo(name, if (Build.VERSION.SDK_INT >= 28)
+        PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES)
+
+    private fun deletedSignerForUpdate(archive: PackageInfo, installed: PackageInfo): Map<String, Any>? {
+        if (archive.packageName == activity.packageName) return null
+        val fingerprint = certificateDigests(installed).singleOrNull() ?: return null
+        val deleted = signingKeys.deletedSigner(fingerprint) ?: return null
+        // Leave updates with a signing rotation lineage to Android's compatibility checks.
+        if (Build.VERSION.SDK_INT >= 28 && archive.signingInfo?.run {
+                hasPastSigningCertificates() && signingCertificateHistory.any { digest(it.toByteArray()) == fingerprint }
+            } == true) return null
+        return deleted
+    }
 
     @Suppress("DEPRECATION")
     private fun installedApplications(): List<Map<String, Any?>> {
@@ -249,8 +273,8 @@ class ApkInstaller(
     private fun versionCode(info: PackageInfo): Long =
         if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
 
-    private fun checkNotDowngrade(info: PackageInfo) {
-        val installed = installedInfo(info.packageName) ?: return
+    private fun checkInstalledUpdate(info: PackageInfo) {
+        val installed = installedWithSigners(info.packageName) ?: return
         val targetCode = versionCode(info)
         val installedCode = versionCode(installed)
         if (targetCode < installedCode) {
@@ -261,6 +285,12 @@ class ApkInstaller(
             throw ApkFailure("version_downgrade",
                 "当前已安装 $currentLabel，无法覆盖安装 $targetLabel。请选择相同或更高版本的安装包，APK 已保留。",
                 mapOf("versionCode" to targetCode, "installedVersionCode" to installedCode))
+        }
+        val deleted = deletedSignerForUpdate(info, installed) ?: return
+        if (certificateDigests(info).singleOrNull() != deleted["certificateSha256"]) {
+            throw ApkFailure("deleted_signing_key", if (deleted["exportable"] == true)
+                "已安装版本使用已删除的个人密钥，请从“管理密钥”导入原备份后重签，或选择已用原密钥签名的安装包。"
+            else "已安装版本使用的旧密钥已删除且无法恢复，请选择已用原密钥签名的安装包。")
         }
     }
 
@@ -377,7 +407,7 @@ class ApkInstaller(
                 val hash = sha256(file)
                 val expected = call.argument<String>("expectedSha256")
                 if (expected != null && hash != expected) throw ApkFailure("changed", "APK 在确认后已变化，请重新检查后安装。")
-                checkNotDowngrade(info)
+                checkInstalledUpdate(info)
                 val selfVersion = if (call.method == "installSelfUpdate")
                     requireNotNull(call.argument<String>("version")) else null
                 if (selfVersion != null) checkSelfUpdate(file, info, selfVersion)
@@ -409,7 +439,7 @@ class ApkInstaller(
                 if (info.packageName != pending.packageName || sha256(file) != pending.sha256) {
                     throw ApkFailure("changed", "APK 在授权期间已变化，请重新检查后安装。")
                 }
-                checkNotDowngrade(info)
+                checkInstalledUpdate(info)
                 pending.selfUpdateVersion?.let { checkSelfUpdate(file, info, it) }
                 if (!pending.useSystem) {
                     sessions.install(file, pending.packageName, pending.sha256)
@@ -498,6 +528,7 @@ class ApkInstaller(
         uninstallResult?.error("uninstall_interrupted", "卸载结果尚未确认，请刷新应用状态。", null)
         uninstallResult = null
         worker.shutdownNow()
+        keyWorker.shutdownNow()
     }
     companion object {
         private const val APK_TYPE = "application/vnd.android.package-archive"

@@ -404,6 +404,7 @@ class NativeInstaller {
   NativeInstaller({LinuxInstaller? linuxInstaller})
     : linux = linuxInstaller ?? LinuxInstaller();
   final LinuxInstaller linux;
+  final _signingUses = <String, int>{};
   static const channel = MethodChannel('win.huarun/installer');
   static final _progressListeners =
       <
@@ -597,6 +598,40 @@ class NativeInstaller {
       {'password': password},
     );
     return result == null ? null : AndroidSigningKey.fromMap(result);
+  }
+
+  bool isSigningKeyInUse(AndroidSigningKey key) =>
+      _signingUses.containsKey(key.id);
+
+  Future<T> _whileUsingSigningKey<T>(
+    AndroidSigningKey key,
+    Future<T> Function() operation,
+  ) async {
+    _signingUses.update(key.id, (count) => count + 1, ifAbsent: () => 1);
+    try {
+      return await operation();
+    } finally {
+      final remaining = _signingUses[key.id]! - 1;
+      if (remaining == 0) {
+        _signingUses.remove(key.id);
+      } else {
+        _signingUses[key.id] = remaining;
+      }
+    }
+  }
+
+  Future<void> deleteApkSigningKey(AndroidSigningKey key) async {
+    if (isSigningKeyInUse(key)) {
+      throw PlatformException(
+        code: 'signing_key_busy',
+        message: '这把密钥正在用于重签，请在任务结束后再删除。',
+      );
+    }
+    await channel.invokeMethod<void>('deleteApkSigningKey', {
+      'keyId': key.id,
+      'expectedCertificateSha256': key.certificateSha256,
+      'expectedDefault': key.isDefault,
+    });
   }
 
   Future<AndroidResignResult> resignApk(
@@ -1406,12 +1441,16 @@ class DownloadManager extends ChangeNotifier {
             .where(
               (task) =>
                   task.wantsResign &&
-                  task.isRenamedPackage(DownloadPackage.resigned) &&
                   (task.appKey == appKey && appKey != null ||
                       task.appKey == null && task.appName == appName),
             )
             .toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          ..sort((a, b) {
+            final aRenamed = a.isRenamedPackage(DownloadPackage.resigned);
+            final bRenamed = b.isRenamedPackage(DownloadPackage.resigned);
+            if (aRenamed != bRenamed) return aRenamed ? -1 : 1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
     return matches.firstOrNull;
   }
 
@@ -1697,9 +1736,19 @@ class DownloadManager extends ChangeNotifier {
     AndroidSigningKey key, {
     String? packageName,
     DownloadPackage? package,
-  }) async {
+  }) => installer._whileUsingSigningKey(
+    key,
+    () =>
+        _prepareResign(task, key, package ?? task.defaultPackage, packageName),
+  );
+
+  Future<DownloadTask> _prepareResign(
+    DownloadTask task,
+    AndroidSigningKey key,
+    DownloadPackage selected,
+    String? packageName,
+  ) async {
     if (task.isSelfUpdate) throw StateError('客户端更新不能改包或重签。');
-    final selected = package ?? task.defaultPackage;
     if (!task.canInstallPackageOn('Android', selected) ||
         task.deleting ||
         !tasks.contains(task)) {
@@ -1810,11 +1859,15 @@ class DownloadManager extends ChangeNotifier {
   Future<void> _start(DownloadTask task) {
     if (_running[task.id] case final running?) return running;
     final job = _QueuedDownload(task);
+    final signingKey = task.resignKey;
+    final done = signingKey == null
+        ? job.done.future
+        : installer._whileUsingSigningKey(signingKey, () => job.done.future);
     task.cancelToken = CancelToken();
     _queued.add(job);
-    _running[task.id] = job.done.future;
+    _running[task.id] = done;
     _drain();
-    return job.done.future;
+    return done;
   }
 
   void _drain() {

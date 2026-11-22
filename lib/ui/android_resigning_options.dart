@@ -5,7 +5,6 @@ import '../services/android_package.dart';
 import '../services/downloads.dart';
 import 'adaptive_dialog.dart';
 import 'android_signing_key_dialog.dart';
-import 'android_signing_key_transfer_dialog.dart';
 import 'page_components.dart';
 
 /// A draft: enabling signing never creates or replaces a signing identity.
@@ -103,10 +102,14 @@ class AndroidResigningController extends ChangeNotifier {
           certificateSha256: expected.certificateSha256,
           exportable: expected.exportable,
           available: false,
+          deleted: expected.deleted,
         );
       }
-      if (key?.available == false) {
-        error = '签名密钥已不可用，请从“管理密钥”导入原备份恢复。';
+      if (key case final missing? when !missing.available) {
+        final reason = missing.deleted ? '签名密钥已删除' : '签名密钥已不可用';
+        error = missing.exportable
+            ? '$reason，请从“管理密钥”导入原备份恢复。'
+            : '$reason。这把旧密钥仅限本机使用，无法从备份恢复。';
       }
     } catch (_) {
       if (_disposed || request != _request) return;
@@ -123,16 +126,24 @@ class AndroidResigningController extends ChangeNotifier {
     if (busy) return;
     busy = true;
     notifyListeners();
+    var deletedCurrent = false;
     try {
       final selected = await showAdaptiveForm<AndroidSigningKey>(
         context: context,
         enableDrag: false,
-        builder: (_) =>
-            AndroidSigningKeyDialog(installer: installer, selected: key),
+        builder: (_) => AndroidSigningKeyDialog(
+          installer: installer,
+          selected: key,
+          onKeyDeleted: (deleted) {
+            if (deleted.id == key?.id) deletedCurrent = true;
+          },
+        ),
       );
       if (!_disposed && selected != null) {
         key = selected;
         error = null;
+      } else if (!_disposed && deletedCurrent) {
+        await setEnabled(true);
       }
     } finally {
       if (!_disposed) {
@@ -142,27 +153,14 @@ class AndroidResigningController extends ChangeNotifier {
     }
   }
 
-  Future<AndroidSigningKey?> confirm(BuildContext context) async {
+  Future<AndroidSigningKey?> confirm() async {
     if (!enabled || !canConfirm) return null;
     busy = true;
     notifyListeners();
     try {
       final resolved = await installer.resolveApkSigningKey(selected: key);
-      if (_disposed || !context.mounted) return null;
+      if (_disposed) return null;
       key = resolved.key;
-      if (resolved.created && resolved.key.exportable) {
-        key =
-            await showAdaptiveForm<AndroidSigningKey>(
-              context: context,
-              enableDrag: false,
-              builder: (_) => AndroidSigningKeyTransferDialog(
-                installer: installer,
-                signingKey: resolved.key,
-                newlyCreated: true,
-              ),
-            ) ??
-            resolved.key;
-      }
       return key;
     } catch (failure) {
       if (!_disposed) {
@@ -222,15 +220,14 @@ class AndroidResigningOptions extends StatelessWidget {
                 title: '管理密钥',
                 subtitle: controller.busy
                     ? '正在处理…'
-                    : controller.key == null
-                    ? '个人密钥 · 首次确认重签时自动生成'
-                    : '${controller.key!.label}\n${!controller.key!.available
-                          ? '本机副本不可用，请导入备份'
-                          : !controller.key!.exportable
-                          ? '仅本机 · 不可备份'
-                          : controller.key!.lastExportedAt == null
-                          ? '尚未在本机导出备份'
-                          : '已导出备份'}',
+                    : switch (controller.key) {
+                        null => '个人密钥 · 首次确认重签时自动生成',
+                        AndroidSigningKey(:final label, available: false) =>
+                          '$label\n本机副本不可用，请导入备份',
+                        AndroidSigningKey(:final label, exportable: false) =>
+                          '$label\n仅本机 · 不可备份',
+                        AndroidSigningKey(:final label) => label,
+                      },
                 icon: Icons.key_rounded,
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: controller.busy
@@ -287,9 +284,15 @@ class AndroidResigningOptions extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Text(
-            controller.changePackageName
-                ? '修改包名后应用数据独立，部分应用可能无法启动、登录或接收推送。仅支持普通单文件 APK；生成并验签成功不代表运行正常。请备份密钥，后续更新沿用相同包名与密钥。'
-                : '重签版通常无法覆盖官方原版，后续更新需使用同一密钥。请妥善备份，重装华润赢或换机后导入恢复。',
+            [
+              if (controller.changePackageName)
+                '修改包名后应用数据独立，即使验签成功，部分应用也可能无法启动、登录或接收推送。仅支持普通单文件 APK。后续更新需沿用相同包名与密钥。'
+              else
+                '重签版通常无法覆盖官方原版，后续更新需使用同一密钥。',
+              if (controller.key == null ||
+                  controller.key!.available && controller.key!.exportable)
+                '换机或重装华润赢前，可在“管理密钥”中备份。',
+            ].join(),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.5,

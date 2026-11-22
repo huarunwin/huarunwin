@@ -26,13 +26,13 @@ class AndroidInstallDialog extends StatefulWidget {
     required this.info,
     required this.installer,
     this.package,
-    this.repackOnly = false,
+    this.requireResigning = false,
   });
   final DownloadTask task;
   final AndroidPackageInfo info;
   final NativeInstaller installer;
   final DownloadPackage? package;
-  final bool repackOnly;
+  final bool requireResigning;
 
   @override
   State<AndroidInstallDialog> createState() => _AndroidInstallDialogState();
@@ -47,14 +47,33 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
         widget.task.resignedPackageName != widget.info.packageName
         ? widget.task.resignedPackageName
         : null,
-    suggestedKey: widget.task.resignKey,
+    suggestedKey:
+        widget.info.deletedInstalledSigningKey ?? widget.task.resignKey,
   );
+
+  bool get _needsDeletedSigner {
+    final key = widget.info.deletedInstalledSigningKey;
+    if (key == null) return false;
+    if (!_signing.enabled) {
+      final certificates = widget.info.certificateSha256;
+      return certificates.isNotEmpty &&
+          certificates.singleOrNull != key.certificateSha256;
+    }
+    return _signing.targetPackageName == null &&
+        (_signing.key?.available != true ||
+            _signing.key?.certificateSha256 != key.certificateSha256);
+  }
+
+  bool get _canConfirm =>
+      _signing.canConfirm &&
+      !_needsDeletedSigner &&
+      (!widget.requireResigning || _signing.enabled);
 
   @override
   void initState() {
     super.initState();
     _signing.addListener(_signingChanged);
-    if (widget.repackOnly) unawaited(_signing.setEnabled(true));
+    if (widget.requireResigning) unawaited(_signing.setEnabled(true));
   }
 
   void _signingChanged() => setState(() {});
@@ -66,8 +85,8 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
   }
 
   Future<void> _confirm() async {
-    if (!_signing.canConfirm || widget.repackOnly && !_signing.enabled) return;
-    final key = _signing.enabled ? await _signing.confirm(context) : null;
+    if (!_canConfirm) return;
+    final key = _signing.enabled ? await _signing.confirm() : null;
     if (!mounted || _signing.enabled && key == null) return;
     Navigator.pop(
       context,
@@ -83,10 +102,13 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
   Widget build(BuildContext context) {
     final info = widget.info;
     final colors = Theme.of(context).colorScheme;
+    final keyManagement = _signing.enabled ? '管理密钥' : '华润赢安装 → 安装前重签 → 管理密钥';
     return PopScope(
       canPop: !_signing.busy,
       child: AdaptiveDialog(
-        title: widget.repackOnly ? '修改包名／重新签名' : '安装 ${widget.task.appName}',
+        title: widget.requireResigning
+            ? '修改包名／重新签名'
+            : '安装 ${widget.task.appName}',
         showDragHandle: false,
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -110,7 +132,7 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
                 title: const Text('签名证书 SHA-256'),
                 children: [SelectableText(info.certificateSha256.join('\n'))],
               ),
-            if (!widget.repackOnly) ...[
+            if (!widget.requireResigning) ...[
               const SizedBox(height: 20),
               PageSection(
                 title: '安装方式',
@@ -162,9 +184,18 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
               AndroidResigningOptions(
                 controller: _signing,
                 toggleKey: const ValueKey('install-resign-apk'),
-                title: widget.repackOnly ? '重新签名' : '安装前重签',
+                title: widget.requireResigning ? '重新签名' : '安装前重签',
               ),
-            if (!widget.repackOnly &&
+            if (_needsDeletedSigner && _signing.error == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  widget.info.deletedInstalledSigningKey!.exportable
+                      ? '已安装版本使用已删除的个人密钥。请在“$keyManagement”中导入原备份，或选择已用原密钥签名的安装包。'
+                      : '已安装版本使用的本机旧密钥已删除，无法恢复。覆盖更新需要选择已经用原密钥签名的安装包。',
+                ),
+              ),
+            if (!widget.requireResigning &&
                 (widget.package ?? widget.task.defaultPackage) ==
                     DownloadPackage.resigned)
               Padding(
@@ -172,13 +203,13 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
                 child: Text(
                   widget.task.isRenamedPackage(DownloadPackage.resigned)
                       ? '本次安装为修改包名后的重签副本，应用数据独立。后续更新须沿用相同包名和密钥。'
-                      : '本次安装为重签副本，通常无法覆盖官方原版。后续更新须沿用同一密钥，请妥善备份。',
+                      : '本次安装为重签副本，通常无法覆盖官方原版。后续更新须沿用同一密钥。',
                 ),
               ),
             const SizedBox(height: 12),
             Text(
-              widget.repackOnly
-                  ? '确认后生成独立副本，所选包与其他包会保留。'
+              _signing.enabled || widget.requireResigning
+                  ? '所选 APK 会保留。重签完成后，Android 会提示安装新 APK。'
                   : _method == AndroidInstallMethod.other
                   ? '交接后安装结果保持未确认，安装包会保留。'
                   : '继续后仍需在 Android 系统窗口确认安装。',
@@ -189,16 +220,13 @@ class _AndroidInstallDialogState extends State<AndroidInstallDialog> {
         ),
         actions: DialogActionsRow(
           busy: _signing.busy,
-          confirmLabel: widget.repackOnly
-              ? '生成副本'
-              : _signing.enabled
+          confirmLabel: _signing.changePackageName
+              ? '修改包名重签并安装'
+              : _signing.enabled || widget.requireResigning
               ? '重签并安装'
               : '继续安装',
           onCancel: () => Navigator.pop(context),
-          onConfirm:
-              _signing.canConfirm && (!widget.repackOnly || _signing.enabled)
-              ? _confirm
-              : null,
+          onConfirm: _canConfirm ? _confirm : null,
         ),
       ),
     );

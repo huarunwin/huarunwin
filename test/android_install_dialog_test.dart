@@ -129,7 +129,8 @@ void main() {
     Future<Object?> Function(MethodCall) native, {
     DownloadTask? inputTask,
     DownloadPackage? package,
-    bool repackOnly = false,
+    bool requireResigning = false,
+    AndroidPackageInfo? packageInfo,
   }) async {
     final selections = <AndroidInstallSelection?>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -151,8 +152,8 @@ void main() {
                   builder: (_) => AndroidInstallDialog(
                     task: inputTask ?? task,
                     package: package,
-                    repackOnly: repackOnly,
-                    info: info,
+                    requireResigning: requireResigning,
+                    info: packageInfo ?? info,
                     installer: NativeInstaller(),
                   ),
                 ),
@@ -174,6 +175,53 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'a deleted installed signer is required even after the default changes',
+    (tester) async {
+      final selections = await openInstall(
+        tester,
+        (call) async {
+          expect(call.method, 'apkSigningKeys');
+          return [
+            {
+              'id': 'new',
+              'label': '新密钥',
+              'certificateSha256': 'new',
+              'exportable': true,
+            },
+          ];
+        },
+        packageInfo: AndroidPackageInfo.fromMap({
+          'packageName': info.packageName,
+          'certificateSha256': ['upstream'],
+          'deletedInstalledSigningKey': {
+            'id': 'old',
+            'label': '原密钥',
+            'certificateSha256': 'old',
+            'exportable': true,
+            'available': false,
+            'deleted': true,
+          },
+        }),
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '继续安装'))
+            .onPressed,
+        isNull,
+      );
+      await enableSigning(tester);
+      expect(find.textContaining('导入原备份恢复'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '重签并安装'))
+            .onPressed,
+        isNull,
+      );
+      expect(selections, isEmpty);
+    },
+  );
 
   for (final kind in ['original', 'signed', 'renamed']) {
     testWidgets('$kind APK can be signed again from the install panel', (
@@ -225,31 +273,28 @@ void main() {
   }
 
   testWidgets(
-    'standalone repack requires a valid draft and cancellation creates no identity',
+    'resign and install labels follow the draft and cancellation creates no identity',
     (tester) async {
       final calls = <String>[];
       final selections = await openInstall(tester, (call) async {
         calls.add(call.method);
         return <Object>[];
-      }, repackOnly: true);
+      }, requireResigning: true);
       expect(find.text('安装方式'), findsNothing);
-      expect(find.text('生成副本'), findsOneWidget);
+      expect(find.text('重签并安装').hitTestable(), findsOneWidget);
       expect(calls, ['apkSigningKeys']);
       final rename = find.byKey(const ValueKey('change-apk-package-name'));
       await tester.ensureVisible(rename);
       await tester.tap(rename);
       await tester.pumpAndSettle();
+      final confirm = find.widgetWithText(FilledButton, '修改包名重签并安装');
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
       await tester.enterText(
         find.byKey(const ValueKey('apk-package-name')),
         'invalid',
       );
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '生成副本'))
-            .onPressed,
-        isNull,
-      );
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(selections.single, isNull);
@@ -288,17 +333,16 @@ void main() {
       await enableSigning(tester);
       expect(find.text('选择重签密钥'), findsNothing);
       expect(find.textContaining('首次确认重签时自动生成'), findsOneWidget);
+      expect(find.textContaining('可在“管理密钥”中备份'), findsOneWidget);
       expect(calls.map((call) => call.method), ['apkSigningKeys']);
       await tester.tap(find.text('重签并安装'));
       await tester.pumpAndSettle();
-      expect(find.text('备份签名密钥'), findsOneWidget);
-      expect(selections, isEmpty);
-      await tester.tap(find.text('稍后'));
-      await tester.pumpAndSettle();
+      expect(find.text('备份签名密钥'), findsNothing);
       expect(selections.single!.resignKey!.id, 'personal');
       await tester.tap(find.text('打开'));
       await tester.pumpAndSettle();
       await enableSigning(tester);
+      expect(find.textContaining('尚未在本机导出备份'), findsNothing);
       await tester.tap(find.text('重签并安装'));
       await tester.pumpAndSettle();
       expect(find.text('备份签名密钥'), findsNothing);

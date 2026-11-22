@@ -11,11 +11,9 @@ class AndroidSigningKeyTransferDialog extends StatefulWidget {
     super.key,
     required this.installer,
     this.signingKey,
-    this.newlyCreated = false,
   });
   final NativeInstaller installer;
   final AndroidSigningKey? signingKey;
-  final bool newlyCreated;
 
   @override
   State<AndroidSigningKeyTransferDialog> createState() =>
@@ -138,7 +136,6 @@ class _SigningKeyTransferDialogState
       ),
       actions: DialogActionsRow(
         busy: _busy,
-        cancelLabel: widget.newlyCreated ? '稍后' : '取消',
         confirmLabel: _busy
             ? '正在处理…'
             : _exporting

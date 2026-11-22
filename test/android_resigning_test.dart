@@ -622,6 +622,20 @@ void main() {
       final task = await manager.download(app, link(), resignKey: key);
       await begun.future;
       expect(task.state, DownloadState.resigning);
+      await expectLater(
+        manager.installer.deleteApkSigningKey(key),
+        throwsA(
+          isA<PlatformException>().having(
+            (error) => error.code,
+            'code',
+            'signing_key_busy',
+          ),
+        ),
+      );
+      expect(
+        calls.any((call) => call.method == 'deleteApkSigningKey'),
+        isFalse,
+      );
       manager.cancel(task);
       expect(task.busy, isTrue);
       release.complete();
@@ -632,6 +646,14 @@ void main() {
       expect(await File(task.filePath).readAsBytes(), source);
       native(resign);
       await manager.retry(task);
+      expect(manager.installer.isSigningKeyInUse(key), isFalse);
+      expect(
+        manager
+            .resigningPreferenceFor(appKey: app.key, appName: app.name)
+            ?.resignKey
+            ?.id,
+        key.id,
+      );
       expect(downloads, 1);
       expect(task.canInstallOn('Android'), isTrue);
     },

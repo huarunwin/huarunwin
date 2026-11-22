@@ -98,20 +98,17 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('new personal key prompts backup once and allows deferral', (
+  testWidgets('new personal key is usable before the user requests backup', (
     tester,
   ) async {
     await showKeys(tester);
     await tester.tap(find.text('创建并使用'));
     await tester.pumpAndSettle();
-    expect(find.text('备份签名密钥'), findsOneWidget);
-    expect(find.textContaining('重装华润赢或换机后'), findsOneWidget);
+    expect(find.text('备份签名密钥'), findsNothing);
     expect(calls.map((call) => call.method), [
       'apkSigningKeys',
       'createApkSigningKey',
     ]);
-    await tester.tap(find.text('稍后'));
-    await tester.pumpAndSettle();
     expect(selected.single!.id, portable['id']);
     expect(selected.single!.exportable, isTrue);
     keys = [portable];
@@ -119,7 +116,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('备份签名密钥'), findsNothing);
     expect(find.text('尚未在本机导出备份'), findsOneWidget);
-    expect(find.byKey(const ValueKey('export-signing-key')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('export-signing-key')));
+    await tester.pumpAndSettle();
+    expect(find.text('备份签名密钥'), findsOneWidget);
+    expect(find.textContaining('重装华润赢或换机后'), findsOneWidget);
   });
 
   testWidgets(
@@ -157,6 +157,51 @@ void main() {
       await tester.pumpAndSettle();
       expect(selected.single!.id, legacy['id']);
       expect(calls.map((call) => call.method), ['apkSigningKeys']);
+    },
+  );
+
+  testWidgets(
+    'local deletion confirms the selected identity and default status',
+    (tester) async {
+      keys = [
+        {...portable, 'isDefault': true},
+        legacy,
+      ];
+      operation = (call) async {
+        expect(call.method, 'deleteApkSigningKey');
+        expect(call.arguments, {
+          'keyId': portable['id'],
+          'expectedCertificateSha256': portable['certificateSha256'],
+          'expectedDefault': true,
+        });
+        return null;
+      };
+      await showKeys(tester);
+      final remove = find.byKey(const ValueKey('delete-signing-key'));
+      expect(find.text('导入密钥备份'), findsOneWidget);
+      expect(find.text('选择并删除备份文件…'), findsNothing);
+      await tester.ensureVisible(remove);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('（默认密钥）'), findsOneWidget);
+      expect(
+        find.textContaining(portable['certificateSha256']! as String),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(calls.map((call) => call.method), ['apkSigningKeys']);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(find.text(portable['label']! as String), findsNothing);
+      expect(find.text(legacy['label']!), findsOneWidget);
+      expect(selected, isEmpty);
+      expect(calls.map((call) => call.method), [
+        'apkSigningKeys',
+        'deleteApkSigningKey',
+      ]);
     },
   );
 
@@ -267,6 +312,8 @@ void main() {
       await tester.tap(find.text('取消').last);
       await tester.pumpAndSettle();
       expect(find.text('尚未在本机导出备份'), findsOneWidget);
+      expect(find.text('导出密钥备份'), findsOneWidget);
+      expect(find.text('已备份'), findsNothing);
       operation = (_) async => {
         ...portable,
         'lastExportedAt': DateTime(2026, 10, 18, 12, 30).millisecondsSinceEpoch,
@@ -276,8 +323,15 @@ void main() {
       await passwords(tester, 'fixture-password', 'fixture-password');
       await tester.tap(find.text('立即备份'));
       await tester.pumpAndSettle();
-      expect(find.text('上次导出：2026-10-18 12:30'), findsOneWidget);
-      expect(find.text('尚未在本机导出备份'), findsNothing);
+      expect(find.text('上次导出 2026-10-18 12:30 · 可再次导出'), findsOneWidget);
+      expect(find.text('导出密钥备份'), findsNothing);
+      await tester.ensureVisible(find.text('已备份'));
+      await tester.tap(find.text('已备份'));
+      await tester.pumpAndSettle();
+      expect(find.text('备份签名密钥'), findsOneWidget);
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(find.text('已备份'), findsOneWidget);
       await tester.tap(find.text('使用此密钥'));
       await tester.pumpAndSettle();
       expect(selected.single!.lastExportedAt, DateTime(2026, 10, 18, 12, 30));

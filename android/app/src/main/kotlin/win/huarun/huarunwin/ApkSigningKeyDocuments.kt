@@ -14,6 +14,7 @@ class ApkSigningKeyDocuments(
 ) {
     private class Request(
         val result: MethodChannel.Result,
+        val code: Int,
         val password: CharArray,
         val keyId: String? = null,
         val certificate: String? = null,
@@ -24,14 +25,18 @@ class ApkSigningKeyDocuments(
     private var pending: Request? = null
 
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
-        if (call.method != "exportApkSigningKey" && call.method != "importApkSigningKey") return false
+        val code = when (call.method) {
+            "exportApkSigningKey" -> EXPORT_KEY
+            "importApkSigningKey" -> IMPORT_KEY
+            else -> return false
+        }
         if (pending != null) {
             result.error("signing_key_busy", "请先完成当前的密钥导入或导出。", null)
             return true
         }
         val password = call.argument<String>("password")?.toCharArray() ?: charArrayOf()
-        val exporting = call.method == "exportApkSigningKey"
-        val request = Request(result, password,
+        val exporting = code == EXPORT_KEY
+        val request = Request(result, code, password,
             if (exporting) requireNotNull(call.argument<String>("keyId")) else null,
             if (exporting) requireNotNull(call.argument<String>("expectedCertificateSha256")) else null)
         pending = request
@@ -57,15 +62,15 @@ class ApkSigningKeyDocuments(
                 activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "*/*"
-                }, IMPORT_KEY)
+                }, code)
             } catch (error: Exception) { fail(request, error) }
         }
         return true
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        if (requestCode != IMPORT_KEY && requestCode != EXPORT_KEY) return false
-        val request = pending ?: return true
+        val request = pending ?: return false
+        if (request.code != requestCode) return false
         if (resultCode != Activity.RESULT_OK) {
             pending = null; request.clear(); request.result.success(null)
             return true
@@ -108,7 +113,7 @@ class ApkSigningKeyDocuments(
     }
 
     companion object {
-        private const val IMPORT_KEY = 18515
+        private const val IMPORT_KEY = 18518
         private const val EXPORT_KEY = 18516
     }
 }

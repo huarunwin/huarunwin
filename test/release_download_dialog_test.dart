@@ -293,12 +293,7 @@ void main() {
         expect(calls.map((c) => c.method), ['apkSigningKeys']);
         await tester.tap(find.text('下载并重签'));
         await tester.pumpAndSettle();
-        if (!existing) {
-          expect(find.text('备份签名密钥'), findsOneWidget);
-          expect(selections, isEmpty);
-          await tester.tap(find.text('稍后'));
-          await tester.pumpAndSettle();
-        }
+        expect(find.text('备份签名密钥'), findsNothing);
         expect(calls.map((c) => c.method), [
           'apkSigningKeys',
           'resolveApkSigningKey',
@@ -409,6 +404,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.textContaining('仅本机 · 不可备份'), findsOneWidget);
+      expect(find.textContaining('可在“管理密钥”中备份'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('manage-signing-key')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('取消').last);

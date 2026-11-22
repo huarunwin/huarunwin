@@ -64,6 +64,11 @@ class AndroidPackageInfo {
       installedVersionCode = values['installedVersionCode'] as int?,
       fileSha256 = values['fileSha256'] as String?,
       minimumSdk = values['minimumSdk'] as int?,
+      deletedInstalledSigningKey =
+          switch (values['deletedInstalledSigningKey']) {
+            final Map value => AndroidSigningKey.fromMap(value),
+            _ => null,
+          },
       nativeAbis = List<String>.from(values['nativeAbis'] as List? ?? []),
       certificateSha256 = List<String>.from(
         values['certificateSha256'] as List? ?? [],
@@ -76,6 +81,7 @@ class AndroidPackageInfo {
   final String? version, installedVersion, fileSha256;
   final int? minimumSdk, versionCode, installedVersionCode;
   final List<String> nativeAbis, certificateSha256, installedCertificateSha256;
+  final AndroidSigningKey? deletedInstalledSigningKey;
 
   bool get isDowngrade =>
       versionCode != null &&
@@ -107,6 +113,8 @@ class AndroidSigningKey {
     required this.certificateSha256,
     this.exportable = false,
     this.available = true,
+    this.isDefault = false,
+    this.deleted = false,
     this.lastExportedAt,
   });
 
@@ -117,6 +125,8 @@ class AndroidSigningKey {
         certificateSha256: values['certificateSha256'] as String,
         exportable: values['exportable'] as bool? ?? false,
         available: values['available'] as bool? ?? true,
+        isDefault: values['isDefault'] == true,
+        deleted: values['deleted'] == true,
         lastExportedAt: values['lastExportedAt'] is int
             ? DateTime.fromMillisecondsSinceEpoch(
                 values['lastExportedAt'] as int,
@@ -125,7 +135,7 @@ class AndroidSigningKey {
       );
 
   final String id, label, certificateSha256;
-  final bool exportable, available;
+  final bool exportable, available, isDefault, deleted;
   final DateTime? lastExportedAt;
   Map<String, Object?> toJson() => {
     'id': id,
