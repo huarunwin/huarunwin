@@ -11,6 +11,7 @@ import 'package:webview_flutter_windows/webview_flutter_windows.dart'
 import 'components.dart';
 import 'mac_window.dart';
 import 'page_components.dart';
+import 'share_link_button.dart';
 import 'theme.dart';
 
 class WebPage extends StatefulWidget {
@@ -36,12 +37,16 @@ class _WebPageState extends State<WebPage> {
   final windowsSubscriptions = <StreamSubscription<dynamic>>[];
   bool missingWindowsRuntime = false;
   late Uri pageUri = widget.uri;
+  String? pageTitle;
+  int titleRequest = 0;
   bool loading = true;
   String? error;
   double webScrollY = 0;
   Completer<void>? reloadFinished;
   Brightness webBrightness = Brightness.light;
   Color webBackground = Colors.transparent;
+
+  String get _displayTitle => pageTitle ?? widget.title;
 
   Uri get _initialUri => widget.syncCorrectionTheme
       ? widget.uri.replace(
@@ -134,16 +139,20 @@ class _WebPageState extends State<WebPage> {
         NavigationDelegate(
           onPageStarted: (url) {
             if (!mounted) return;
+            _updatePageUri(url);
+            titleRequest++;
             setState(() {
-              pageUri = Uri.parse(url);
+              pageTitle = null;
               webScrollY = 0;
               loading = true;
               error = null;
             });
           },
+          onUrlChange: (change) => _updatePageUri(change.url),
           onPageFinished: (_) {
             if (!mounted) return;
             setState(() => loading = false);
+            unawaited(_readPageTitle(web));
             _finishReload();
             _applyAppearance();
             if (defaultTargetPlatform == TargetPlatform.macOS) {
@@ -210,17 +219,13 @@ class _WebPageState extends State<WebPage> {
       await web.setBackgroundColor(webBackground);
       if (!mounted) return;
       windowsSubscriptions.addAll([
-        web.url.listen((url) {
-          final uri = Uri.tryParse(url);
-          if (!mounted || uri == null) return;
-          if (const ['https', 'http'].contains(uri.scheme)) {
-            pageUri = uri;
-          }
-        }),
+        web.url.listen(_updatePageUri),
+        web.title.listen(_updatePageTitle),
         web.loadingState.listen((state) {
           if (!mounted) return;
           if (state == windows.LoadingState.loading) {
             setState(() {
+              pageTitle = null;
               loading = true;
               error = null;
               webScrollY = 0;
@@ -282,6 +287,45 @@ class _WebPageState extends State<WebPage> {
     }
   }
 
+  void _updatePageUri(String? url) {
+    final uri = Uri.tryParse(url ?? '');
+    if (!mounted ||
+        uri == null ||
+        !const ['https', 'http'].contains(uri.scheme) ||
+        uri == pageUri) {
+      return;
+    }
+    setState(() => pageUri = uri);
+    if (controller case final web? when !loading) {
+      unawaited(_readPageTitle(web));
+    }
+  }
+
+  Future<void> _readPageTitle(WebViewController web) async {
+    final request = ++titleRequest;
+    final uri = pageUri;
+    try {
+      final title = await web.getTitle();
+      if (!mounted ||
+          controller != web ||
+          request != titleRequest ||
+          uri != pageUri ||
+          loading) {
+        return;
+      }
+      _updatePageTitle(title);
+    } catch (_) {
+      // Keep the route title when the webpage title cannot be read.
+    }
+  }
+
+  void _updatePageTitle(String? title) {
+    final trimmed = title?.trim();
+    final next = trimmed == null || trimmed.isEmpty ? null : trimmed;
+    if (!mounted || error != null || next == pageTitle) return;
+    setState(() => pageTitle = next);
+  }
+
   void _followScroll(double y) {
     if (!mounted) return;
     webScrollY = y;
@@ -315,6 +359,7 @@ class _WebPageState extends State<WebPage> {
     if (!mounted) return;
     if (scroll.hasClients) scroll.jumpTo(0);
     setState(() {
+      pageTitle = null;
       loading = false;
       error = message ?? '${widget.title}页面暂时无法加载，请检查网络后重试。';
       webScrollY = 0;
@@ -394,13 +439,17 @@ class _WebPageState extends State<WebPage> {
                       0,
                     ),
                     child: PageHeader(
-                      title: widget.title,
+                      title: _displayTitle,
                       showBackButton: true,
                       actions: [
+                        ShareLinkButton(
+                          url: pageUri.toString(),
+                          title: _displayTitle,
+                        ),
                         RefreshIconButton(
                           loading: loading,
                           onPressed: _reload,
-                          tooltip: '刷新${widget.title}页面',
+                          tooltip: '刷新$_displayTitle页面',
                         ),
                       ],
                     ),

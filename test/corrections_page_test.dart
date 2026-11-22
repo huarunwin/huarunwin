@@ -54,6 +54,9 @@ class FakeController extends PlatformWebViewController {
   int reloads = 0;
 
   @override
+  Future<String?> getTitle() async => null;
+
+  @override
   Future<void> setBackgroundColor(Color color) async {}
 
   @override
@@ -103,10 +106,14 @@ class FakeNavigation extends PlatformNavigationDelegate {
   late WebResourceErrorCallback resourceError;
   late HttpResponseErrorCallback httpError;
   late NavigationRequestCallback request;
+  late UrlChangeCallback urlChange;
 
   @override
   Future<void> setOnPageStarted(PageEventCallback callback) async =>
       started = callback;
+  @override
+  Future<void> setOnUrlChange(UrlChangeCallback callback) async =>
+      urlChange = callback;
   @override
   Future<void> setOnPageFinished(PageEventCallback callback) async =>
       finished = callback;
