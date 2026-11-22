@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-22 预发布流水线静态分析修复
+
+`dev` 的[第 49 次构建](https://github.com/huarunwin/huarunwin/actions/runs/45020368476)在静态分析阶段因 Linux 安装器的两处多余非空断言失败，后续 macOS 构建和发布任务被跳过。桌面启动项解析已在返回前检查名称与执行命令非空，移除返回值中重复的 `!` 后沿用 Dart 的类型提升。
+
+本机 `fvm flutter analyze --no-pub` 与 `git diff --check` 通过。按项目约定未在本机运行测试，未发现运行中的 Flutter 调试会话，本次未热更新界面。
+
+[第 50 次构建](https://github.com/huarunwin/huarunwin/actions/runs/45022365791)的共用分析与回归检查、Android、Linux、两种 macOS 架构、两种 Windows 架构、Linux 包启动检查及发布任务全部通过。`pre` 已更新为 `0.8.0-pre.50`，12 个预期附件均已上传，tag 与 Release 说明记录的源码均为修复提交 `a3cd938`。本次未实测新包的安装或覆盖升级，Hub 无需变更。
+
 ## 2026-11-22 VPS 厂商目录切换
 
 通过 ADB 确认手机当前为 GoMami 目录，显示 31 条套餐。修改前，从 GoMami 切到 DediOne 的真机录屏中，筛选栏和列表曾同时变为空白。切换目录现保留原内容，新目录加载完成后一起更新厂商和套餐。已补充旧内容在等待和失败时保留、快速切换后只显示最后一次选择的组件用例。
