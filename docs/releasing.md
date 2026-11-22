@@ -103,6 +103,8 @@ python3 tool/ci/release.py check-tag v0.1.0 &&
 
 `check-tag` 是只读检查，校验 tag 格式及匿名读取的公开 Hub 正式渠道，不使用未推送的本地 Hub 文件替代远端。`downloadUrl` 可省略，不要求发布页或安装包在构建前已经存在；版本记录必须唯一且日志非空。网络失败、非法 JSON 或缺少记录时返回失败，不创建 tag。Actions 中的 `validate` 对正式 tag 再执行同样的检查；它能阻止构建，但不能撤销已经通过其他方式创建的 tag。
 
+已有 tag 的构建若因缺少 Hub 日志而停在 `Validate formal tag Hub changelog`，先按上述规则补齐正式及 debug 版本记录、同步 debug 指针并推送 Hub `main`，再运行 `check-tag` 确认公开数据已经生效。通过后，用有权限的账号在 Actions 中重跑原次构建即可；tag 继续使用原有源码提交。
+
 构建上传安装包并确认下载地址可匿名访问后，再按正式发布任务范围修改 `release.publishedVersion`。下载地址或 Release 尚未公开时，正式渠道首次发布继续保持 `null`，已有正式版本则保留原指针。debug 指针按新增 tag 同步目标版本，构建完成前可能尚无可下载附件；这只同步更新信息，不改变实际构建渠道、签名身份及安装校验。Hub 同步由执行 tag 任务的代理完成，Actions 本身不跨仓库修改指针，客户端不需要持有 Token。
 
 Hub `api/updates.json` 是客户端日志、发布校验及 Release 说明的唯一数据源，客户端仓库和安装包不再保存独立日志 JSON。正式 Release 说明取 `release.releases` 中与 tag 精确匹配的版本记录，不受发布指针是否已推进影响；dev 说明只取 `debug.releases` 中当前完整预发布版本的记录，尚未准备该记录时省略日志段，不使用正式渠道或基础版本日志。元数据生成及发布时匿名读取 Hub，网络或渠道数据无效时停止发布。正式编译版本取 tag，dev 版本取 `pubspec.yaml` 的基础版本及运行序号；macOS 原生版本保留数字部分，完整版本通过 `--dart-define=HUARUNWIN_VERSION=…` 写入应用。内部构建号不参与更新判断。

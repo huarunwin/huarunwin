@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-23 v0.8.0 tag 发布校验修复
+
+`v0.8.0` 的[第 52 次构建](https://github.com/huarunwin/huarunwin/actions/runs/45035832740)首次运行在各平台的 `Validate formal tag Hub changelog` 步骤失败，原因为公开 Hub 缺少 `release.releases` 中的 `0.8.0` 日志，尚未进入编译。
+
+Hub 提交 `c5d8079` 在两个渠道补齐该版本的唯一记录及非空日志，将 `debug.publishedVersion` 同步为 `0.8.0`，保留正式更新目标 `0.7.0`。本地使用现有发布脚本核对两个渠道、历史记录和指针后推送；匿名读取公开 Hub 的 `python3 tool/ci/release.py check-tag v0.8.0` 通过，随后重跑原构建。客户端 tag 仍指向 `6e479d2`。本次未在本机运行自动化测试。
+
+第 2 次运行的全部 9 项任务成功，包括分析与回归检查、Android 正式签名校验、两种 macOS、两种 Windows、Linux 打包及 Linux 安装包启动检查，已发布 [v0.8.0](https://github.com/huarunwin/huarunwin/releases/tag/v0.8.0)。核对 Release 的源码提交、构建链接及 Hub 日志；预期的 12 个附件齐全且非空，发布页匿名读取成功，全部附件的匿名 HEAD 请求成功。实际下载 `.sha256` 与 Android 签名清单，清单内 11 个文件的 SHA-256 与 GitHub 附件摘要全部一致；Android 清单为正式渠道，三个 ABI 的应用身份均为 `win.huarun.huarunwin`、版本均为 `0.8.0`，使用同一证书，各自 APK 摘要与校验清单匹配，版本码分别为 `1052`、`2052`、`4052`。本机仅核对发布资料与下载可访问性，未完整下载或安装各平台安装包。
+
 ## 2026-11-22 WebView 使用网页标题
 
 Android／Apple WebView 在加载完成及页面内 URL 变化后读取当前网页标题，Windows 使用网页标题事件更新。取得非空标题后替换顶部入口名称并用于分享，未取得、标题为空或读取失败时保留原入口名称；新页面开始加载时清除旧标题，过期的异步标题结果不回写。
