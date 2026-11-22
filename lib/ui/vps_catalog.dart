@@ -16,6 +16,7 @@ class VpsCatalog extends ServiceCatalog {
     required super.actions,
     required super.footer,
     super.hasSnapshot,
+    super.switchingDirectory,
     super.message,
     super.reference,
     super.initialError,

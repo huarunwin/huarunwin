@@ -141,6 +141,59 @@ void main() {
     },
   );
 
+  testWidgets(
+    'VPS directory switches keep content until the latest one loads',
+    (tester) async {
+      const first = 'https://huarun.win/vps/first';
+      const second = 'https://huarun.win/vps/second';
+      SiteSnapshot loaded(String url, String name) => SiteSnapshot(
+        SiteDocument(
+          url: url,
+          title: name,
+          directory: true,
+          items: [SiteItem(title: name, url: '$url/plan')],
+        ),
+        DateTime.now(),
+      );
+      repository.saved = SiteSnapshot(vpsDocument, DateTime.now());
+      await desktop(
+        tester,
+        MaterialApp(
+          home: SitePage(
+            url: vpsDocument.url,
+            controller: controller,
+            downloads: downloads,
+          ),
+        ),
+      );
+      final catalog = find.byType(VpsCatalog);
+      void open(String url) => tester.widget<VpsCatalog>(catalog).onOpen(url);
+      final originalState = tester.state(catalog);
+      open(first);
+      await tester.pump();
+      expect(tester.state(catalog), same(originalState));
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('示例 VPS'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      repository.pending.completeError(const SocketException('offline'));
+      await tester.pumpAndSettle();
+      expect(find.text('示例 VPS'), findsOneWidget);
+      expect(find.text('未能切换目录，请重新选择。'), findsOneWidget);
+
+      open(first);
+      final earlier = repository.pending;
+      open(second);
+      repository.pending.complete(loaded(second, '第二家套餐'));
+      await tester.pumpAndSettle();
+      earlier.complete(loaded(first, '第一家套餐'));
+      await tester.pumpAndSettle();
+      expect(find.text('第二家套餐'), findsOneWidget);
+      expect(find.text('第一家套餐'), findsNothing);
+      expect(find.text('示例 VPS'), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+    },
+  );
+
   for (final document in [airportDocument, vpsDocument]) {
     final vps = document == vpsDocument;
     final subject = vps ? 'VPS' : '机场';

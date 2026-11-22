@@ -388,29 +388,43 @@ class CompactCatalogFilters extends StatelessWidget {
 }
 
 class CompactCatalogFilterRow extends StatelessWidget {
-  const CompactCatalogFilterRow({super.key, required this.menus});
+  const CompactCatalogFilterRow({
+    super.key,
+    required this.menus,
+    this.equalWidths = true,
+  });
 
   final List<CompactCatalogMenu<Object?>> menus;
+  final bool equalWidths;
+
+  double _equalWidth(BuildContext context, double rowWidth) {
+    final minimum = menus
+        .map((menu) => CompactCatalogMenu.widthOf(context, menu.label))
+        .reduce((a, b) => a > b ? a : b);
+    final available = (rowWidth - 6 * (menus.length - 1)) / menus.length;
+    return available > minimum ? available : minimum;
+  }
 
   @override
   Widget build(BuildContext context) {
     if (menus.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final minimumWidth = menus
-            .map((menu) => CompactCatalogMenu.widthOf(context, menu.label))
-            .reduce((a, b) => a > b ? a : b);
-        final availableWidth =
-            (constraints.maxWidth - 6 * (menus.length - 1)) / menus.length;
-        final menuWidth = availableWidth > minimumWidth
-            ? availableWidth
-            : minimumWidth;
+        final commonWidth = equalWidths
+            ? _equalWidth(context, constraints.maxWidth)
+            : null;
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             spacing: 6,
             children: [
-              for (final menu in menus) SizedBox(width: menuWidth, child: menu),
+              for (final menu in menus)
+                SizedBox(
+                  width:
+                      commonWidth ??
+                      CompactCatalogMenu.paddedWidthOf(context, menu.label),
+                  child: menu,
+                ),
             ],
           ),
         );
@@ -444,6 +458,10 @@ class CompactCatalogMenu<T> extends StatelessWidget {
   final String? Function(T)? optionTooltip;
   final ValueChanged<T> onChanged;
   final bool active, dense;
+
+  // Content-sized filter and sort buttons leave an extra 13 dp on each side.
+  static double paddedWidthOf(BuildContext context, String label) =>
+      widthOf(context, label) + 26;
 
   static double widthOf(BuildContext context, String label) {
     final text = TextPainter(

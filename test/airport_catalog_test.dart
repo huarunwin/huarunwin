@@ -79,24 +79,36 @@ void main() {
       size(tester, const Size(390, 844));
       await tester.pumpWidget(catalog());
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('airport-filter-traffic')));
+      final traffic = find.byKey(const ValueKey('airport-filter-traffic'));
+      final period = find.byKey(const ValueKey('airport-filter-付款周期'));
+      final trafficWidth = tester.getSize(traffic).width;
+      final periodWidth = tester.getSize(period).width;
+      expect(trafficWidth, lessThan(periodWidth));
+      expect(
+        tester.getSize(find.byKey(const ValueKey('airport-sort'))).width,
+        periodWidth,
+      );
+      await tester.tap(traffic);
       await tester.pumpAndSettle();
       await tester.tapAt(const Offset(4, 40));
       await tester.pumpAndSettle();
       expect(find.text('已载入 3 条'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('airport-filter-traffic')));
+      await tester.tap(traffic);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('airport-traffic-200')));
       await tester.pumpAndSettle();
+      expect(tester.getSize(traffic).width, greaterThan(trafficWidth));
+      expect(tester.getSize(period).width, periodWidth);
       expect(find.text('匹配 1 / 已载入 3'), findsOneWidget);
       expect(find.text('月付机场'), findsOneWidget);
       expect(find.text('按量套餐'), findsNothing);
       expect(find.text('待补全机场'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('airport-filter-traffic')));
+      await tester.tap(traffic);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('airport-traffic-0')));
       await tester.pumpAndSettle();
+      expect(tester.getSize(traffic).width, trafficWidth);
       expect(find.text('已载入 3 条'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

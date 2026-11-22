@@ -85,6 +85,7 @@ class _SitePageState extends State<SitePage> {
   bool _sourcePending = false;
   SiteDocument? get document => snapshot?.document;
   String? catalogUrl;
+  String? _pendingVpsDirectory;
   // A redirect or refresh updates the document without resetting its controls.
   // Only an explicit directory change creates a new catalog state.
   Object catalogIdentity = Object();
@@ -117,6 +118,8 @@ class _SitePageState extends State<SitePage> {
     _sourceRevision = widget.controller.sources.revision;
     generation++;
     setState(() {
+      if (_pendingVpsDirectory case final url?) _selectDirectory(url);
+      _pendingVpsDirectory = null;
       snapshot = null;
       items = [];
       next = '';
@@ -156,27 +159,60 @@ class _SitePageState extends State<SitePage> {
     super.dispose();
   }
 
-  Future<void> _load({bool refresh = false, bool retrySources = true}) async {
+  Future<void> _load({
+    bool refresh = false,
+    bool retrySources = true,
+    String? vpsDirectory,
+  }) async {
     if (refresh && loading) return;
+    if (vpsDirectory != null && vpsDirectory == _pendingVpsDirectory) return;
     if (refresh && retrySources) widget.controller.sources.retryPrimary();
     final token = ++generation;
     setState(() {
+      _pendingVpsDirectory = vpsDirectory;
+      if (vpsDirectory != null) loadMessage = null;
       loading = true;
       error = null;
       collecting = false;
     });
     try {
-      final value = await widget.controller.repository.page(
-        pageUrl,
-        refresh: refresh,
-      );
+      final repository = widget.controller.repository;
+      final cached = vpsDirectory == null
+          ? null
+          : repository.cachedPage(vpsDirectory);
+      final value =
+          cached ??
+          await repository.page(vpsDirectory ?? pageUrl, refresh: refresh);
       if (!mounted || token != generation) return;
-      setState(() => _applySnapshot(value));
+      setState(() {
+        if (vpsDirectory != null) _selectDirectory(vpsDirectory);
+        _applySnapshot(value);
+      });
     } catch (e) {
-      if (mounted && token == generation) setState(() => error = e.toString());
+      if (!mounted || token != generation) return;
+      setState(() {
+        if (vpsDirectory == null) {
+          error = e.toString();
+        } else {
+          loadMessage = '未能切换目录，请重新选择。';
+        }
+      });
     } finally {
-      if (mounted && token == generation) setState(() => loading = false);
+      if (mounted && token == generation) {
+        setState(() {
+          _pendingVpsDirectory = null;
+          loading = false;
+        });
+      }
     }
+  }
+
+  void _selectDirectory(String url) {
+    catalogIdentity = Object();
+    catalogUrl = url;
+    query = '';
+    search.clear();
+    selected.clear();
   }
 
   void _applySnapshot(SiteSnapshot value) {
@@ -210,7 +246,7 @@ class _SitePageState extends State<SitePage> {
   }
 
   Future<void> _collectPages() async {
-    if (!widget.active || collecting || document == null) return;
+    if (!widget.active || loading || collecting || document == null) return;
     final token = generation;
     setState(() {
       collecting = true;
@@ -277,19 +313,29 @@ class _SitePageState extends State<SitePage> {
         SiteRoutes.readingKind(uri) == SiteRoutes.readingKind(here);
     final sameVpsDirectory =
         SiteRoutes.vpsDirectory(here) && SiteRoutes.vpsDirectory(uri);
-    if (document?.directory == true &&
-        SiteRoutes.isNative(uri) &&
-        (sameReadingDirectory || sameVpsDirectory) &&
-        uri.removeFragment() != here.removeFragment()) {
+    final nativeDirectory =
+        document?.directory == true && SiteRoutes.isNative(uri);
+    final samePage = uri.removeFragment() == here.removeFragment();
+    if (nativeDirectory &&
+        sameVpsDirectory &&
+        (!samePage || uri.fragment.isEmpty)) {
+      if (!samePage) {
+        await _load(vpsDirectory: url);
+      } else if (_pendingVpsDirectory != null) {
+        setState(() {
+          generation++;
+          _pendingVpsDirectory = null;
+          loading = false;
+        });
+      }
+      return;
+    }
+    if (nativeDirectory && sameReadingDirectory && !samePage) {
       final cached = widget.controller.repository.cachedPage(url);
       setState(() {
-        catalogIdentity = Object();
-        catalogUrl = url;
+        _selectDirectory(url);
         snapshot = null;
         items = [];
-        query = '';
-        search.clear();
-        selected.clear();
         error = null;
         loadMessage = null;
         if (cached != null) {
@@ -733,6 +779,7 @@ class _SitePageState extends State<SitePage> {
         actions: _pageActions(doc, showMenu: !widget.embedded),
         footer: doc == null ? const SizedBox.shrink() : _footer(),
         hasSnapshot: doc != null,
+        switchingDirectory: _pendingVpsDirectory != null,
         message: [
           if (doc != null && error != null) '刷新失败，保留当前内容。',
           ?snapshot?.warning,

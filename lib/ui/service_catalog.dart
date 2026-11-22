@@ -31,6 +31,7 @@ class ServiceCatalog extends StatefulWidget {
     required this.actions,
     required this.footer,
     this.hasSnapshot = true,
+    this.switchingDirectory = false,
     this.message,
     this.reference,
     this.initialError,
@@ -40,6 +41,7 @@ class ServiceCatalog extends StatefulWidget {
   final SiteDocument document;
   final List<SiteItem> items;
   final bool embedded, loading, collecting, allLoaded, hasSnapshot;
+  final bool switchingDirectory;
   final Future<void> Function() onRefresh;
   final VoidCallback onCollect, onStop;
   final ValueChanged<String> onOpen;
@@ -104,7 +106,11 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
           .firstOrNull;
 
   void _changeProvider(String url) {
-    if (url != _currentProvider?.url) widget.onOpen(url);
+    if (url != _currentProvider?.url) {
+      widget.onOpen(url);
+    } else if (widget.switchingDirectory) {
+      widget.onOpen(widget.document.url);
+    }
   }
 
   Map<String, String> get _directoryLinks => {
@@ -200,9 +206,12 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                   child: _header(desktop, grid, results.length),
                 ),
               ),
-              if (widget.collecting)
-                const SliverToBoxAdapter(
-                  child: LinearProgressIndicator(minHeight: 2),
+              if (widget.collecting || widget.switchingDirectory)
+                SliverToBoxAdapter(
+                  child: LinearProgressIndicator(
+                    minHeight: 2,
+                    semanticsLabel: widget.switchingDirectory ? '正在切换目录' : null,
+                  ),
                 ),
               if (widget.initialError != null)
                 SliverToBoxAdapter(
@@ -229,7 +238,7 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
                     ),
                   ),
                 )
-              else if (results.isEmpty && !widget.loading)
+              else if (results.isEmpty && widget.hasSnapshot)
                 SliverToBoxAdapter(
                   child: EmptyState(
                     icon: Icons.search_off_rounded,
@@ -603,6 +612,7 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
 
   Widget _compactFilters() => CompactCatalogFilterRow(
     key: ValueKey('$_prefix-compact-filters'),
+    equalWidths: false,
     menus: [
       if (_providerLinks.isNotEmpty)
         CompactCatalogMenu<String>(
@@ -723,7 +733,7 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
       LayoutBuilder(
         builder: (context, constraints) {
           final label = sorts[_sort] ?? '综合排序';
-          final width = CompactCatalogMenu.widthOf(context, label);
+          final width = CompactCatalogMenu.paddedWidthOf(context, label);
           final count = CatalogResultCount(countLabel);
           final inlineCount =
               width + count.widthOf(context) + 8 <= constraints.maxWidth;

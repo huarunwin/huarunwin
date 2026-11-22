@@ -391,6 +391,17 @@ void main() {
     expect(find.text('暂无下载任务'), findsOneWidget);
     expect(index(tester), 1);
     expect(find.byTooltip('返回'), findsNothing);
+    final status = find.byKey(const ValueKey('library-status-menu'));
+    final downloadsWidth = tester.getSize(status).width;
+    expect(
+      downloadsWidth,
+      tester.getSize(find.byKey(const ValueKey('library-sort-menu'))).width,
+    );
+    await tester.tap(status);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('library-status-all')));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(status).width, lessThan(downloadsWidth));
     await tester.enterText(find.byType(TextField), 'another-file');
     await tester.pumpAndSettle();
     tester.testTextInput.hide();
@@ -407,6 +418,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(index(tester), 1);
     expect(find.text('暂无下载任务'), findsOneWidget);
+    expect(tester.getSize(status).width, downloadsWidth);
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       isEmpty,
