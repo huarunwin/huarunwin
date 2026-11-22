@@ -7,7 +7,7 @@
 跨平台的翻墙应用商店，让发现、下载和安装更简单。
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.47.6-02569B?style=flat-square&logo=flutter)](https://flutter.dev/)
-[![Platforms](https://img.shields.io/badge/安装包-Android%20%7C%20macOS%20%7C%20Windows-0071E3?style=flat-square)](#下载)
+[![Platforms](https://img.shields.io/badge/安装包-Android%20%7C%20Linux%20%7C%20macOS%20%7C%20Windows-0071E3?style=flat-square)](#下载)
 [![License](https://img.shields.io/badge/许可-Source%20Available-606770?style=flat-square)](LICENSE)
 
 [网站](https://huarun.win/) · [下载](#下载) · [项目文档](docs/README.md) · [问题反馈](https://github.com/huarunwin/huarunwin/issues)
@@ -32,21 +32,22 @@
 - **应用库**：集中查看下载任务、已安装与待安装的应用，以及可确认的更新；支持搜索、筛选、取消和重试。
 - **Android 安装与 APK 处理**：导入本地 APK，经系统确认安装；可选个人密钥重签、修改包名，以及密钥导入与备份。
 - **macOS 安装助手**：处理 DMG／ZIP 中的应用，检查应用身份、签名与架构，确认后安装或替换。
+- **Linux 应用管理**支持按发行版和架构选择 DEB／RPM／Arch 包或 AppImage，安装后核对本机状态，提供可确认的打开、更新和卸载操作。
 - **VPS 与机场**：浏览公开资料，按条件搜索与筛选，在应用内查看详情。
 - **适应不同屏幕**：手机、平板与桌面布局，浅色／深色主题和本地缓存；无内置广告、分析统计或崩溃上报。
 
 ## 下载
 
-正式版见 [GitHub Releases](https://github.com/huarunwin/huarunwin/releases/latest)。
+正式版见 [GitHub Releases](https://github.com/huarunwin/huarunwin/releases/latest)，Linux 安装包已在[测试版](https://github.com/huarunwin/huarunwin/releases/tag/pre)提供。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
 | Android | `arm64`、`armv7`、`x64` APK | 大多数手机选择 `arm64`；其余按设备 ABI 选择。 |
-| Linux | `amd64` tar.gz | 解压后运行 `huarunwin`，需要系统提供 GTK 3 运行库。 |
+| Linux | `amd64` tar.gz | 已在 Ubuntu 24.04 x86_64 验证，完整解压后运行 `huarunwin`。运行依赖及手动更新步骤见[安装流程](docs/installation.md#linux-运行与安装)。 |
 | macOS 13 及以上 | `arm64`、`amd64` DMG | Apple Silicon 选择 `arm64`，Intel 选择 `amd64`。 |
 | Windows | `amd64`、`arm64` 安装版 EXE／便携 ZIP | x64 需 Windows 10 1809 及以上，ARM64 需 Windows 11；ZIP 完整解压后运行。 |
 
-流水线配置支持以上四类安装包，各版本以 Release 实际附件为准。Linux 与 iOS 的能力和构建条件见[项目文档](docs/README.md)；各平台的实际验证范围见[验证记录](docs/verification.md)。
+各版本以 Release 实际附件为准。Linux 构建条件见[运行与构建](docs/development.md#linux)，iOS 等平台的实际验证范围见[验证记录](docs/verification.md)。
 
 ## 常见问题排查
 

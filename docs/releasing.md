@@ -10,7 +10,7 @@
 
 - 推送到 `dev`：成功后移动固定 `pre` tag，覆盖同一个预发布 Release 的说明及安装包，不占用正式版的 Latest 标记。发布前核对 dev 的最新提交，已过时的任务不覆盖 Release。
 - 推送正式 tag：仅接受 `vX.Y.Z`，例如 `v0.1.0`、`v1.2.3`。三段数字不得有前导零，不接受缺少 `v`、额外版本段、`-rc.1` 或 `+构建号` 等格式。工作流按三段数字 tag 筛选，在安装工具链前核对格式及公开 Hub `api/updates.json` 的 `release.releases` 中对应的唯一、非空日志。Hub 缺少版本、日志无效或读取失败均停止构建。`pre` 是 dev 自动维护的唯一例外，不触发新构建；dev／PR 不要求 Hub 预备日志，测试包统一由 dev 发布。
-- 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
+- 支持手动运行 dev 或 tag；main 及其他分支手动运行时跳过所有任务，发布脚本也拒绝这些分支生成发布元数据。main 推送和面向 main 的 PR 不触发工作流。检查、测试、Android 签名校验、Linux 打包及启动检查、Mac 及 Windows 打包全部成功后才更新 Release。安装包先上传成功，再替换旧说明、清理旧附件；上传失败保留上一版。
 - dev 推送与面向 dev 的 PR 仅修改 Markdown 文档、`docs/` 资料或 `.gitignore` 时不触发工作流；`docs/privacy.md` 是随包资源，单独保留构建触发。源码、测试、构建脚本、工作流、依赖配置、资源和 `LICENSE` 等其他文件的变更仍触发检查与编译。路径筛选不影响版本 tag 推送和手动运行。
 - 产物为 Android `armeabi-v7a`、`arm64-v8a`、`x86_64` 三份 APK，Linux `amd64` 一份 tar.gz，macOS 的 Apple Silicon `arm64`、Intel `amd64` 两份 DMG，Windows `amd64`／`arm64` 各一份安装版 EXE 和便携 ZIP，以及 Android 签名清单和 SHA-256 校验文件。校验文件覆盖上述全部附件，不另行上传日志 JSON。Linux 包是 Flutter 的可移植 Release bundle，解压后运行 `huarunwin`，依赖 Ubuntu 等发行版提供 GTK 3 运行库。macOS 当前使用 ad-hoc 签名，尚未配置 Developer ID 签名和 Apple 公证；Windows 尚未配置 Authenticode 签名。各平台实际构建和安装验收状态见[验证记录](verification.md)。
 - Flutter 版本固定读取 `.fvmrc`。预发布名称为 `基础版本-pre.运行序号`，Android `versionName`、Windows 文本版本资源及 Dart 中的版本保留完整预发布标识，Mac 原生版本和 Windows 数字版本字段保持数字格式。内部构建号使用 Actions 的运行序号；Flutter 3.47.6 的 Android 分架构 APK 在该值上分别增加 1000／2000／4000，流水线验证实际版本码，升级 Flutter 时须同时复核此规则。
@@ -87,7 +87,7 @@ https://raw.githubusercontent.com/huarunwin/huarunwin-hub/main/api/updates.json
 
 默认地址保留完整预发布版本，不自动映射到固定 `pre`。当前 dev 构建发布在 `pre` 下，启用 Hub 测试渠道时须用显式版本安装包直链或 `packages` 绑定目标包。旧客户端仍要求顶层 `downloadUrl`，兼容这些版本时应继续提供该字段；省略规则在支持本次解析逻辑的客户端中生效。
 
-下载由现有下载管理器处理，显示进度并支持取消、重试；完成后衔接系统安装或独立桌面更新进程。Android 保留系统覆盖安装确认，macOS／Windows／Linux AppImage 替换前明确确认退出，iOS 使用 App Store／TestFlight。自身更新不提供改包或重签入口，失败保留安装包；关闭更新页后仍可从下载管理继续安装，后台完成下载不会自行安装。此流程与第三方应用的安装助手分开。
+下载由现有下载管理器处理，显示进度并支持取消、重试；完成后衔接系统安装或独立桌面更新进程。Android 保留系统覆盖安装确认，macOS／Windows／Linux AppImage 替换前明确确认退出，iOS 使用 App Store／TestFlight。Linux 当前发布的 tar.gz 需下载后完整解压并重新启动，具体步骤见[安装流程](installation.md#linux-运行与安装)。自身更新不提供改包或重签入口，失败保留安装包；关闭更新页后仍可从下载管理继续安装，后台完成下载不会自行安装。此流程与第三方应用的安装助手分开。
 
 本地 Flutter debug 运行默认使用 `debug` 渠道，release/profile 默认使用 `release`。可通过 `--dart-define=HUARUNWIN_UPDATE_CHANNEL=debug` 或 `release` 显式选择；CI 的 dev 构建选择 `debug`，正式 tag 选择 `release`，与实际采用的 release 编译优化模式独立。
 

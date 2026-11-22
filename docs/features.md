@@ -93,7 +93,7 @@ Android 的机场与 VPS 目录、详情继续原生展示，仅购买、访问�
 
 **交互边界：**纠错网页及其登录、提交交互、Android 的 VPS 与机场购买、访问网站链接及其网页内导航留在应用内 WebView，其他网站专有在线交互仍通过系统浏览器完成。macOS、Android 和 iOS 使用 `webview_flutter`；Windows 使用 WebView2（`webview_flutter_windows`），支持表单输入、刷新、失败重试、滚动标题与主题同步，缺少运行时时提示安装网页组件。Linux 暂未接入应用内 WebView，显示不可用说明，不自动外跳。目录原生筛选只使用 HTML 明示的数据；网站 JS 额外数据文件中的维度（例如未显示在卡片上的网络分类、部分库存／周期组合、TG 人数排序、协议场景关联）不作推断，也未宣称与网站 JS 筛选完全一致。原生阅读页面保留相关正文、全部可见套餐与来源，页面菜单可打开网站执行其专有交互。后台管理 `/master` 不属于客户端公开功能。
 
-优先验证 macOS。Android、iOS、Windows、Linux 平台工程已生成，工程存在不代表全部平台已验收。暂不支持 Web 构建。
+Android、Linux、macOS 和 Windows 已接入构建与发布流程。Linux 提供 amd64 tar.gz，已在 Ubuntu 24.04 x86_64 完成 Release 构建、启动和 DEB 安装验证。应用库可核对发行版软件包，提供可确认的打开、更新及卸载入口。客户端自身的 tar.gz 按[安装流程](installation.md#linux-运行与安装)手动更新。iOS 保留平台工程与模拟器构建，暂不支持 Web 构建。各平台的具体验证范围见[验证记录](verification.md)。
 
 2026-10-18 纠错入口验证：静态分析、5 项纠错回归测试、macOS Release 与 iOS Simulator 无签名构建通过。Mac 实际联网检查了统一入口、真实纠错表单加载、网页与标题滚动、刷新及返回设置；表单提交和移动设备上的实际交互尚未验收。
 

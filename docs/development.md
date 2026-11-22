@@ -39,12 +39,27 @@ Windows 纠错页通过 [`webview_flutter_windows`](https://pub.dev/packages/web
 
 Windows 应用显示名称为“华润赢”，覆盖原生窗口标题、程序描述、安装器、快捷方式和卸载列表；主程序仍为 `huarunwin.exe`。名称变更从重新构建／打包后生效，既有 Release 附件保持原样。
 
-Linux 使用 Flutter 的 GTK bundle 构建，发布前在 Ubuntu amd64 上执行 `fvm flutter build linux --release`，或通过 CI 的 `python3 tool/ci/build.py package-linux` 生成 `build/release/packages/HuarunWin-版本-linux-amd64.tar.gz`。解压后运行其中的 `huarunwin`，系统需要提供 GTK 3 运行库。
-
 macOS 产物：`build/macos/Build/Products/Release/华润赢.app`，应用名称统一为“华润赢”。最低 macOS 13，本机构建默认包含 arm64 和 x86_64，CI 按架构分别构建。构建自动编译并嵌入 Swift 安装助手。`macos/Installer/main.swift` 为命令入口，`InstallerOperations.swift` 复用安装／卸载／自身更新检查，`AdminService.swift` 提供首次授权后的受限常驻服务；Runner 的 `AdminHelper.swift` 和 `AdminServiceProtocol.swift` 负责客户端与双向 XPC 身份校验。按需授权及当前本地签名限制见[安装流程](installation.md#mac-管理员助手)。
 
 Flutter 框架嵌入阶段显式声明应用包内的框架输出，使仅改动 Dart 的增量构建也重新签署外层应用，避免助手严格核对客户端时拒绝旧的嵌套代码签名。
 
 macOS 窗口在 Flutter 首帧完成绘制后显示，避免冷启动初始化期间露出黑色空窗；目录网络请求异步进行，不作为显示窗口的条件。
+
+## Linux
+
+Linux 发布目标为 amd64（x86_64），CI 在 Ubuntu 24.04 上构建 Flutter GTK Release bundle，并对下载后的 tar.gz 执行解压和启动检查。本地构建同样需要 Linux 主机，以下命令用于在 Ubuntu 24.04 上准备构建依赖、运行和构建客户端。
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+fvm flutter pub get
+fvm flutter config --enable-linux-desktop
+fvm flutter run -d linux
+fvm flutter build linux --release
+```
+
+产物位于 `build/linux/x64/release/bundle/`，运行其中的 `huarunwin` 时须保留同级 `lib/` 与 `data/`。CI 使用 `python3 tool/ci/build.py package-linux`，结合该次发布的元数据生成 `build/release/packages/HuarunWin-版本-linux-amd64.tar.gz`。客户端运行依赖和解压步骤见[安装流程](installation.md#linux-运行与安装)。
+
+应用库支持按发行版软件包数据库与桌面启动项匹配本机应用，并提供 AppImage 安装、打开及卸载。Linux 的纠错页尚未接入 WebView，当前 tar.gz 客户端通过下载新版后完整解压更新，具体能力和限制见[功能与界面](features.md)及[客户端自身更新](self-updating.md#平台安装方式)。
 
 自动打包及 runner 配置见[发布与许可](releasing.md)，检查命令和历史验证范围见[验证记录](verification.md)。
